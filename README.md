@@ -1,36 +1,66 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mini's Pastries POS
 
-## Getting Started
+Production-ready, offline-first point of sale for Mini's Pastries. This repository is being built milestone-by-milestone with Next.js 14, Supabase, Tailwind CSS, and shadcn/ui.
 
-First, run the development server:
+## Prerequisites
+
+1. Node.js 18 or newer
+2. A free Supabase account
+3. A free Vercel account
+
+## Local setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create a Supabase project, then open the SQL editor and run the full contents of [supabase/schema.sql](/C:/Users/McJoseph/OneDrive/EMSI/AI/Agency/mini-pos/supabase/schema.sql).
+
+3. In Supabase Auth, enable the Email provider and turn on magic links.
+
+4. Create a Storage bucket named `receipts` and keep it authenticated-only.
+
+5. Copy `.env.local.example` to `.env.local` if needed, then fill in your real Supabase URL and anon key.
+
+6. Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+7. Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## First admin account
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Sign in with your email using the magic-link flow.
+2. After the first login creates your employee row, open the `employees` table in Supabase.
+3. Change your row's `role` to `admin`.
+4. Sign out and sign back in to land on `/admin/dashboard`.
 
-## Learn More
+## Verification commands
 
-To learn more about Next.js, take a look at the following resources:
+Run these before committing:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npx tsc --noEmit
+npm run lint
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploying to Vercel
 
-## Deploy on Vercel
+1. Push the repository to GitHub.
+2. Import the repo into [Vercel](https://vercel.com/).
+3. Add the same `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `NEXT_PUBLIC_APP_NAME` environment variables in Vercel.
+4. Deploy.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Install on iPad
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Open the deployed Vercel URL in Safari.
+2. Tap the Share button.
+3. Choose `Add to Home Screen`.
+
+## Project status
+
+Only Milestone 1 has been implemented so far. Check [REQUIREMENTS.md](/C:/Users/McJoseph/OneDrive/EMSI/AI/Agency/mini-pos/REQUIREMENTS.md) before starting new work, and do not build ahead of the active milestone.

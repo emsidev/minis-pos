@@ -7,13 +7,13 @@ Statuses: `[ ]` not started | `[~]` in progress | `[x]` complete | `[!]` blocked
 ---
 
 ## Milestone 1 — Foundation & Authentication
-- [ ] Project scaffolded (Next.js, Tailwind, shadcn)
-- [ ] Supabase tables created
-- [ ] RLS policies applied
-- [ ] Login page (magic link)
-- [ ] Role-based redirect (admin vs employee)
-- [ ] Route protection middleware
-- [ ] Basic layout shells
+- [x] Project scaffolded (Next.js, Tailwind, shadcn)
+- [!] Supabase tables created (SQL prepared in `supabase/schema.sql`; run it in your Supabase project)
+- [!] RLS policies applied (included in `supabase/schema.sql`; apply it in your Supabase project)
+- [x] Login page (magic link)
+- [x] Role-based redirect (admin vs employee)
+- [x] Route protection middleware
+- [x] Basic layout shells
 
 ## Milestone 2 — POS Cashier Screen
 - [ ] Product grid with category filters
