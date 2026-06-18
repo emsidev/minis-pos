@@ -4,7 +4,18 @@ import { NextResponse, type NextRequest } from "next/server"
 import type { Database } from "@/lib/database.types"
 import { isSupabaseConfigured, publicEnv } from "@/lib/env"
 
-const publicRoutes = ["/login", "/auth/callback"]
+const publicRoutes = [
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/auth/callback",
+  "/auth/recovery",
+  "/offline-access",
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/icon",
+  "/apple-icon",
+]
 
 function isPublicRoute(pathname: string) {
   return publicRoutes.some(
@@ -54,14 +65,16 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // Use getSession() for the fast, cookie-based check — works offline.
+  // getUser() makes a network call to Supabase and will fail without connectivity,
+  // causing an incorrect redirect to login even when the user is authenticated.
   const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    data: { session },
+  } = await supabase.auth.getSession()
 
-  if (!user && !routeIsPublic) {
+  if (!session && !routeIsPublic) {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = "/login"
-
     return NextResponse.redirect(loginUrl)
   }
 
@@ -70,6 +83,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|workbox-.*\\.js|icon|apple-icon|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }

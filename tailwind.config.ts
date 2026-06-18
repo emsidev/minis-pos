@@ -1,4 +1,4 @@
-import type { Config } from "tailwindcss";
+import type { Config } from "tailwindcss"
 
 const config: Config = {
   content: [
@@ -42,10 +42,28 @@ const config: Config = {
           DEFAULT: "var(--tertiary)",
           foreground: "var(--tertiary-foreground)",
         },
+        success: {
+          DEFAULT: "var(--success)",
+          foreground: "var(--success-foreground)",
+        },
+        warning: {
+          DEFAULT: "var(--warning)",
+          foreground: "var(--warning-foreground)",
+        },
         accent: {
           DEFAULT: "var(--accent)",
           foreground: "var(--accent-foreground)",
         },
+        "surface-container": "var(--surface-container)",
+        "surface-container-low": "var(--surface-container-low)",
+        "surface-container-highest": "var(--surface-container-highest)",
+        "primary-container": "var(--primary-container)",
+        "on-primary-container": "var(--on-primary-container)",
+        "on-surface-variant": "var(--on-surface-variant)",
+      },
+      boxShadow: {
+        candy: "0 20px 42px -30px rgba(115, 58, 101, 0.28)",
+        panel: "0 24px 55px -36px rgba(90, 44, 80, 0.3)",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -54,10 +72,11 @@ const config: Config = {
       },
       fontFamily: {
         heading: ["var(--font-heading)"],
+        mono: ["var(--font-geist-mono)"],
         sans: ["var(--font-sans)"],
       },
     },
   },
   plugins: [],
-};
-export default config;
+}
+export default config

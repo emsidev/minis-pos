@@ -1,16 +1,43 @@
-import { PlaceholderPanel } from "@/components/shared/PlaceholderPanel"
+import { requireEmployeeRole } from "@/lib/auth"
+import {
+  type EmployeeSalesHistoryGroup,
+  getEmployeeSalesHistoryForDate,
+  getEmployeeSchedules,
+} from "@/lib/shifts"
+import { ScheduleCalendar } from "@/components/shifts/ScheduleCalendar"
+import type { SharedBoothSchedule } from "@/lib/shifts"
+import { getBusinessDate } from "@/lib/utils"
 
-export default function EmployeeSchedulePage() {
+export default async function SchedulePage() {
+  const { employee, profileSource } = await requireEmployeeRole([
+    "employee",
+    "admin",
+  ])
+  const selectedHistoryDate = getBusinessDate()
+
+  let schedules: SharedBoothSchedule[] = []
+  let salesHistory: EmployeeSalesHistoryGroup[] = []
+
+  if (profileSource !== "snapshot") {
+    try {
+      ;[schedules, salesHistory] = await Promise.all([
+        getEmployeeSchedules(employee.id),
+        getEmployeeSalesHistoryForDate(employee.id, selectedHistoryDate),
+      ])
+    } catch (error) {
+      console.warn("Could not fetch schedules from server:", error)
+    }
+  }
+
   return (
-    <PlaceholderPanel
-      eyebrow="Milestone 4 placeholder"
-      title="Schedule calendar lands in a later milestone"
-      description="This route is wired into the employee shell today so the protected navigation is complete, even though the calendar feature itself is still ahead."
-      bullets={[
-        "Milestone 4 will render a monthly calendar from booth_schedules.",
-        "The active shift badge and Maps link will appear in the shared employee header once scheduling is implemented.",
-        "Role protection is already in place, so only employee accounts can load this page.",
-      ]}
-    />
+    <div className="app-page">
+      <ScheduleCalendar
+        employeeId={employee.id}
+        schedules={schedules}
+        initialSalesHistoryDate={selectedHistoryDate}
+        initialSalesHistoryGroups={salesHistory}
+        preferCachedSalesHistory={profileSource === "snapshot"}
+      />
+    </div>
   )
 }

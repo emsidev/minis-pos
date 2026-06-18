@@ -1,16 +1,35 @@
-import { PlaceholderPanel } from "@/components/shared/PlaceholderPanel"
+import { AdminBoothsClient } from "@/components/admin/AdminBoothsClient"
+import {
+  getActiveEmployeeOptions,
+  getAdminBooths,
+  getAdminScheduleCalendarItems,
+} from "@/lib/adminBooths"
+import { getBusinessDate } from "@/lib/utils"
 
-export default function AdminBoothsPage() {
+function getCurrentMonthBounds() {
+  const [year, month] = getBusinessDate().split("-").map(Number)
+  const endDay = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  const paddedMonth = String(month).padStart(2, "0")
+
+  return {
+    startDate: `${year}-${paddedMonth}-01`,
+    endDate: `${year}-${paddedMonth}-${String(endDay).padStart(2, "0")}`,
+  }
+}
+
+export default async function AdminBoothsPage() {
+  const { startDate, endDate } = getCurrentMonthBounds()
+  const [booths, schedules, employees] = await Promise.all([
+    getAdminBooths(),
+    getAdminScheduleCalendarItems(startDate, endDate),
+    getActiveEmployeeOptions(),
+  ])
+
   return (
-    <PlaceholderPanel
-      eyebrow="Milestone 6 placeholder"
-      title="Booth management and scheduling will be added here"
-      description="This route will later handle booth records, maps links, and the unified scheduling calendar, but it already benefits from admin-only access control."
-      bullets={[
-        "Milestone 6 will add booth CRUD and employee shift assignment.",
-        "Conflict checking will happen in the UI before database insert attempts.",
-        "The current placeholder keeps the milestone focused on auth and routing only.",
-      ]}
+    <AdminBoothsClient
+      booths={booths}
+      schedules={schedules}
+      employees={employees}
     />
   )
 }

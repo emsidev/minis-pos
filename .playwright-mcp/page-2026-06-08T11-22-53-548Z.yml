@@ -1,0 +1,31 @@
+- generic [active] [ref=e1]:
+  - region "Notifications alt+T"
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "Mini's Pastries" [level=2] [ref=e6]
+        - generic [ref=e9]: Professional POS
+      - generic [ref=e11]:
+        - img [ref=e14]
+        - generic [ref=e16]:
+          - heading "Welcome back" [level=1] [ref=e17]
+          - paragraph [ref=e18]: Enter your email and password
+        - generic [ref=e20]:
+          - generic [ref=e21]:
+            - generic [ref=e22]: Work Email
+            - textbox "Work Email" [ref=e24]:
+              - /placeholder: name@minispastries.com
+          - generic [ref=e25]:
+            - generic [ref=e26]: Password
+            - textbox "Password" [ref=e28]
+          - button "Sign In" [ref=e29] [cursor=pointer]:
+            - generic [ref=e30]: Sign In
+            - img
+        - paragraph [ref=e32]: New to the POS? Contact an admin
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - img [ref=e35]
+          - generic [ref=e38]: Help Center
+        - generic [ref=e42]: Systems Synced
+    - paragraph [ref=e44]: © 2026 Mini's Pastries POS System
+  - alert [ref=e45]

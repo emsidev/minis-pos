@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>The Artisanal Atelier - Login</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "primary": "#e040a0",
+                "on-primary": "#ffffff",
+                "primary-container": "#ffd8ec",
+                "on-primary-container": "#3d0025",
+                "secondary": "#715764",
+                "on-secondary": "#ffffff",
+                "secondary-container": "#fcdbe9",
+                "on-secondary-container": "#291520",
+                "background": "#fffbff",
+                "on-background": "#1f1a1d",
+                "surface": "#fffbff",
+                "on-surface": "#1f1a1d",
+                "surface-variant": "#f1dee6",
+                "on-surface-variant": "#50434a",
+                "outline": "#82737a",
+                "outline-variant": "#d4c2ca",
+                "error": "#ba1a1a",
+                "on-error": "#ffffff",
+                "tertiary": "#7f5437",
+                "on-tertiary": "#ffffff",
+                "tertiary-container": "#ffdbca",
+                "on-tertiary-container": "#301401",
+                "success": "#22c55e",
+                "on-success": "#ffffff"
+            },
+            "borderRadius": {
+                "DEFAULT": "9999px",
+                "lg": "9999px",
+                "xl": "9999px",
+                "full": "9999px"
+            },
+            "fontFamily": {
+                "headline": ["DM Sans"],
+                "body": ["DM Sans"],
+                "label": ["DM Sans"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'DM Sans', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .candy-shadow {
+            box-shadow: 0px 10px 25px -5px rgba(224, 64, 160, 0.1), 0px 8px 10px -6px rgba(224, 64, 160, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-background min-h-screen flex flex-col selection:bg-primary-container selection:text-on-primary-container">
+<main class="flex-grow flex items-center justify-center px-6 py-12 relative overflow-hidden">
+<!-- Playful Background Decorative Elements -->
+<div class="absolute top-0 left-0 w-full h-full pointer-events-none opacity-40">
+<div class="absolute -top-24 -left-24 w-96 h-96 bg-primary-container rounded-full blur-3xl"></div>
+<div class="absolute bottom-1/4 right-0 w-64 h-64 bg-secondary-container rounded-full blur-2xl"></div>
+<div class="absolute top-1/2 left-1/4 w-32 h-32 bg-primary/10 rounded-full blur-xl"></div>
+</div>
+<div class="w-full max-w-lg z-10">
+<!-- Branding Anchor -->
+<div class="text-center mb-10">
+<h2 class="font-headline font-bold text-primary text-3xl tracking-tight">The Artisanal Atelier</h2>
+<div class="mt-2 flex justify-center items-center gap-3">
+<span class="h-1 w-4 bg-primary/20 rounded-full"></span>
+<span class="text-xs font-bold uppercase tracking-[0.2em] text-secondary">Professional POS</span>
+<span class="h-1 w-4 bg-primary/20 rounded-full"></span>
+</div>
+</div>
+<!-- Login Card -->
+<div class="bg-white candy-shadow rounded-[2rem] p-10 md:p-12 relative border border-primary/5">
+<!-- Top Detail -->
+<div class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
+<div class="bg-primary p-4 rounded-full candy-shadow ring-8 ring-white">
+<span class="material-symbols-outlined text-on-primary text-2xl" data-icon="bakery_dining">bakery_dining</span>
+</div>
+</div>
+<div class="text-center mb-10 mt-2">
+<h1 class="font-headline font-bold text-4xl text-on-surface mb-3">Welcome back</h1>
+<p class="text-on-surface-variant font-medium text-lg">Enter your email for a magic link</p>
+</div>
+<form class="space-y-6">
+<div class="space-y-2">
+<label class="block font-bold text-xs uppercase tracking-widest text-on-surface-variant ml-4" for="email">Work Email</label>
+<div class="relative group">
+<input class="w-full h-14 px-8 bg-surface-variant/30 border-2 border-transparent rounded-full font-medium text-lg focus:border-primary focus:ring-0 transition-all placeholder:text-on-surface-variant/40" id="email" name="email" placeholder="name@atelier.com" required="" type="email"/>
+</div>
+</div>
+<button class="w-full h-14 bg-primary text-on-primary font-bold rounded-full text-lg hover:brightness-110 active:scale-[0.98] transition-all candy-shadow flex items-center justify-center gap-2 group" type="submit">
+<span>Send Magic Link</span>
+<span class="material-symbols-outlined text-xl group-hover:translate-x-1 transition-transform" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</form>
+<div class="mt-8 pt-8 border-t border-outline-variant/30 flex flex-col items-center gap-4">
+<p class="text-sm font-medium text-on-surface-variant">New to the Atelier? <a class="text-primary font-bold hover:underline" href="#">Contact Manager</a></p>
+</div>
+</div>
+<!-- Footer Connectivity Status -->
+<div class="mt-10 flex flex-wrap justify-center sm:justify-between items-center px-4 gap-4">
+<a class="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white candy-shadow text-on-surface-variant hover:text-primary transition-colors group" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="help_outline">help_outline</span>
+<span class="font-bold text-xs uppercase tracking-tighter">Help Center</span>
+</a>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-2 px-5 py-2.5 rounded-full bg-success/10 text-success">
+<span class="w-2 h-2 rounded-full bg-success animate-pulse"></span>
+<span class="font-bold text-xs uppercase tracking-tighter">Systems Synced</span>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-white candy-shadow text-on-surface-variant/40 hover:text-primary transition-colors" data-icon="refresh">
+<span class="material-symbols-outlined text-xl">refresh</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Side Imagery (Rounded Candy Style) -->
+<div class="hidden lg:block absolute right-12 top-1/2 -translate-y-1/2 w-72 h-[32rem] rounded-full overflow-hidden candy-shadow opacity-90 border-[10px] border-white">
+<img class="w-full h-full object-cover" data-alt="Close-up of artisan pastries and croissants beautifully arranged in a warm sunlit bakery display with soft wooden textures" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXRdnSXkFL58UsvJPtpYgwnAq0tJXJsO11G8wXLCX7pwrotUUOOUX-NnX7WOoM6EFhRK1Cl5K898v1OsSiEICyXYs6iPPEDPWg8DaXR-1r3_t23RvuoTf6FHRpEZb2PdKMaQ7XVU7moY-rQopd_GcxGU3DjpQ1cnABU5NBWCSQOmoqzUtXZ-yrX7nzRTNE2XN2961e9nuR_jlGvR_0jekVuwXqZkwg_SPOV0lRnRWaOE_mazVVIzt4shThK3ZvwhrXVxUybl2_y7Kq"/>
+</div>
+<div class="hidden lg:block absolute left-12 bottom-12 w-48 h-48 rounded-[3rem] overflow-hidden candy-shadow opacity-80 rotate-6 border-8 border-white">
+<img class="w-full h-full object-cover" data-alt="Dusted flour on a dark marble pastry countertop with a silver rolling pin and warm side lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD49HHxT_FrcZw151an-jbZmuj01ITVanB89rkWmoWmHeZm4Qu7TY8gll_EZMAxPR6DE2PhifEReYbJkgV1Lyug9G55qhvJ44s_R78_A31BUklnjZ9eZmYnWQ2FC3T2IACkO3YW3GWqNNDvoZpRSYAB4Yq4kWpASeeU6a_h04kbIG5Q4WkXfybdcdT7yTSCDkpDtdv39lD_yWoC9YVg9vm6E3i6yz_-oXCi39ojdTr9UymtQsKdouyOuIxUFCkP3KHmDwIVb5qi7OJE"/>
+</div>
+</main>
+<!-- Bottom Attribution -->
+<footer class="h-20 flex items-center justify-center border-0 bg-transparent">
+<p class="font-bold text-[10px] uppercase tracking-[0.3em] text-on-surface-variant/40">© 2024 The Artisanal Atelier POS System</p>
+</footer>
+</body></html>

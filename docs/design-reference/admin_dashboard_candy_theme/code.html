@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Atelier Manager Dashboard - Candy Style</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "primary": "#e040a0", // Saturated Candy Pink
+                "on-primary": "#ffffff",
+                "primary-container": "#ffe4f2",
+                "on-primary-container": "#3d0024",
+                "secondary": "#7c5667",
+                "on-secondary": "#ffffff",
+                "secondary-container": "#ffd8e8",
+                "on-secondary-container": "#311422",
+                "tertiary": "#6e5d2e",
+                "on-tertiary": "#ffffff",
+                "tertiary-container": "#f8e1a6",
+                "on-tertiary-container": "#241a00",
+                "background": "#fffbff",
+                "on-background": "#201a1c",
+                "surface": "#fffbff",
+                "on-surface": "#201a1c",
+                "surface-variant": "#f2dde4",
+                "on-surface-variant": "#51434a",
+                "outline": "#83737a"
+            },
+            "borderRadius": {
+                "DEFAULT": "9999px",
+                "lg": "2rem",
+                "xl": "3rem",
+                "full": "9999px"
+            },
+            "fontFamily": {
+                "headline": ["DM Sans", "sans-serif"],
+                "body": ["DM Sans", "sans-serif"],
+                "label": ["DM Sans", "sans-serif"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+        }
+        body { font-family: 'DM Sans', sans-serif; }
+        h1, h2, h3, .font-serif { font-family: 'DM Sans', sans-serif; font-weight: 700; }
+        .candy-shadow {
+            box-shadow: 0 10px 25px -5px rgba(224, 64, 160, 0.1), 0 8px 10px -6px rgba(224, 64, 160, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- TopAppBar -->
+<header class="bg-white/80 backdrop-blur-md fixed top-0 w-full z-50 flex justify-between items-center h-20 px-8 border-b border-surface-variant">
+<div class="flex items-center gap-12">
+<span class="text-2xl font-bold tracking-tight text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-3xl">auto_awesome</span>
+            Atelier
+        </span>
+<nav class="hidden md:flex gap-8">
+<a class="text-primary font-bold border-b-4 border-primary pb-1 px-1 transition-all" href="#">Reports</a>
+<a class="text-on-surface-variant/70 hover:text-primary transition-colors font-medium" href="#">Counter</a>
+<a class="text-on-surface-variant/70 hover:text-primary transition-colors font-medium" href="#">Inventory</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="bg-primary-container px-5 py-2 rounded-full flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="cloud_done">cloud_done</span>
+<span class="text-xs font-bold uppercase tracking-widest text-on-primary-container">Live</span>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-20 h-[calc(100vh-5rem)] w-64 bg-white flex flex-col py-8 gap-2 border-r border-surface-variant">
+<div class="px-8 mb-10">
+<h2 class="font-bold text-xl text-on-background tracking-tight">Management</h2>
+<p class="uppercase tracking-[0.2em] text-[10px] font-bold text-primary mt-1">Joyful Workspace</p>
+</div>
+<nav class="flex flex-col gap-2 px-4">
+<a class="text-on-surface-variant/80 px-6 py-4 flex items-center gap-4 hover:bg-primary-container hover:text-primary rounded-full transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform" data-icon="point_of_sale">point_of_sale</span>
+<span class="text-sm font-bold">Counter</span>
+</a>
+<a class="text-on-surface-variant/80 px-6 py-4 flex items-center gap-4 hover:bg-primary-container hover:text-primary rounded-full transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform" data-icon="bakery_dining">bakery_dining</span>
+<span class="text-sm font-bold">Inventory</span>
+</a>
+<a class="bg-primary text-on-primary px-6 py-4 flex items-center gap-4 rounded-full shadow-lg shadow-primary/20" href="#">
+<span class="material-symbols-outlined" data-icon="bar_chart">bar_chart</span>
+<span class="text-sm font-bold">Reports</span>
+</a>
+<a class="text-on-surface-variant/80 px-6 py-4 flex items-center gap-4 hover:bg-primary-container hover:text-primary rounded-full transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform" data-icon="badge">badge</span>
+<span class="text-sm font-bold">Staff</span>
+</a>
+<a class="text-on-surface-variant/80 px-6 py-4 flex items-center gap-4 hover:bg-primary-container hover:text-primary rounded-full transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:scale-110 transition-transform" data-icon="settings">settings</span>
+<span class="text-sm font-bold">Settings</span>
+</a>
+</nav>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 pt-24 px-10 pb-12 min-h-screen">
+<!-- Header & Filter -->
+<section class="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
+<div>
+<h1 class="text-5xl font-bold text-on-background tracking-tighter">Executive Summary</h1>
+<p class="text-on-surface-variant mt-3 max-w-md font-medium">Real-time performance metrics for the artisanal production floor and retail galleries.</p>
+</div>
+<div class="flex items-center gap-3 bg-white p-2 rounded-full border border-surface-variant candy-shadow">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-primary" data-icon="calendar_today">calendar_today</span>
+<input class="bg-surface-variant/30 border-none rounded-full pl-12 pr-6 py-3 text-sm font-bold text-on-background focus:ring-2 focus:ring-primary transition-all w-72" type="text" value="Oct 24, 2023 - Oct 31, 2023"/>
+</div>
+<button class="bg-primary text-on-primary px-8 py-3 rounded-full font-bold text-sm flex items-center gap-2 hover:scale-105 transition-transform shadow-md shadow-primary/30">
+<span class="material-symbols-outlined text-sm" data-icon="filter_list">filter_list</span>
+                Apply
+            </button>
+</div>
+</section>
+<!-- Bento Grid Summary Cards -->
+<section class="grid grid-cols-12 gap-8 mb-12">
+<!-- Total Sales Card -->
+<div class="col-span-12 lg:col-span-5 bg-primary text-on-primary p-10 rounded-3xl relative overflow-hidden group candy-shadow">
+<div class="relative z-10">
+<p class="uppercase tracking-[0.2em] text-[10px] font-extrabold text-on-primary/80 mb-6">Total Sales Today</p>
+<h3 class="text-6xl font-bold mb-4 tracking-tighter">$14,284.50</h3>
+<div class="flex items-center gap-2 bg-white/20 w-fit px-4 py-1.5 rounded-full backdrop-blur-md">
+<span class="material-symbols-outlined text-sm" data-icon="trending_up">trending_up</span>
+<span class="text-xs font-black">+12.4% vs yesterday</span>
+</div>
+</div>
+<div class="absolute -right-8 -bottom-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
+<span class="material-symbols-outlined text-[15rem]" data-icon="payments">payments</span>
+</div>
+</div>
+<!-- Total Transactions -->
+<div class="col-span-12 md:col-span-6 lg:col-span-3 bg-secondary-container p-10 rounded-3xl flex flex-col justify-between candy-shadow">
+<div>
+<p class="uppercase tracking-[0.2em] text-[10px] font-extrabold text-on-secondary-container/70 mb-4">Transactions</p>
+<h3 class="text-4xl font-bold text-on-secondary-container">842</h3>
+</div>
+<div class="mt-8 flex flex-col gap-3">
+<div class="w-full bg-on-secondary-container/10 h-3 rounded-full overflow-hidden">
+<div class="bg-primary w-3/4 h-full rounded-full"></div>
+</div>
+<span class="text-[10px] font-black text-on-secondary-container/60 uppercase tracking-widest">75% of Daily Target</span>
+</div>
+</div>
+<!-- Active Booths -->
+<div class="col-span-12 md:col-span-6 lg:col-span-4 bg-tertiary-container p-10 rounded-3xl flex items-center justify-between candy-shadow">
+<div>
+<p class="uppercase tracking-[0.2em] text-[10px] font-extrabold text-on-tertiary-container/70 mb-4">Active Booths</p>
+<h3 class="text-4xl font-bold text-on-tertiary-container">08 / 10</h3>
+<p class="text-xs text-on-tertiary-container/60 mt-2 font-bold italic">Peak Operational Mode</p>
+</div>
+<div class="w-20 h-20 rounded-full bg-white flex items-center justify-center shadow-lg shadow-tertiary-container/50">
+<span class="material-symbols-outlined text-primary text-4xl" data-icon="storefront">storefront</span>
+</div>
+</div>
+</section>
+<!-- Detailed Booth Performance -->
+<section class="bg-white rounded-3xl candy-shadow border border-surface-variant/50 overflow-hidden">
+<div class="px-10 py-8 flex justify-between items-center border-b border-surface-variant">
+<h2 class="text-2xl font-bold text-on-background tracking-tight">Sales by Location</h2>
+<div class="flex gap-3">
+<button class="w-12 h-12 flex items-center justify-center hover:bg-primary-container hover:text-primary rounded-full transition-colors"><span class="material-symbols-outlined" data-icon="download">download</span></button>
+<button class="w-12 h-12 flex items-center justify-center hover:bg-primary-container hover:text-primary rounded-full transition-colors"><span class="material-symbols-outlined" data-icon="more_vert">more_vert</span></button>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-separate border-spacing-y-2 px-6">
+<thead>
+<tr class="text-on-surface-variant">
+<th class="px-6 py-4 uppercase tracking-[0.2em] text-[10px] font-black">Booth Identity</th>
+<th class="px-6 py-4 uppercase tracking-[0.2em] text-[10px] font-black">Lead Artisan</th>
+<th class="px-6 py-4 uppercase tracking-[0.2em] text-[10px] font-black">Status</th>
+<th class="px-6 py-4 uppercase tracking-[0.2em] text-[10px] font-black text-right">Transactions</th>
+<th class="px-6 py-4 uppercase tracking-[0.2em] text-[10px] font-black text-right">Revenue</th>
+</tr>
+</thead>
+<tbody class="gap-y-2">
+<tr class="hover:bg-primary-container/30 transition-all group rounded-full">
+<td class="px-6 py-6 first:rounded-l-full">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary-container flex items-center justify-center text-primary font-black text-lg">M</div>
+<div>
+<p class="font-bold text-on-background text-sm">Main Gallery</p>
+<p class="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Level 1 - South</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-6 text-sm font-bold text-on-surface-variant">Chef Julianne V.</td>
+<td class="px-6 py-6">
+<span class="bg-primary text-on-primary text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">Active</span>
+</td>
+<td class="px-6 py-6 text-right font-bold text-sm text-on-background">242</td>
+<td class="px-6 py-6 text-right font-bold text-xl text-primary last:rounded-r-full tracking-tighter">$4,821.00</td>
+</tr>
+<tr class="hover:bg-primary-container/30 transition-all group rounded-full">
+<td class="px-6 py-6 first:rounded-l-full">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center text-secondary font-black text-lg">T</div>
+<div>
+<p class="font-bold text-on-background text-sm">Terrace Kiosk</p>
+<p class="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Outdoor Garden</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-6 text-sm font-bold text-on-surface-variant">Marcus Thorne</td>
+<td class="px-6 py-6">
+<span class="bg-primary text-on-primary text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">Active</span>
+</td>
+<td class="px-6 py-6 text-right font-bold text-sm text-on-background">186</td>
+<td class="px-6 py-6 text-right font-bold text-xl text-primary last:rounded-r-full tracking-tighter">$3,104.50</td>
+</tr>
+<tr class="hover:bg-primary-container/30 transition-all group rounded-full">
+<td class="px-6 py-6 first:rounded-l-full">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-surface-variant flex items-center justify-center text-on-surface-variant font-black text-lg">E</div>
+<div>
+<p class="font-bold text-on-background text-sm">East Gate</p>
+<p class="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Transit Hub</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-6 text-sm font-bold text-on-surface-variant">Sarah Jenkins</td>
+<td class="px-6 py-6">
+<span class="bg-on-surface-variant/20 text-on-surface-variant text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">Closed</span>
+</td>
+<td class="px-6 py-6 text-right font-bold text-sm text-on-background">92</td>
+<td class="px-6 py-6 text-right font-bold text-xl text-primary last:rounded-r-full tracking-tighter">$1,240.00</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- Trends & Activity -->
+<section class="mt-12 grid grid-cols-12 gap-8">
+<div class="col-span-12 lg:col-span-8 bg-on-background text-white rounded-[3rem] p-12 relative overflow-hidden candy-shadow">
+<div class="relative z-10">
+<h3 class="text-3xl font-bold mb-10 tracking-tight">Production Velocity</h3>
+<div class="flex items-end gap-3 h-48">
+<!-- Simulated Chart Bars -->
+<div class="flex-1 bg-white/10 rounded-full h-1/4 transition-all hover:bg-primary"></div>
+<div class="flex-1 bg-white/10 rounded-full h-1/2 transition-all hover:bg-primary"></div>
+<div class="flex-1 bg-white/10 rounded-full h-2/3 transition-all hover:bg-primary"></div>
+<div class="flex-1 bg-primary rounded-full h-[90%] transition-all hover:scale-x-110"></div>
+<div class="flex-1 bg-primary rounded-full h-[100%] transition-all hover:scale-x-110"></div>
+<div class="flex-1 bg-white/10 rounded-full h-3/4 transition-all hover:bg-primary"></div>
+<div class="flex-1 bg-white/10 rounded-full h-1/2 transition-all hover:bg-primary"></div>
+</div>
+<div class="flex justify-between mt-8 text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
+<span>08:00</span>
+<span>12:00</span>
+<span>16:00</span>
+<span>20:00</span>
+</div>
+</div>
+<!-- Glow effect -->
+<div class="absolute -top-24 -right-24 w-96 h-96 bg-primary/20 blur-[100px] rounded-full"></div>
+</div>
+<div class="col-span-12 lg:col-span-4 flex flex-col gap-6">
+<div class="bg-secondary-container rounded-[3rem] p-10 flex-1 candy-shadow">
+<h4 class="font-bold text-xl text-on-secondary-container mb-6 tracking-tight">Live Feed</h4>
+<div class="flex flex-col gap-6">
+<div class="flex gap-4 items-start">
+<div class="w-10 h-10 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
+<span class="material-symbols-outlined text-primary text-lg" data-icon="restaurant">restaurant</span>
+</div>
+<div>
+<p class="text-xs font-black text-on-secondary-container uppercase tracking-wider">New Order</p>
+<p class="text-sm text-on-secondary-container/70 font-medium leading-tight mt-1">Custom Macaron Tower (300 units) confirmed for Booth A.</p>
+</div>
+</div>
+<div class="flex gap-4 items-start">
+<div class="w-10 h-10 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
+<span class="material-symbols-outlined text-green-500 text-lg" data-icon="check_circle">check_circle</span>
+</div>
+<div>
+<p class="text-xs font-black text-on-secondary-container uppercase tracking-wider">Restock</p>
+<p class="text-sm text-on-secondary-container/70 font-medium leading-tight mt-1">Ecuadorian Cocoa reserves replenished successfully.</p>
+</div>
+</div>
+</div>
+</div>
+<button class="bg-white border-2 border-primary text-primary py-5 rounded-full font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-primary hover:text-white transition-all shadow-lg shadow-primary/10 group">
+<span class="material-symbols-outlined text-lg group-hover:rotate-12 transition-transform" data-icon="print">print</span>
+                Daily Audit Report
+            </button>
+</div>
+</section>
+</main>
+</body></html>

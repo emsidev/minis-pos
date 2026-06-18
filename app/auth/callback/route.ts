@@ -1,35 +1,47 @@
 import { NextResponse } from "next/server"
 
 import { ensureEmployeeProfile, getHomeRouteForRole } from "@/lib/auth"
+import {
+  clearEmployeeSnapshotCookie,
+  writeEmployeeSnapshotCookie,
+} from "@/lib/employeeSnapshot"
 import { isSupabaseConfigured } from "@/lib/env"
+import { clearPasswordRecoveryCookie } from "@/lib/passwordRecovery"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
-
-function redirectToLogin(origin: string, error: string) {
-  const url = new URL("/login", origin)
-
-  url.searchParams.set("error", error)
-
-  return NextResponse.redirect(url)
-}
+import { buildLoginUrl } from "@/lib/utils"
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
+  const origin = requestUrl.origin
 
   if (!isSupabaseConfigured) {
-    return redirectToLogin(requestUrl.origin, "config")
+    const response = NextResponse.redirect(
+      buildLoginUrl(origin, { error: "config" })
+    )
+    clearPasswordRecoveryCookie(response.cookies)
+    return response
   }
 
   const code = requestUrl.searchParams.get("code")
 
   if (!code) {
-    return redirectToLogin(requestUrl.origin, "Missing authentication code.")
+    const response = NextResponse.redirect(
+      buildLoginUrl(origin, { error: "Missing authentication code." })
+    )
+    clearPasswordRecoveryCookie(response.cookies)
+    return response
   }
 
   const supabase = createServerSupabaseClient()
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+  const { error: exchangeError } =
+    await supabase.auth.exchangeCodeForSession(code)
 
   if (exchangeError) {
-    return redirectToLogin(requestUrl.origin, exchangeError.message)
+    const response = NextResponse.redirect(
+      buildLoginUrl(origin, { error: exchangeError.message })
+    )
+    clearPasswordRecoveryCookie(response.cookies)
+    return response
   }
 
   const {
@@ -38,7 +50,13 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser()
 
   if (userError || !user) {
-    return redirectToLogin(requestUrl.origin, userError?.message ?? "Unable to load the signed-in user.")
+    const response = NextResponse.redirect(
+      buildLoginUrl(origin, {
+        error: userError?.message ?? "Unable to load the signed-in user.",
+      })
+    )
+    clearPasswordRecoveryCookie(response.cookies)
+    return response
   }
 
   const employee = await ensureEmployeeProfile(supabase, user)
@@ -46,8 +64,18 @@ export async function GET(request: Request) {
   if (!employee.is_active) {
     await supabase.auth.signOut()
 
-    return redirectToLogin(requestUrl.origin, "inactive")
+    const response = NextResponse.redirect(
+      buildLoginUrl(origin, { error: "inactive" })
+    )
+    clearEmployeeSnapshotCookie(response.cookies)
+    clearPasswordRecoveryCookie(response.cookies)
+    return response
   }
 
-  return NextResponse.redirect(new URL(getHomeRouteForRole(employee.role), requestUrl.origin))
+  const response = NextResponse.redirect(
+    new URL(getHomeRouteForRole(employee.role), origin)
+  )
+  clearPasswordRecoveryCookie(response.cookies)
+  writeEmployeeSnapshotCookie(response.cookies, employee)
+  return response
 }

@@ -1,25 +1,30 @@
-import type { Metadata } from "next"
-import { DM_Sans } from "next/font/google"
+import type { Metadata, Viewport } from "next"
+import { GeistMono } from "geist/font/mono"
+import { GeistSans } from "geist/font/sans"
 
 import "@/app/globals.css"
+import "leaflet/dist/leaflet.css"
 import { publicEnv } from "@/lib/env"
-
-const dmSans = DM_Sans({
-  subsets: ["latin"],
-  variable: "--font-body",
-})
-
-const dmSansDisplay = DM_Sans({
-  subsets: ["latin"],
-  variable: "--font-display",
-})
+import { Toaster } from "@/components/ui/sonner"
 
 export const metadata: Metadata = {
+  applicationName: publicEnv.appName,
   title: {
     default: publicEnv.appName,
     template: `%s | ${publicEnv.appName}`,
   },
   description: "Offline-first point of sale for Mini's Pastries.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: publicEnv.appName,
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: "#e040a0",
+  viewportFit: "cover",
 }
 
 export default function RootLayout({
@@ -28,8 +33,9 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${dmSansDisplay.variable}`}>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
+        <Toaster position="top-center" richColors />
         {children}
       </body>
     </html>

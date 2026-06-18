@@ -1,14 +1,8 @@
 # Mini's Pastries POS
 
-Production-ready, offline-first point of sale for Mini's Pastries. This repository is being built milestone-by-milestone with Next.js 14, Supabase, Tailwind CSS, and shadcn/ui.
+Offline-first point of sale for Mini's Pastries, built milestone-by-milestone with Next.js 14 App Router, Supabase, Dexie, Tailwind CSS, and shadcn/ui.
 
-## Prerequisites
-
-1. Node.js 18 or newer
-2. A free Supabase account
-3. A free Vercel account
-
-## Local setup
+## Local Setup
 
 1. Install dependencies:
 
@@ -16,51 +10,63 @@ Production-ready, offline-first point of sale for Mini's Pastries. This reposito
 npm install
 ```
 
-2. Create a Supabase project, then open the SQL editor and run the full contents of [supabase/schema.sql](/C:/Users/McJoseph/OneDrive/EMSI/AI/Agency/mini-pos/supabase/schema.sql).
+2. Create `.env.local` from `.env.local.example` and provide:
 
-3. In Supabase Auth, enable the Email provider and turn on magic links.
+```env
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+NEXT_PUBLIC_APP_NAME=Mini's Pastries
+magiclink=false
+OFFLINE_SNAPSHOT_SIGNING_KEY=...
+```
 
-4. Create a Storage bucket named `receipts` and keep it authenticated-only.
+`magiclink=false` switches login to email and password. Omit `magiclink` or set any value other than `false` to keep magic-link login.
 
-5. Copy `.env.local.example` to `.env.local` if needed, then fill in your real Supabase URL and anon key.
+`OFFLINE_SNAPSHOT_SIGNING_KEY` is server-only and signs the cached employee profile used during offline navigation. Provider-added Postgres or Supabase secret variables are not application configuration contracts.
 
-6. Start the app:
+Booth location search and booth detail map previews use OpenStreetMap tiles plus Nominatim search. No separate map API key is required.
+
+3. For the disposable development database, run these SQL files in the Supabase SQL editor in order:
+
+```text
+supabase/reset.sql
+supabase/schema.sql
+supabase/seeds/demo.sql   # optional fixture data
+```
+
+`schema.sql` creates the private `receipts` storage bucket and its access policies. Sign in once to create the demo employee row before applying optional fixtures. Demo non-cash rows contain receipt paths; upload matching demo objects only if previewing those photos.
+
+4. Start the app:
 
 ```bash
 npm run dev
 ```
 
-7. Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000).
 
-## First admin account
+## Authentication And Receipts
 
-1. Sign in with your email using the magic-link flow.
-2. After the first login creates your employee row, open the `employees` table in Supabase.
-3. Change your row's `role` to `admin`.
-4. Sign out and sign back in to land on `/admin/dashboard`.
+- Users sign in with Supabase magic links by default. Set `magiclink=false` to use Supabase email/password login instead. The first successful login creates an `employee` profile.
+- For password login, Email auth must be enabled in Supabase Auth Providers, and each user must have a Supabase Auth password. Existing magic-link-only users need a password set through Supabase, an admin flow, or password reset.
+- Password mode includes `/forgot-password` and `/reset-password` for self-service recovery and first-password setup. The recovery email returns through `/auth/recovery`.
+- Add your allowed recovery URLs in Supabase Auth URL Configuration before testing password reset. Include `http://localhost:3000/auth/recovery` for local work and each deployed `/auth/recovery` URL for preview or production.
+- Promote the first admin by setting the employee row `role` to `admin` in Supabase, then sign in again.
+- Non-cash transactions require a receipt photo. Photos are stored privately under `receipts/<employee_id>/<sale_id>.<ext>`.
+- The database stores `receipt_photo_path`; display flows request short-lived signed URLs instead of publishing receipt URLs.
 
-## Verification commands
+## Verification
 
-Run these before committing:
+Run before committing:
 
 ```bash
-npx tsc --noEmit
-npm run lint
+npm run check
+npm run build
 ```
 
-## Deploying to Vercel
+Also verify Counter, receipt capture, offline/reconnect sync, schedule detail, and admin booth management, including booth OpenStreetMap search, manual map pinning, and the booth map tab, at a 768px viewport using authenticated Supabase users.
 
-1. Push the repository to GitHub.
-2. Import the repo into [Vercel](https://vercel.com/).
-3. Add the same `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `NEXT_PUBLIC_APP_NAME` environment variables in Vercel.
-4. Deploy.
+## Project Status
 
-## Install on iPad
+Milestones 1-6 have implementation in the workspace. The current stabilization pass secures offline sale sync, private receipts, and repository conventions before Milestone 7 (Admin Employee Management) begins. See [REQUIREMENTS.md](/C:/Users/McJoseph/OneDrive/EMSI/AI/Agency/mini-pos/REQUIREMENTS.md).
 
-1. Open the deployed Vercel URL in Safari.
-2. Tap the Share button.
-3. Choose `Add to Home Screen`.
-
-## Project status
-
-Only Milestone 1 has been implemented so far. Check [REQUIREMENTS.md](/C:/Users/McJoseph/OneDrive/EMSI/AI/Agency/mini-pos/REQUIREMENTS.md) before starting new work, and do not build ahead of the active milestone.
+Design reference exports retained for implementation comparison live under `docs/design-reference/`.

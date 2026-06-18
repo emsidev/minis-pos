@@ -6,50 +6,164 @@
 
 @layer base {
   :root {
+    --font-body: var(--font-geist-sans);
+    --font-display: var(--font-geist-sans);
     --font-heading: var(--font-display);
     --font-sans: var(--font-body);
-    --background: #fef7ff;
-    --foreground: #1a1a1a;
+
+    --background: #fff8fc;
+    --foreground: #2b1725;
     --card: #ffffff;
-    --card-foreground: #1a1a1a;
+    --card-foreground: #2b1725;
     --popover: #ffffff;
-    --popover-foreground: #1a1a1a;
+    --popover-foreground: #2b1725;
+
     --primary: #e040a0;
     --primary-foreground: #ffffff;
-    --secondary: #7c52aa;
+    --secondary: #7b59c2;
     --secondary-foreground: #ffffff;
-    --tertiary: #0096cc;
+    --tertiary: #2f9cc2;
     --tertiary-foreground: #ffffff;
-    --muted: #f4eafd;
-    --muted-foreground: #57406d;
-    --accent: #dff6ff;
-    --accent-foreground: #0c4a60;
-    --destructive: #e11d48;
+
+    --muted: #f7edf3;
+    --muted-foreground: #6f5a67;
+    --accent: #fff0f7;
+    --accent-foreground: #682247;
+    --destructive: #e05464;
     --destructive-foreground: #ffffff;
-    --border: rgba(124, 82, 170, 0.18);
-    --input: rgba(124, 82, 170, 0.18);
-    --ring: #e040a0;
-    --radius: 1.25rem;
+    --success: #1f9d6a;
+    --success-foreground: #ffffff;
+    --warning: #f2a93b;
+    --warning-foreground: #422800;
+
+    --border: rgba(132, 89, 118, 0.18);
+    --input: rgba(132, 89, 118, 0.22);
+    --ring: rgba(224, 64, 160, 0.38);
+    --radius: 1.45rem;
+
+    --surface-container: #fff2f7;
+    --surface-container-low: #fff8fc;
+    --surface-container-highest: #f4e5ef;
+    --primary-container: #ffd8ea;
+    --on-primary-container: #5e113d;
+    --on-surface-variant: #6f5a67;
   }
+
   * {
     @apply border-border;
   }
+
   html {
     @apply scroll-smooth;
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     background-image:
-      radial-gradient(circle at top left, rgba(224, 64, 160, 0.16), transparent 30%),
-      radial-gradient(circle at bottom right, rgba(0, 150, 204, 0.14), transparent 32%);
+      radial-gradient(
+        circle at top left,
+        rgba(224, 64, 160, 0.12),
+        transparent 28%
+      ),
+      radial-gradient(
+        circle at bottom right,
+        rgba(47, 156, 194, 0.1),
+        transparent 30%
+      );
   }
+
   h1,
   h2,
   h3,
   h4 {
-    @apply font-heading tracking-tight;
+    @apply font-heading tracking-tight text-foreground;
   }
+
   ::selection {
-    background: rgba(224, 64, 160, 0.32);
+    background: rgba(224, 64, 160, 0.18);
+    color: #2b1725;
+  }
+}
+
+@layer components {
+  .candy-shadow {
+    box-shadow: 0 20px 42px -30px rgba(115, 58, 101, 0.28);
+  }
+
+  .app-page {
+    @apply w-full min-w-0 flex-1 p-4 sm:p-6 lg:p-8;
+  }
+
+  .app-page-center {
+    @apply flex w-full flex-1 items-center justify-center p-4 sm:p-6 lg:p-8;
+  }
+
+  .app-panel {
+    border-radius: calc(var(--radius) + 0.25rem);
+    border: 1px solid rgba(132, 89, 118, 0.16);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 24px 55px -36px rgba(90, 44, 80, 0.3);
+    @apply backdrop-blur-xl;
+  }
+
+  .app-panel-muted {
+    border-radius: calc(var(--radius) + 0.1rem);
+    border: 1px solid rgba(132, 89, 118, 0.12);
+    background: rgba(255, 248, 252, 0.82);
+    @apply backdrop-blur-md;
+  }
+
+  .app-kicker {
+    @apply text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground;
+  }
+
+  .app-section-title {
+    @apply text-lg font-semibold tracking-tight text-foreground sm:text-xl;
+  }
+
+  .app-caption {
+    @apply text-sm leading-6 text-muted-foreground;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply rounded-full transition-colors;
+    background-color: color-mix(in srgb, var(--primary), transparent 90%);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--primary), transparent 80%);
+  }
+
+  .booth-map-marker {
+    background: transparent;
+    border: 0;
+  }
+
+  .booth-map-marker__pin {
+    display: block;
+    height: 24px;
+    width: 24px;
+    border-radius: 9999px 9999px 9999px 0;
+    transform: rotate(-45deg);
+    border: 2px solid rgba(255, 255, 255, 0.94);
+    background: linear-gradient(135deg, #e040a0, #ff7abb);
+    box-shadow: 0 10px 20px -14px rgba(80, 16, 56, 0.9);
   }
 }

@@ -1,0 +1,303 @@
+"use client"
+
+import { useDeferredValue, useMemo, useState, type ReactNode } from "react"
+import {
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  type ColumnDef,
+  type SortingState,
+  type VisibilityState,
+} from "@tanstack/react-table"
+import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+type DataTableProps<TData, TValue> = {
+  columns: ColumnDef<TData, TValue>[]
+  data: TData[]
+  toolbarContent?: ReactNode
+  searchPlaceholder?: string
+  emptyMessage?: string
+  initialSorting?: SortingState
+  initialVisibility?: VisibilityState
+  pageSize?: number
+  showSearch?: boolean
+  showColumnVisibility?: boolean
+  enablePagination?: boolean
+  getSearchText?: (row: TData) => string
+}
+
+function getSearchableText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return ""
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => getSearchableText(entry)).join(" ")
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>)
+      .map((entry) => getSearchableText(entry))
+      .join(" ")
+  }
+
+  return ""
+}
+
+function getColumnLabel(columnId: string) {
+  return columnId
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+export function DataTable<TData, TValue>({
+  columns,
+  data,
+  toolbarContent,
+  searchPlaceholder = "Search records",
+  emptyMessage = "No matching records found.",
+  initialSorting = [],
+  initialVisibility = {},
+  pageSize = 10,
+  showSearch = true,
+  showColumnVisibility = true,
+  enablePagination = true,
+  getSearchText,
+}: DataTableProps<TData, TValue>) {
+  const [sorting, setSorting] = useState<SortingState>(initialSorting)
+  const [columnVisibility, setColumnVisibility] =
+    useState<VisibilityState>(initialVisibility)
+  const [globalFilter, setGlobalFilter] = useState("")
+  const deferredGlobalFilter = useDeferredValue(globalFilter)
+  const searchTextCache = useMemo(() => {
+    const nextCache = new WeakMap<object, string>()
+
+    for (const row of data) {
+      if (typeof row === "object" && row !== null) {
+        nextCache.set(
+          row,
+          (getSearchText ? getSearchText(row) : getSearchableText(row))
+            .toLowerCase()
+            .trim()
+        )
+      }
+    }
+
+    return nextCache
+  }, [data, getSearchText])
+
+  const getCachedSearchText = (row: TData) => {
+    if (typeof row === "object" && row !== null) {
+      const cached = searchTextCache.get(row)
+      if (cached !== undefined) {
+        return cached
+      }
+
+      return (getSearchText ? getSearchText(row) : getSearchableText(row))
+        .toLowerCase()
+        .trim()
+    }
+
+    return (getSearchText ? getSearchText(row) : getSearchableText(row))
+      .toLowerCase()
+      .trim()
+  }
+
+  const table = useReactTable({
+    data,
+    columns,
+    state: {
+      sorting,
+      columnVisibility,
+      globalFilter: deferredGlobalFilter,
+    },
+    onSortingChange: setSorting,
+    onColumnVisibilityChange: setColumnVisibility,
+    onGlobalFilterChange: setGlobalFilter,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    globalFilterFn: (row, _columnId, filterValue) => {
+      const search = String(filterValue).trim().toLowerCase()
+      if (!search) {
+        return true
+      }
+
+      return getCachedSearchText(row.original).includes(search)
+    },
+    initialState: {
+      pagination: {
+        pageSize,
+      },
+    },
+  })
+
+  const hideableColumns = table
+    .getAllColumns()
+    .filter((column) => column.getCanHide())
+
+  const visibleColumnCount = table.getVisibleLeafColumns().length || 1
+  const showToolbar =
+    showSearch || showColumnVisibility || Boolean(toolbarContent)
+  const showPagination =
+    enablePagination &&
+    table.getPageCount() > 1 &&
+    table.getRowModel().rows.length > 0
+
+  return (
+    <div className="flex flex-col gap-4">
+      {showToolbar ? (
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+            {showSearch ? (
+              <Input
+                type="search"
+                value={globalFilter}
+                onChange={(event) => setGlobalFilter(event.target.value)}
+                placeholder={searchPlaceholder}
+                className="h-10 w-full sm:max-w-sm"
+              />
+            ) : null}
+            {toolbarContent}
+          </div>
+
+          {showColumnVisibility && hideableColumns.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="outline" size="sm" />}
+              >
+                <SlidersHorizontal data-icon="inline-start" />
+                Columns
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {hideableColumns.map((column) => (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(checked) =>
+                      column.toggleVisibility(Boolean(checked))
+                    }
+                  >
+                    {getColumnLabel(column.id)}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="border-border/70 overflow-hidden rounded-[calc(var(--radius)+0.15rem)] border bg-card">
+        <Table>
+          <TableHeader className="bg-muted/40">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.length > 0 ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={visibleColumnCount}
+                  className="h-28 text-center text-sm text-muted-foreground"
+                >
+                  {emptyMessage}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          {table.getFilteredRowModel().rows.length} result
+          {table.getFilteredRowModel().rows.length === 1 ? "" : "s"}
+        </p>
+
+        {showPagination ? (
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              Page {table.getState().pagination.pageIndex + 1} of{" "}
+              {table.getPageCount()}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              disabled={!table.getCanPreviousPage()}
+              onClick={() => table.previousPage()}
+            >
+              <ChevronLeft />
+              <span className="sr-only">Previous page</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              disabled={!table.getCanNextPage()}
+              onClick={() => table.nextPage()}
+            >
+              <ChevronRight />
+              <span className="sr-only">Next page</span>
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}

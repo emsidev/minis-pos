@@ -1,0 +1,6 @@
+.next/
+.playwright-mcp/
+.codex-temp/
+node_modules/
+docs/design-reference/
+package-lock.json
