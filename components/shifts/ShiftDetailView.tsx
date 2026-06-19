@@ -17,7 +17,7 @@ import type {
   AdminShiftCloseout,
 } from "@/lib/adminBooths"
 import { buildBoothMapLink } from "@/lib/boothMaps"
-import { cn, formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency, hasBusinessShiftPassed } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -87,7 +87,7 @@ function getStatusBadge(
     return (
       <Badge
         variant="destructive"
-        className="rounded-full py-0.5 text-[0.6rem] uppercase tracking-[0.18em]"
+        className="rounded-full py-0.5 text-[0.6rem] tracking-[0.18em] uppercase"
       >
         Cancelled
       </Badge>
@@ -98,7 +98,7 @@ function getStatusBadge(
     return (
       <Badge
         variant="outline"
-        className="rounded-full border-emerald-500/20 bg-emerald-500/10 py-0.5 text-[0.6rem] uppercase tracking-[0.18em] text-emerald-700"
+        className="rounded-full border-emerald-500/20 bg-emerald-500/10 py-0.5 text-[0.6rem] tracking-[0.18em] text-emerald-700 uppercase"
       >
         Closed
       </Badge>
@@ -109,7 +109,7 @@ function getStatusBadge(
     return (
       <Badge
         variant="secondary"
-        className="border-primary/10 bg-primary/5 rounded-full py-0.5 text-[0.6rem] uppercase tracking-[0.18em] text-primary"
+        className="border-primary/10 bg-primary/5 text-primary rounded-full py-0.5 text-[0.6rem] tracking-[0.18em] uppercase"
       >
         Upcoming
       </Badge>
@@ -127,13 +127,13 @@ type AuditDisclosureProps = {
 
 function AuditDisclosure({ title, summary, children }: AuditDisclosureProps) {
   return (
-    <details className="border-border/60 group rounded-[calc(var(--radius)+0.05rem)] border bg-card">
+    <details className="border-border/60 group bg-card rounded-[calc(var(--radius)+0.05rem)] border">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
         <div>
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          <p className="text-xs text-muted-foreground">{summary}</p>
+          <p className="text-foreground text-sm font-semibold">{title}</p>
+          <p className="text-muted-foreground text-xs">{summary}</p>
         </div>
-        <span className="text-xs font-medium text-primary transition-transform group-open:rotate-45">
+        <span className="text-primary text-xs font-medium transition-transform group-open:rotate-45">
           +
         </span>
       </summary>
@@ -183,6 +183,7 @@ export function ShiftDetailView({
   const hasLowStock = products.some((product) => (product.stock ?? 0) <= 5)
   const isCancelled = schedule.status === "cancelled"
   const isClosed = schedule.status === "closed"
+  const hasPassed = hasBusinessShiftPassed(schedule.date, schedule.end_time)
   const mapLink = buildBoothMapLink(schedule.booths)
   const inventorySetupCount = products.length
   const openingStock = products.reduce(
@@ -201,38 +202,44 @@ export function ShiftDetailView({
           .sort((left, right) =>
             right.closed_at.localeCompare(left.closed_at)
           )[0] ?? null)
+  const showCloseShiftAction =
+    !isCancelled && !isClosed && Boolean(canCloseShift && onCloseShift)
+  const showEditAction =
+    !isCancelled && !isClosed && !hasPassed && Boolean(onEdit)
+  const showCancelAction =
+    !isCancelled && !isClosed && !hasPassed && Boolean(onCancel)
   const hasPrimaryActions =
     Boolean(mapLink) ||
     Boolean(canJoin && onJoin) ||
     Boolean(canTakeOver && onTakeOver) ||
-    Boolean(canCloseShift && onCloseShift) ||
-    Boolean(onEdit) ||
-    Boolean(onCancel) ||
+    showCloseShiftAction ||
+    showEditAction ||
+    showCancelAction ||
     Boolean(onOverride) ||
     Boolean(onReopen)
 
   return (
     <div className={cn("app-page flex min-h-full flex-col", className)}>
-      <div className="flex-1 space-y-4 px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
-        <section className="border-border/60 overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border bg-card">
+      <div className="flex-1 space-y-4 px-4 pt-3 pb-4 sm:px-5 sm:pb-5">
+        <section className="border-border/60 bg-card overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border">
           <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+                  <h1 className="text-foreground truncate text-xl font-semibold tracking-tight">
                     {schedule.booths.name}
                   </h1>
                   {getStatusBadge(isFuture, isCancelled, isClosed)}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   <span className="flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-primary" />
+                    <Clock className="text-primary h-3.5 w-3.5" />
                     {schedule.date} / {schedule.start_time.slice(0, 5)} -{" "}
                     {schedule.end_time.slice(0, 5)}
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-primary" />
+                    <MapPin className="text-primary h-3.5 w-3.5" />
                     {schedule.booths.location_text || "No location saved"}
                   </span>
                 </div>
@@ -243,7 +250,7 @@ export function ShiftDetailView({
                   href={mapLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="border-border/70 inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-muted"
+                  className="border-border/70 text-primary hover:bg-muted inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
                 >
                   Map
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -252,7 +259,7 @@ export function ShiftDetailView({
             </div>
 
             {isCancelled ? (
-              <div className="border-destructive/20 bg-destructive/5 rounded-[var(--radius)] border px-3 py-2.5 text-sm text-destructive">
+              <div className="border-destructive/20 bg-destructive/5 text-destructive rounded-[var(--radius)] border px-3 py-2.5 text-sm">
                 This assignment was cancelled and cannot be used for Counter
                 sales.
               </div>
@@ -280,38 +287,38 @@ export function ShiftDetailView({
               <div className="border-border/60 bg-surface-container-low/35 rounded-[var(--radius)] border px-4 py-4">
                 <dl className="grid gap-4 sm:grid-cols-2">
                   <div className="min-w-0">
-                    <dt className="flex items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      <Users className="h-3.5 w-3.5 text-primary" />
+                    <dt className="text-muted-foreground flex items-center gap-2 text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
+                      <Users className="text-primary h-3.5 w-3.5" />
                       Assigned Employees
                     </dt>
-                    <dd className="mt-1 text-sm text-foreground">
+                    <dd className="text-foreground mt-1 text-sm">
                       {assignedEmployeeNames.length > 0
                         ? assignedEmployeeNames.join(", ")
                         : "No employees assigned yet"}
                     </dd>
                   </div>
                   <div className="min-w-0">
-                    <dt className="flex items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      <UserRound className="h-3.5 w-3.5 text-primary" />
+                    <dt className="text-muted-foreground flex items-center gap-2 text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
+                      <UserRound className="text-primary h-3.5 w-3.5" />
                       POS Operator
                     </dt>
-                    <dd className="mt-1 text-sm text-foreground">
+                    <dd className="text-foreground mt-1 text-sm">
                       {operatorName ?? "Not selected yet"}
                     </dd>
                   </div>
                 </dl>
 
                 <div className="bg-background/80 mt-4 rounded-[var(--radius)] px-3 py-3">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
                     Shift Setup
                   </p>
-                  <p className="mt-1 text-sm font-medium text-foreground">
+                  <p className="text-foreground mt-1 text-sm font-medium">
                     {inventorySetupCount > 0
                       ? `${inventorySetupCount} products assigned with ${openingStock} opening stock`
                       : "Inventory will be assigned when the shift starts"}
                   </p>
                   {inventorySetupCount > 0 ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="text-muted-foreground mt-1 text-xs">
                       Current stock across the shift: {totalStock}
                     </p>
                   ) : null}
@@ -319,32 +326,32 @@ export function ShiftDetailView({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div className="border-border/60 rounded-[var(--radius)] border bg-card px-3 py-3">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <div className="border-border/60 bg-card rounded-[var(--radius)] border px-3 py-3">
+                  <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
                     Revenue
                   </p>
-                  <p className="mt-2 text-lg font-semibold text-foreground">
+                  <p className="text-foreground mt-2 text-lg font-semibold">
                     {isFuture ? "Pending" : formatCurrency(totalRevenue)}
                   </p>
                 </div>
-                <div className="border-border/60 rounded-[var(--radius)] border bg-card px-3 py-3">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <div className="border-border/60 bg-card rounded-[var(--radius)] border px-3 py-3">
+                  <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
                     Sales
                   </p>
-                  <p className="mt-2 text-lg font-semibold text-foreground">
+                  <p className="text-foreground mt-2 text-lg font-semibold">
                     {isFuture ? "Pending" : sales.length}
                   </p>
                 </div>
-                <div className="border-border/60 rounded-[var(--radius)] border bg-card px-3 py-3">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <div className="border-border/60 bg-card rounded-[var(--radius)] border px-3 py-3">
+                  <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
                     Products
                   </p>
-                  <p className="mt-2 text-lg font-semibold text-foreground">
+                  <p className="text-foreground mt-2 text-lg font-semibold">
                     {products.length}
                   </p>
                 </div>
-                <div className="border-border/60 rounded-[var(--radius)] border bg-card px-3 py-3">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <div className="border-border/60 bg-card rounded-[var(--radius)] border px-3 py-3">
+                  <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
                     Stock
                   </p>
                   <p
@@ -363,10 +370,10 @@ export function ShiftDetailView({
               </div>
             </div>
 
-            {canCloseShift && onCloseShift ? (
-              <div className="border-primary/15 bg-primary/5 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius)] border px-3 py-3 text-sm text-muted-foreground">
+            {showCloseShiftAction ? (
+              <div className="border-primary/15 bg-primary/5 text-muted-foreground flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius)] border px-3 py-3 text-sm">
                 <div className="flex items-start gap-2">
-                  <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <Lock className="text-primary mt-0.5 h-4 w-4 shrink-0" />
                   <p>
                     Count final cash and remaining stock to lock this shift for
                     the day.
@@ -376,7 +383,7 @@ export function ShiftDetailView({
             ) : null}
 
             {readOnly ? (
-              <div className="border-primary/10 bg-primary/5 rounded-[var(--radius)] border px-3 py-3 text-sm text-muted-foreground">
+              <div className="border-primary/10 bg-primary/5 text-muted-foreground rounded-[var(--radius)] border px-3 py-3 text-sm">
                 <p>
                   {canJoin
                     ? "You are previewing this shift. Join it to manage POS, inventory, and closeout."
@@ -386,7 +393,7 @@ export function ShiftDetailView({
             ) : null}
 
             {canTakeOver && onTakeOver ? (
-              <div className="border-primary/10 bg-primary/5 rounded-[var(--radius)] border px-3 py-3 text-sm text-muted-foreground">
+              <div className="border-primary/10 bg-primary/5 text-muted-foreground rounded-[var(--radius)] border px-3 py-3 text-sm">
                 <p>
                   You can view this shared shift. Take over POS to enter sales.
                 </p>
@@ -396,12 +403,12 @@ export function ShiftDetailView({
         </section>
 
         {canManageInventory && inventoryEmployeeId ? (
-          <section className="border-border/60 rounded-[calc(var(--radius)+0.1rem)] border bg-card px-4 py-4 sm:px-5">
+          <section className="border-border/60 bg-card rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
             <div className="mb-4">
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
                 Shift Inventory
               </p>
-              <h2 className="mt-1 text-base font-semibold text-foreground">
+              <h2 className="text-foreground mt-1 text-base font-semibold">
                 Manage Assigned Products
               </h2>
             </div>
@@ -415,18 +422,18 @@ export function ShiftDetailView({
           </section>
         ) : null}
 
-        <section className="border-border/60 rounded-[calc(var(--radius)+0.1rem)] border bg-card px-4 py-4 sm:px-5">
+        <section className="border-border/60 bg-card rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
                 Inventory
               </p>
-              <h2 className="mt-1 text-base font-semibold text-foreground">
+              <h2 className="text-foreground mt-1 text-base font-semibold">
                 Products In Shift
               </h2>
             </div>
             {!isFuture ? (
-              <div className="border-border/70 bg-surface-container-low/50 rounded-full border px-3 py-1 text-xs font-semibold text-foreground">
+              <div className="border-border/70 bg-surface-container-low/50 text-foreground rounded-full border px-3 py-1 text-xs font-semibold">
                 Total Stock: {totalStock}
               </div>
             ) : null}
@@ -435,14 +442,14 @@ export function ShiftDetailView({
           {isFuture ? (
             <div className="border-border/70 flex items-center justify-center gap-2 rounded-[var(--radius)] border border-dashed py-6 text-center">
               <Package className="text-primary/30 h-5 w-5" />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Inventory assigned when shift starts
               </p>
             </div>
           ) : products.length === 0 ? (
             <div className="border-border/70 flex items-center justify-center gap-2 rounded-[var(--radius)] border border-dashed py-6">
               <Package className="text-primary/30 h-5 w-5" />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 No products assigned
               </p>
             </div>
@@ -452,13 +459,13 @@ export function ShiftDetailView({
                 <TableHeader className="bg-surface-container-low">
                   <TableRow>
                     <TableHead className="w-8 p-0" />
-                    <TableHead className="text-[0.68rem] uppercase tracking-[0.2em]">
+                    <TableHead className="text-[0.68rem] tracking-[0.2em] uppercase">
                       Product
                     </TableHead>
-                    <TableHead className="text-right text-[0.68rem] uppercase tracking-[0.2em]">
+                    <TableHead className="text-right text-[0.68rem] tracking-[0.2em] uppercase">
                       Price
                     </TableHead>
-                    <TableHead className="text-right text-[0.68rem] uppercase tracking-[0.2em]">
+                    <TableHead className="text-right text-[0.68rem] tracking-[0.2em] uppercase">
                       Stock
                     </TableHead>
                   </TableRow>
@@ -473,7 +480,7 @@ export function ShiftDetailView({
                         className="hover:bg-surface-container-low/45"
                       >
                         <TableCell className="p-1.5 pl-3">
-                          <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-surface-container">
+                          <div className="bg-surface-container relative h-9 w-9 shrink-0 overflow-hidden rounded-lg">
                             {product.image_url ? (
                               <Image
                                 src={product.image_url}
@@ -490,21 +497,21 @@ export function ShiftDetailView({
                           </div>
                         </TableCell>
                         <TableCell>
-                          <p className="text-sm font-semibold leading-tight text-foreground">
+                          <p className="text-foreground text-sm leading-tight font-semibold">
                             {product.name}
                           </p>
-                          <p className="text-[0.7rem] text-muted-foreground">
+                          <p className="text-muted-foreground text-[0.7rem]">
                             {product.category || "Artisanal"}
                           </p>
                         </TableCell>
-                        <TableCell className="text-right text-sm font-medium text-primary">
+                        <TableCell className="text-primary text-right text-sm font-medium">
                           {formatCurrency(Number(product.price))}
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge
                             variant={stock <= 5 ? "destructive" : "secondary"}
                             className={cn(
-                              "rounded-full px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.18em]",
+                              "rounded-full px-2 py-0.5 text-[0.62rem] font-semibold tracking-[0.18em] uppercase",
                               stock > 5 && "bg-primary/10 text-primary"
                             )}
                           >
@@ -520,18 +527,18 @@ export function ShiftDetailView({
           )}
         </section>
 
-        <section className="border-border/60 rounded-[calc(var(--radius)+0.1rem)] border bg-card px-4 py-4 sm:px-5">
+        <section className="border-border/60 bg-card rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
                 Sales
               </p>
-              <h2 className="mt-1 text-base font-semibold text-foreground">
+              <h2 className="text-foreground mt-1 text-base font-semibold">
                 Shift Transactions
               </h2>
             </div>
             {!isFuture ? (
-              <div className="border-primary/15 bg-primary/5 rounded-full border px-3 py-1 text-xs font-semibold text-primary">
+              <div className="border-primary/15 bg-primary/5 text-primary rounded-full border px-3 py-1 text-xs font-semibold">
                 Total Revenue: {formatCurrency(totalRevenue)}
               </div>
             ) : null}
@@ -540,7 +547,7 @@ export function ShiftDetailView({
           {isFuture ? (
             <div className="border-border/70 flex items-center justify-center gap-2 rounded-[var(--radius)] border border-dashed py-6 text-center">
               <Receipt className="text-primary/30 h-5 w-5" />
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Sales will appear after transactions
               </p>
             </div>
@@ -553,12 +560,12 @@ export function ShiftDetailView({
         </section>
 
         {showAdminAudit ? (
-          <section className="border-border/60 space-y-3 rounded-[calc(var(--radius)+0.1rem)] border bg-card px-4 py-4 sm:px-5">
+          <section className="border-border/60 bg-card space-y-3 rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
             <div>
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
                 Admin Audit
               </p>
-              <h2 className="mt-1 text-base font-semibold text-foreground">
+              <h2 className="text-foreground mt-1 text-base font-semibold">
                 History And Controls
               </h2>
             </div>
@@ -581,9 +588,9 @@ export function ShiftDetailView({
                     .map((inventoryEvent) => (
                       <div
                         key={inventoryEvent.id}
-                        className="border-border/60 rounded-[var(--radius)] border px-3 py-3 text-sm text-muted-foreground"
+                        className="border-border/60 text-muted-foreground rounded-[var(--radius)] border px-3 py-3 text-sm"
                       >
-                        <p className="font-medium text-foreground">
+                        <p className="text-foreground font-medium">
                           {inventoryEvent.event_type === "opening"
                             ? "Opening inventory"
                             : inventoryEvent.event_type === "adjustment"
@@ -613,7 +620,7 @@ export function ShiftDetailView({
                     ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                   Activity will appear here once opening inventory or overrides
                   are recorded.
                 </p>
@@ -640,9 +647,9 @@ export function ShiftDetailView({
                     .map((period) => (
                       <div
                         key={period.id}
-                        className="border-border/60 rounded-[var(--radius)] border px-3 py-3 text-sm text-muted-foreground"
+                        className="border-border/60 text-muted-foreground rounded-[var(--radius)] border px-3 py-3 text-sm"
                       >
-                        <p className="font-medium text-foreground">
+                        <p className="text-foreground font-medium">
                           {period.operator?.name ?? "Employee"}
                         </p>
                         <p className="mt-1 text-xs">
@@ -666,7 +673,7 @@ export function ShiftDetailView({
                     ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                   Operator changes will appear here once POS handoffs happen.
                 </p>
               )}
@@ -690,9 +697,9 @@ export function ShiftDetailView({
                     .map((closeout) => (
                       <div
                         key={closeout.id}
-                        className="border-border/60 rounded-[var(--radius)] border px-3 py-3 text-sm text-muted-foreground"
+                        className="border-border/60 text-muted-foreground rounded-[var(--radius)] border px-3 py-3 text-sm"
                       >
-                        <p className="font-medium text-foreground">
+                        <p className="text-foreground font-medium">
                           Closed by {closeout.closed_by?.name ?? "Employee"}
                         </p>
                         <p className="mt-1 text-xs">
@@ -724,7 +731,7 @@ export function ShiftDetailView({
                     ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                   Closeout activity will appear here after the shift is closed.
                 </p>
               )}
@@ -772,13 +779,13 @@ export function ShiftDetailView({
               </Button>
             ) : null}
 
-            {canCloseShift && onCloseShift ? (
+            {showCloseShiftAction ? (
               <Button type="button" size="sm" onClick={onCloseShift}>
                 Close Shift
               </Button>
             ) : null}
 
-            {onEdit ? (
+            {showEditAction ? (
               <Button
                 type="button"
                 variant="outline"
@@ -811,7 +818,7 @@ export function ShiftDetailView({
               </Button>
             ) : null}
 
-            {onCancel ? (
+            {showCancelAction ? (
               <Button
                 type="button"
                 variant="destructive"

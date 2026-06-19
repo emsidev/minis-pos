@@ -7,26 +7,26 @@ import { assertSupabaseConfigured, publicEnv } from "@/lib/env"
 export function createServerSupabaseClient() {
   assertSupabaseConfigured()
 
-  const cookieStore = cookies()
-
   return createServerClient<Database>(
     publicEnv.supabaseUrl,
     publicEnv.supabaseAnonKey,
     {
       cookies: {
-        get(name) {
-          return cookieStore.get(name)?.value
+        async getAll() {
+          const cookieStore = await cookies()
+
+          return cookieStore.getAll().map(({ name, value }) => ({
+            name,
+            value,
+          }))
         },
-        set(name, value, options) {
+        async setAll(cookieValues) {
           try {
-            cookieStore.set({ name, value, ...options })
-          } catch {
-            // Server Components can read cookies during render but cannot always mutate them.
-          }
-        },
-        remove(name, options) {
-          try {
-            cookieStore.set({ name, value: "", ...options, maxAge: 0 })
+            const cookieStore = await cookies()
+
+            for (const { name, value, options } of cookieValues) {
+              cookieStore.set({ name, value, ...options })
+            }
           } catch {
             // Server Components can read cookies during render but cannot always mutate them.
           }

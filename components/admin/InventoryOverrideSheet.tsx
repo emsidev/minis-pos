@@ -122,7 +122,7 @@ export function InventoryOverrideSheet({
         side="right"
         className="flex h-full w-full max-w-xl flex-col p-0"
       >
-        <div className="shrink-0 border-b border-border px-6 pb-5 pt-6">
+        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
           <SheetTitle>Override Current Stock</SheetTitle>
           <SheetDescription>
             Correct on-hand counts for this active shift. Each changed count is
@@ -159,9 +159,9 @@ export function InventoryOverrideSheet({
                   <Field
                     key={product.id}
                     orientation="horizontal"
-                    className="rounded-xl border border-border p-3"
+                    className="border-border rounded-xl border p-3"
                   >
-                    <Package className="mt-1 size-4 shrink-0 text-primary" />
+                    <Package className="text-primary mt-1 size-4 shrink-0" />
                     <FieldContent>
                       <FieldLabel htmlFor={`override-${product.id}`}>
                         {product.name}
@@ -196,7 +196,7 @@ export function InventoryOverrideSheet({
             </FieldGroup>
           </form>
         </div>
-        <footer className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
           <Button
             type="button"
             variant="outline"

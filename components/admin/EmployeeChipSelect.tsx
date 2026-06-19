@@ -153,7 +153,7 @@ export function EmployeeChipSelect(props: EmployeeChipSelectProps) {
       </Button>
 
       {open ? (
-        <div className="mt-2 rounded-[calc(var(--radius)-0.25rem)] border border-border bg-popover p-2 shadow-sm">
+        <div className="border-border bg-popover mt-2 rounded-[calc(var(--radius)-0.25rem)] border p-2 shadow-sm">
           <Input
             type="search"
             value={query}
@@ -181,7 +181,7 @@ export function EmployeeChipSelect(props: EmployeeChipSelectProps) {
                   aria-selected={selected}
                   onClick={() => selectOption(option.value)}
                   className={cn(
-                    "flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-muted",
+                    "hover:bg-muted flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
                     selected && "bg-primary/10"
                   )}
                 >
@@ -191,11 +191,11 @@ export function EmployeeChipSelect(props: EmployeeChipSelectProps) {
                     className="mt-0.5"
                   />
                   <span className="flex flex-col">
-                    <span className="font-medium text-foreground">
+                    <span className="text-foreground font-medium">
                       {option.label}
                     </span>
                     {option.description ? (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-muted-foreground text-xs">
                         {option.description}
                       </span>
                     ) : null}
@@ -204,7 +204,7 @@ export function EmployeeChipSelect(props: EmployeeChipSelectProps) {
               )
             })}
             {filteredOptions.length === 0 ? (
-              <p className="px-2 py-2 text-sm text-muted-foreground">
+              <p className="text-muted-foreground px-2 py-2 text-sm">
                 {emptyMessage}
               </p>
             ) : null}

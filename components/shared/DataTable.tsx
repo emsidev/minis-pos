@@ -232,7 +232,7 @@ export function DataTable<TData, TValue>({
         </div>
       ) : null}
 
-      <div className="border-border/70 overflow-hidden rounded-[calc(var(--radius)+0.15rem)] border bg-card">
+      <div className="border-border/70 bg-card overflow-hidden rounded-[calc(var(--radius)+0.15rem)] border">
         <Table>
           <TableHeader className="bg-muted/40">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -268,7 +268,7 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={visibleColumnCount}
-                  className="h-28 text-center text-sm text-muted-foreground"
+                  className="text-muted-foreground h-28 text-center text-sm"
                 >
                   {emptyMessage}
                 </TableCell>
@@ -278,7 +278,7 @@ export function DataTable<TData, TValue>({
         </Table>
       </div>
 
-      <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-muted-foreground flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p>
           {filteredRowCount} result
           {filteredRowCount === 1 ? "" : "s"}
@@ -286,7 +286,7 @@ export function DataTable<TData, TValue>({
 
         {showPagination ? (
           <div className="flex items-center gap-2 self-end sm:self-auto">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <span className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
               Page {table.getState().pagination.pageIndex + 1} of{" "}
               {table.getPageCount()}
             </span>

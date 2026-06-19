@@ -254,10 +254,10 @@ function CounterWorkspace({
     return (
       <div className="app-page flex flex-col gap-4">
         <div className="app-panel p-4 sm:p-6">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          <h2 className="text-foreground text-2xl font-semibold tracking-tight sm:text-3xl">
             {displayBoothName || "Counter"}
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-2 text-sm">
             This active shift needs opening inventory before sales can begin.
           </p>
         </div>
@@ -279,28 +279,28 @@ function CounterWorkspace({
             <div className="app-panel p-4 sm:p-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                  <h2 className="text-foreground text-2xl font-semibold tracking-tight sm:text-3xl">
                     {displayBoothName || "Counter"}
                   </h2>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 sm:flex">
                   <div className="app-panel-muted flex items-center gap-3 px-4 py-3">
-                    <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-full text-primary">
+                    <div className="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-full">
                       <Store className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">
+                      <p className="text-foreground text-sm font-medium">
                         {productCountLabel}
                       </p>
                     </div>
                   </div>
                   <div className="app-panel-muted flex items-center gap-3 px-4 py-3">
-                    <div className="bg-secondary/10 flex h-10 w-10 items-center justify-center rounded-full text-secondary">
+                    <div className="bg-secondary/10 text-secondary flex h-10 w-10 items-center justify-center rounded-full">
                       <ShoppingBag className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">
+                      <p className="text-foreground text-sm font-medium">
                         {items.length === 0
                           ? "Cart empty"
                           : `${items.length} in cart`}
@@ -341,11 +341,11 @@ function CounterWorkspace({
 
               {filteredProducts.length === 0 ? (
                 <div className="app-panel col-span-full flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-                  <div className="bg-primary/8 flex h-14 w-14 items-center justify-center rounded-full text-primary">
+                  <div className="bg-primary/8 text-primary flex h-14 w-14 items-center justify-center rounded-full">
                     <Package className="h-6 w-6" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-foreground">
+                    <h3 className="text-foreground text-lg font-semibold">
                       No products in this view
                     </h3>
                   </div>
@@ -367,17 +367,17 @@ function CounterWorkspace({
         </div>
       </div>
 
-      <div className="border-border/80 bg-background/94 fixed inset-x-0 bottom-0 z-30 border-t px-4 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3 backdrop-blur-xl xl:hidden">
+      <div className="border-border/80 bg-background/94 fixed inset-x-0 bottom-0 z-30 border-t px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] backdrop-blur-xl xl:hidden">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="truncate text-sm font-medium text-foreground">
+              <p className="text-foreground truncate text-sm font-medium">
                 {items.length === 0
                   ? "No items"
                   : `${items.length} item${items.length === 1 ? "" : "s"}`}
               </p>
               {items.length > 0 ? (
-                <Badge className="rounded-full px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.18em]">
+                <Badge className="rounded-full px-2.5 py-1 text-[0.62rem] font-semibold tracking-[0.18em] uppercase">
                   {formatCurrency(total)}
                 </Badge>
               ) : null}

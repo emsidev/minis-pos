@@ -239,10 +239,10 @@ export function ShiftInventoryEditor({
             <p className="app-kicker">
               {initialized ? "Stock Adjustment" : "Shift Start"}
             </p>
-            <h2 className="text-lg font-semibold text-foreground">
+            <h2 className="text-foreground text-lg font-semibold">
               {initialized ? "Update on-hand stock" : "Enter opening inventory"}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-sm">
               {initialized
                 ? "Opening quantities remain in history; only current stock changes."
                 : "Record stock on hand before accepting the first sale."}
@@ -264,7 +264,7 @@ export function ShiftInventoryEditor({
         </div>
 
         {productOptions.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+          <p className="border-border text-muted-foreground rounded-xl border border-dashed p-4 text-sm">
             No available products are cached for inventory setup. Connect to
             refresh products before starting this shift.
           </p>
@@ -283,7 +283,7 @@ export function ShiftInventoryEditor({
                 <Field
                   key={product.id}
                   orientation="horizontal"
-                  className="rounded-xl border border-border p-3"
+                  className="border-border rounded-xl border p-3"
                 >
                   {!initialized ? (
                     <button
@@ -293,11 +293,11 @@ export function ShiftInventoryEditor({
                       onClick={() =>
                         toggleOpeningProduct(product.id, !selected)
                       }
-                      className="focus-visible:ring-3 focus-visible:ring-ring/50 flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left outline-none transition-colors hover:text-foreground"
+                      className="focus-visible:ring-ring/50 hover:text-foreground flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left transition-colors outline-none focus-visible:ring-3"
                     >
                       <span
                         className={cn(
-                          "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input transition-colors",
+                          "border-input mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
                           selected &&
                             "border-primary bg-primary text-primary-foreground"
                         )}
@@ -306,7 +306,7 @@ export function ShiftInventoryEditor({
                         {selected ? <CheckIcon className="size-3.5" /> : null}
                       </span>
                       <FieldContent className="min-w-0">
-                        <span className="text-sm font-medium text-foreground">
+                        <span className="text-foreground text-sm font-medium">
                           {product.name}
                         </span>
                         <FieldDescription>
@@ -315,7 +315,7 @@ export function ShiftInventoryEditor({
                       </FieldContent>
                     </button>
                   ) : (
-                    <Package className="mt-1 size-4 shrink-0 text-primary" />
+                    <Package className="text-primary mt-1 size-4 shrink-0" />
                   )}
                   {initialized ? (
                     <FieldContent>
@@ -384,12 +384,12 @@ export function ShiftInventoryEditor({
       }
     >
       <div className="flex items-center gap-3">
-        <CheckCircle2 className="size-5 text-success" />
+        <CheckCircle2 className="text-success size-5" />
         <div>
-          <p className="text-sm font-medium text-foreground">
+          <p className="text-foreground text-sm font-medium">
             Inventory initialized
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             {currentTotal} items currently on hand
           </p>
         </div>

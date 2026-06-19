@@ -25,6 +25,11 @@ export type EmployeeAdminActionResult = {
   employee?: AdminEmployeeRecord
 }
 
+type EmployeeInviteDelivery = {
+  inviteLink?: string
+  message: string
+}
+
 function revalidateEmployeeAdminRoutes() {
   revalidatePath("/admin/employees")
   revalidatePath("/admin/booths")
@@ -51,6 +56,101 @@ function validateInviteInput(input: EmployeeInviteInput) {
     name,
     email,
     role,
+  }
+}
+
+async function sendEmployeeInviteEmail(input: {
+  email: string
+  name: string
+}): Promise<EmployeeInviteDelivery> {
+  const origin = await getRequestOrigin()
+  const adminSupabase = createAdminSupabaseClient()
+
+  let inviteLink: string | undefined
+
+  if (isMagicLinkAuthEnabled()) {
+    const redirectTo = `${origin}/auth/callback`
+    const { error: inviteError } =
+      await adminSupabase.auth.admin.inviteUserByEmail(input.email, {
+        data: { name: input.name },
+        redirectTo,
+      })
+
+    if (inviteError) {
+      const { data: generatedLink, error: generateError } =
+        await adminSupabase.auth.admin.generateLink({
+          type: "magiclink",
+          email: input.email,
+          options: {
+            data: { name: input.name },
+            redirectTo,
+          },
+        })
+
+      if (generateError) {
+        throw new Error(generateError.message)
+      }
+
+      inviteLink = generatedLink.properties.action_link
+    }
+
+    return {
+      inviteLink,
+      message: "Invite email sent.",
+    }
+  }
+
+  const authUser = await findAuthUserByEmail(input.email)
+
+  if (authUser) {
+    const { error: updateAuthError } =
+      await adminSupabase.auth.admin.updateUserById(authUser.id, {
+        email: input.email,
+        user_metadata: { name: input.name },
+      })
+
+    if (updateAuthError) {
+      throw new Error(updateAuthError.message)
+    }
+  } else {
+    const { error: createAuthError } =
+      await adminSupabase.auth.admin.createUser({
+        email: input.email,
+        email_confirm: true,
+        user_metadata: { name: input.name },
+      })
+
+    if (createAuthError) {
+      throw new Error(createAuthError.message)
+    }
+  }
+
+  const redirectTo = `${origin}/auth/recovery`
+  const { error: recoveryError } =
+    await adminSupabase.auth.resetPasswordForEmail(input.email, {
+      redirectTo,
+    })
+
+  const { data: generatedLink, error: generateError } =
+    await adminSupabase.auth.admin.generateLink({
+      type: "recovery",
+      email: input.email,
+      options: { redirectTo },
+    })
+
+  if (generateError) {
+    throw new Error(generateError.message)
+  }
+
+  inviteLink = generatedLink.properties.action_link
+
+  if (recoveryError) {
+    throw new Error(recoveryError.message)
+  }
+
+  return {
+    inviteLink,
+    message: "Password setup email sent.",
   }
 }
 
@@ -97,9 +197,7 @@ export async function inviteEmployee(
   }
 
   const { name, email, role } = parsed
-  const origin = getRequestOrigin()
   const supabase = createServerSupabaseClient()
-  const adminSupabase = createAdminSupabaseClient()
 
   const { data: existingEmployee, error: employeeLookupError } = await supabase
     .from("employees")
@@ -141,82 +239,15 @@ export async function inviteEmployee(
     return { ok: false, error: employeeRow.error.message }
   }
 
-  let inviteLink: string | undefined
-
   try {
-    if (isMagicLinkAuthEnabled()) {
-      const redirectTo = `${origin}/auth/callback`
-      const { error: inviteError } =
-        await adminSupabase.auth.admin.inviteUserByEmail(email, {
-          data: { name },
-          redirectTo,
-        })
+    const inviteResult = await sendEmployeeInviteEmail({ email, name })
 
-      if (inviteError) {
-        const { data: generatedLink, error: generateError } =
-          await adminSupabase.auth.admin.generateLink({
-            type: "magiclink",
-            email,
-            options: {
-              data: { name },
-              redirectTo,
-            },
-          })
-
-        if (generateError) {
-          throw new Error(generateError.message)
-        }
-
-        inviteLink = generatedLink.properties.action_link
-      }
-    } else {
-      const authUser = await findAuthUserByEmail(email)
-
-      if (authUser) {
-        const { error: updateAuthError } =
-          await adminSupabase.auth.admin.updateUserById(authUser.id, {
-            email,
-            user_metadata: { name },
-          })
-
-        if (updateAuthError) {
-          throw new Error(updateAuthError.message)
-        }
-      } else {
-        const { error: createAuthError } =
-          await adminSupabase.auth.admin.createUser({
-            email,
-            email_confirm: true,
-            user_metadata: { name },
-          })
-
-        if (createAuthError) {
-          throw new Error(createAuthError.message)
-        }
-      }
-
-      const redirectTo = `${origin}/auth/recovery`
-      const { error: recoveryError } =
-        await adminSupabase.auth.resetPasswordForEmail(email, {
-          redirectTo,
-        })
-
-      const { data: generatedLink, error: generateError } =
-        await adminSupabase.auth.admin.generateLink({
-          type: "recovery",
-          email,
-          options: { redirectTo },
-        })
-
-      if (generateError) {
-        throw new Error(generateError.message)
-      }
-
-      inviteLink = generatedLink.properties.action_link
-
-      if (recoveryError) {
-        throw new Error(recoveryError.message)
-      }
+    revalidateEmployeeAdminRoutes()
+    return {
+      ok: true,
+      message: inviteResult.message,
+      inviteLink: inviteResult.inviteLink,
+      employee: employeeRow.data as AdminEmployeeRecord,
     }
   } catch (error) {
     return {
@@ -227,15 +258,63 @@ export async function inviteEmployee(
           : "Unable to send the employee invite.",
     }
   }
+}
 
-  revalidateEmployeeAdminRoutes()
-  return {
-    ok: true,
-    message: isMagicLinkAuthEnabled()
-      ? "Employee invite sent."
-      : "Employee password setup email sent.",
-    inviteLink,
-    employee: employeeRow.data as AdminEmployeeRecord,
+export async function resendEmployeeInvite(
+  employeeId: string
+): Promise<EmployeeAdminActionResult> {
+  await requireEmployeeRole("admin")
+
+  if (!employeeId) {
+    return { ok: false, error: "Employee record is missing." }
+  }
+
+  const supabase = createServerSupabaseClient()
+  const { data: employee, error } = await supabase
+    .from("employees")
+    .select("*")
+    .eq("id", employeeId)
+    .maybeSingle()
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+
+  if (!employee) {
+    return { ok: false, error: "Employee record was not found." }
+  }
+
+  if (employee.is_active === false) {
+    return {
+      ok: false,
+      error: "Reactivate the employee before resending the invite email.",
+    }
+  }
+
+  const email = normalizeEmployeeEmail(employee.email ?? "")
+  if (!email || !email.includes("@")) {
+    return { ok: false, error: "Employee email address is invalid." }
+  }
+
+  try {
+    const inviteResult = await sendEmployeeInviteEmail({
+      email,
+      name: employee.name?.trim() || email,
+    })
+
+    return {
+      ok: true,
+      message: inviteResult.message.replace("sent", "resent"),
+      inviteLink: inviteResult.inviteLink,
+    }
+  } catch (inviteError) {
+    return {
+      ok: false,
+      error:
+        inviteError instanceof Error
+          ? inviteError.message
+          : "Unable to resend the invite email.",
+    }
   }
 }
 

@@ -66,7 +66,7 @@ const SheetContent = React.forwardRef<
       <Dialog.Popup
         ref={ref}
         className={cn(
-          "fixed z-50 flex flex-col overflow-hidden border-border bg-card text-card-foreground shadow-[0_24px_60px_-24px_rgba(61,26,49,0.45)]",
+          "border-border bg-card text-card-foreground fixed z-50 flex flex-col overflow-hidden shadow-[0_24px_60px_-24px_rgba(61,26,49,0.45)]",
           sheetContentVariants[side],
           className
         )}
@@ -75,7 +75,7 @@ const SheetContent = React.forwardRef<
         {!hideClose ? (
           <SheetClose
             aria-label="Close panel"
-            className="border-border/80 bg-background/80 absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="border-border/80 bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground absolute top-4 right-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border transition-colors"
           >
             <X className="h-4 w-4" />
           </SheetClose>
@@ -94,7 +94,7 @@ const SheetTitle = React.forwardRef<
   <Dialog.Title
     ref={ref}
     className={cn(
-      "text-lg font-semibold tracking-tight text-foreground",
+      "text-foreground text-lg font-semibold tracking-tight",
       className
     )}
     {...props}
@@ -108,7 +108,7 @@ const SheetDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <Dialog.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("text-muted-foreground text-sm", className)}
     {...props}
   />
 ))

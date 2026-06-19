@@ -121,11 +121,11 @@ export function ShiftDetailSheet({
             />
           </ScrollArea>
         ) : loadError ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+          <div className="text-muted-foreground flex h-full items-center justify-center px-6 text-center text-sm">
             {loadError}
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
+          <div className="text-muted-foreground flex h-full items-center justify-center px-6 text-center text-sm">
             Select a shift to review its details.
           </div>
         )}

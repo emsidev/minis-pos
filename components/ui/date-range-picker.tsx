@@ -206,8 +206,8 @@ function RangeDatePicker({
           }
           disabled={(date) => (min ? date < min : false)}
         />
-        <div className="flex items-center justify-between gap-3 border-t border-border p-2">
-          <p className="truncate text-xs text-muted-foreground">
+        <div className="border-border flex items-center justify-between gap-3 border-t p-2">
+          <p className="text-muted-foreground truncate text-xs">
             {draftValue ? formatRangeLabel(draftValue) : "Select date range"}
           </p>
           <div className="flex shrink-0 items-center gap-2">

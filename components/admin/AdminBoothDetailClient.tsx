@@ -30,6 +30,7 @@ import { InventoryOverrideSheet } from "@/components/admin/InventoryOverrideShee
 import { ScheduleFormSheet } from "@/components/admin/ScheduleFormSheet"
 import { ShiftReopenSheet } from "@/components/admin/ShiftReopenSheet"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import { ShiftCloseoutSheet } from "@/components/shifts/ShiftCloseoutSheet"
 import { ShiftDetailSheet } from "@/components/shifts/ShiftDetailSheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -50,7 +51,11 @@ import type {
   AdminShiftDetailData,
 } from "@/lib/adminBooths"
 import type { Booth, Product } from "@/lib/shifts"
-import { hasBusinessShiftStarted, isCurrentBusinessShift } from "@/lib/utils"
+import {
+  hasBusinessShiftPassed,
+  hasBusinessShiftStarted,
+  isCurrentBusinessShift,
+} from "@/lib/utils"
 import { joinSchedule } from "@/app/actions/shifts"
 
 type AdminBoothDetailClientProps = {
@@ -95,6 +100,7 @@ export function AdminBoothDetailClient({
   const [selectedDetail, setSelectedDetail] =
     useState<AdminShiftDetailData | null>(null)
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false)
+  const [closeoutOpen, setCloseoutOpen] = useState(false)
   const [scheduleDetailLoading, setScheduleDetailLoading] = useState(false)
   const [scheduleDetailError, setScheduleDetailError] = useState<string | null>(
     null
@@ -164,6 +170,10 @@ export function AdminBoothDetailClient({
   }
 
   const selectedSchedule = selectedDetail?.schedule ?? null
+  const selectedOperatorCanClose =
+    selectedSchedule?.operator_employee_id === currentEmployeeId &&
+    selectedSchedule.status === "scheduled" &&
+    hasBusinessShiftPassed(selectedSchedule.date, selectedSchedule.end_time)
   const adminAssignedToSelected =
     selectedSchedule?.booth_schedule_assignments.some(
       (assignment) => assignment.employee_id === currentEmployeeId
@@ -194,7 +204,10 @@ export function AdminBoothDetailClient({
   }
 
   const openScheduleEditFromDetails = () => {
-    if (!selectedSchedule) {
+    if (
+      !selectedSchedule ||
+      hasBusinessShiftPassed(selectedSchedule.date, selectedSchedule.end_time)
+    ) {
       return
     }
 
@@ -203,7 +216,10 @@ export function AdminBoothDetailClient({
   }
 
   const openCancelFromDetails = () => {
-    if (!selectedSchedule) {
+    if (
+      !selectedSchedule ||
+      hasBusinessShiftPassed(selectedSchedule.date, selectedSchedule.end_time)
+    ) {
       return
     }
 
@@ -251,6 +267,31 @@ export function AdminBoothDetailClient({
       )
     )
     toast.success(result.message)
+    router.refresh()
+  }
+
+  const handleCloseoutSaved = () => {
+    if (!selectedSchedule) {
+      return
+    }
+
+    const scheduleId = selectedSchedule.id
+
+    setDisplaySchedules((current) =>
+      current.map((schedule) =>
+        schedule.id === scheduleId
+          ? { ...schedule, status: "closed" }
+          : schedule
+      )
+    )
+    setSelectedDetail((current) =>
+      current?.schedule?.id === scheduleId
+        ? {
+            ...current,
+            schedule: { ...current.schedule, status: "closed" },
+          }
+        : current
+    )
     router.refresh()
   }
 
@@ -349,8 +390,8 @@ export function AdminBoothDetailClient({
                 {displayBooth.is_active ? "Active" : "Inactive"}
               </Badge>
             </div>
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="size-4 text-primary" />
+            <p className="text-muted-foreground flex items-center gap-2 text-sm">
+              <MapPin className="text-primary size-4" />
               {displayBooth.location_text ?? "No location details"}
             </p>
             {mapLink ? (
@@ -358,7 +399,7 @@ export function AdminBoothDetailClient({
                 href={mapLink}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex w-fit items-center gap-2 text-sm font-medium text-primary hover:underline"
+                className="text-primary inline-flex w-fit items-center gap-2 text-sm font-medium hover:underline"
               >
                 Open map
                 <ExternalLink className="size-4" />
@@ -446,7 +487,7 @@ export function AdminBoothDetailClient({
               </Button>
             </div>
             {displaySchedules.length === 0 ? (
-              <div className="app-panel p-8 text-center text-sm text-muted-foreground">
+              <div className="app-panel text-muted-foreground p-8 text-center text-sm">
                 This booth has no assignments yet.
               </div>
             ) : (
@@ -502,7 +543,7 @@ export function AdminBoothDetailClient({
                       <button
                         type="button"
                         onClick={() => void openScheduleDetails(schedule.id)}
-                        className="hover:bg-muted/35 focus-visible:ring-3 focus-visible:ring-ring/50 flex w-full flex-col text-left transition-colors focus-visible:outline-none"
+                        className="hover:bg-muted/35 focus-visible:ring-ring/50 flex w-full flex-col text-left transition-colors focus-visible:ring-3 focus-visible:outline-none"
                         aria-label={`Open details for shift on ${schedule.date} from ${schedule.start_time.slice(0, 5)} to ${schedule.end_time.slice(0, 5)}`}
                       >
                         <CardHeader>
@@ -511,7 +552,7 @@ export function AdminBoothDetailClient({
                             - {schedule.end_time.slice(0, 5)}
                           </CardTitle>
                           <CardDescription className="flex items-center gap-1.5">
-                            <UserRound className="size-4 text-primary" />
+                            <UserRound className="text-primary size-4" />
                             POS: {schedule.operator?.name ?? "Unassigned"}
                           </CardDescription>
                           <CardAction>
@@ -536,15 +577,15 @@ export function AdminBoothDetailClient({
                           </CardAction>
                         </CardHeader>
                         <CardContent className="flex flex-col gap-3 pb-4">
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-muted-foreground text-sm">
                             Assigned: {assignedEmployees}
                           </div>
-                          <div className="rounded-xl bg-muted p-3 text-sm font-medium text-foreground">
+                          <div className="bg-muted text-foreground rounded-xl p-3 text-sm font-medium">
                             {initialized
                               ? `${schedule.booth_schedule_products.length} products / ${totalOpeningStock} opening / ${totalCurrentStock} current`
                               : "Awaiting employee inventory setup"}
                           </div>
-                          <div className="border-border/70 bg-background/80 flex items-center justify-between rounded-xl border px-3 py-2 text-sm font-medium text-primary">
+                          <div className="border-border/70 bg-background/80 text-primary flex items-center justify-between rounded-xl border px-3 py-2 text-sm font-medium">
                             <span>View shift details</span>
                             <ChevronRight className="size-4" />
                           </div>
@@ -597,15 +638,15 @@ export function AdminBoothDetailClient({
               />
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="bg-muted/40 rounded-xl border border-border px-4 py-3">
+                <div className="bg-muted/40 border-border rounded-xl border px-4 py-3">
                   <p className="app-kicker">Location</p>
-                  <p className="mt-1 text-sm text-foreground">
+                  <p className="text-foreground mt-1 text-sm">
                     {displayBooth.location_text ?? "No location details"}
                   </p>
                 </div>
-                <div className="bg-muted/40 rounded-xl border border-border px-4 py-3">
+                <div className="bg-muted/40 border-border rounded-xl border px-4 py-3">
                   <p className="app-kicker">Coordinates</p>
-                  <p className="mt-1 text-sm text-foreground">
+                  <p className="text-foreground mt-1 text-sm">
                     {coordinates
                       ? `${formatCoordinateLabel(coordinates.latitude)}, ${formatCoordinateLabel(coordinates.longitude)}`
                       : "No coordinates saved"}
@@ -643,11 +684,46 @@ export function AdminBoothDetailClient({
         }
         closeouts={selectedSchedule?.shift_closeouts ?? []}
         allowOfflineSaleCache={false}
-        onEdit={openScheduleEditFromDetails}
-        onCancel={openCancelFromDetails}
+        canCloseShift={selectedOperatorCanClose}
+        onCloseShift={
+          selectedOperatorCanClose
+            ? () => {
+                setScheduleDetailOpen(false)
+                setCloseoutOpen(true)
+              }
+            : undefined
+        }
+        onEdit={
+          selectedSchedule &&
+          !hasBusinessShiftPassed(
+            selectedSchedule.date,
+            selectedSchedule.end_time
+          )
+            ? openScheduleEditFromDetails
+            : undefined
+        }
+        onCancel={
+          selectedSchedule &&
+          !hasBusinessShiftPassed(
+            selectedSchedule.date,
+            selectedSchedule.end_time
+          )
+            ? openCancelFromDetails
+            : undefined
+        }
         onOverride={openOverrideFromDetails}
         onReopen={openReopenFromDetails}
       />
+      {selectedSchedule ? (
+        <ShiftCloseoutSheet
+          open={closeoutOpen}
+          onOpenChange={setCloseoutOpen}
+          schedule={selectedSchedule}
+          products={selectedDetail?.products ?? []}
+          sales={selectedDetail?.sales ?? []}
+          onSaved={handleCloseoutSaved}
+        />
+      ) : null}
       <BoothFormSheet
         booth={displayBooth}
         open={boothFormOpen}

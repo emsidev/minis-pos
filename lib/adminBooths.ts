@@ -1,6 +1,7 @@
 import type { Database } from "@/lib/database.types"
 import type { Booth, BoothSchedule, Product, SaleWithJoins } from "@/lib/shifts"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
+import { hasBusinessShiftStarted } from "@/lib/utils"
 
 export type AdminEmployeeOption = Pick<
   Database["public"]["Tables"]["employees"]["Row"],
@@ -70,6 +71,43 @@ export type AdminScheduleCalendarItem = Pick<
   booths: Pick<Booth, "id" | "name">
   operator: AdminEmployeeOption | null
   booth_schedule_assignments: AdminScheduleAssignment[]
+}
+
+export type BulkScheduleEditableRow = {
+  id?: string
+  boothId: string
+  date: string
+  startTime: string
+  endTime: string
+  employeeIds: string[]
+  operatorEmployeeId: string | null
+  startedLocked: boolean
+}
+
+export type BulkScheduleLoadFilters = {
+  startDate: string
+  endDate: string
+  boothIds: string[]
+}
+
+export type BulkScheduleSaveRowInput = {
+  rowKey: string
+} & Pick<
+  BulkScheduleEditableRow,
+  | "id"
+  | "boothId"
+  | "date"
+  | "startTime"
+  | "endTime"
+  | "employeeIds"
+  | "operatorEmployeeId"
+>
+
+export type BulkScheduleSaveResult = {
+  rowKey: string
+  ok: boolean
+  error?: string
+  row?: BulkScheduleEditableRow
 }
 
 export async function getAdminBooths() {
@@ -172,6 +210,47 @@ export async function getAdminScheduleById(scheduleId: string) {
   }
 
   return data as AdminSchedule | null
+}
+
+export async function getBulkEditableScheduleRows(
+  startDate: string,
+  endDate: string,
+  boothIds: string[] = []
+) {
+  const supabase = createServerSupabaseClient()
+  let query = supabase
+    .from("booth_schedules")
+    .select(
+      "id, booth_id, operator_employee_id, date, start_time, end_time, booth_schedule_assignments(employee_id)"
+    )
+    .eq("status", "scheduled")
+    .gte("date", startDate)
+    .lte("date", endDate)
+    .order("date", { ascending: true })
+    .order("start_time", { ascending: true })
+
+  if (boothIds.length > 0) {
+    query = query.in("booth_id", boothIds)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return (data ?? []).map((schedule) => ({
+    id: schedule.id,
+    boothId: schedule.booth_id,
+    date: schedule.date,
+    startTime: schedule.start_time.slice(0, 5),
+    endTime: schedule.end_time.slice(0, 5),
+    employeeIds: schedule.booth_schedule_assignments.map(
+      (assignment) => assignment.employee_id
+    ),
+    operatorEmployeeId: schedule.operator_employee_id,
+    startedLocked: hasBusinessShiftStarted(schedule.date, schedule.start_time),
+  })) as BulkScheduleEditableRow[]
 }
 
 export async function getActiveEmployeeOptions() {

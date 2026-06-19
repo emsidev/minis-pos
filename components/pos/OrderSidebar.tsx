@@ -199,7 +199,7 @@ export function OrderSidebar({
             <div className="bg-primary/8 text-primary/40 flex h-16 w-16 items-center justify-center rounded-full">
               <ShoppingBag className="h-8 w-8" />
             </div>
-            <p className="text-sm font-medium text-muted-foreground">
+            <p className="text-muted-foreground text-sm font-medium">
               Cart is empty
             </p>
           </div>
@@ -210,7 +210,7 @@ export function OrderSidebar({
                 key={item.id}
                 className="hover:bg-primary/[0.03] flex items-center gap-3 rounded-2xl p-2.5 transition-colors"
               >
-                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-surface-container">
+                <div className="bg-surface-container relative h-12 w-12 shrink-0 overflow-hidden rounded-xl">
                   {item.image_url ? (
                     <Image
                       src={item.image_url}
@@ -227,20 +227,20 @@ export function OrderSidebar({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">
+                  <p className="text-foreground truncate text-sm font-semibold">
                     {item.name}
                   </p>
-                  <p className="text-xs font-medium text-primary">
+                  <p className="text-primary text-xs font-medium">
                     {formatCurrency(item.price * item.quantity)}
                   </p>
                 </div>
 
-                <div className="border-border/50 flex items-center gap-1 rounded-full border bg-background p-0.5">
+                <div className="border-border/50 bg-background flex items-center gap-1 rounded-full border p-0.5">
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-xs"
-                    className="hover:bg-primary/10 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary"
+                    className="hover:bg-primary/10 text-muted-foreground hover:text-primary flex h-6 w-6 items-center justify-center rounded-full transition-colors"
                     disabled={isCharging}
                     onClick={() => updateQuantity(item.id, item.quantity - 1)}
                   >
@@ -253,7 +253,7 @@ export function OrderSidebar({
                     type="button"
                     variant="ghost"
                     size="icon-xs"
-                    className="hover:bg-primary/10 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-primary"
+                    className="hover:bg-primary/10 text-muted-foreground hover:text-primary flex h-6 w-6 items-center justify-center rounded-full transition-colors"
                     disabled={isCharging}
                     onClick={() => updateQuantity(item.id, item.quantity + 1)}
                   >
@@ -265,7 +265,7 @@ export function OrderSidebar({
                   type="button"
                   variant="ghost"
                   size="icon-xs"
-                  className="text-muted-foreground/40 hover:bg-destructive/10 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:text-destructive"
+                  className="text-muted-foreground/40 hover:bg-destructive/10 hover:text-destructive flex h-7 w-7 items-center justify-center rounded-full transition-colors"
                   disabled={isCharging}
                   onClick={() => updateQuantity(item.id, 0)}
                 >
@@ -279,16 +279,16 @@ export function OrderSidebar({
 
       <div className="border-border/60 shrink-0 space-y-4 border-t px-4 py-4">
         {!hasSaleContext && (
-          <div className="bg-warning/8 rounded-xl px-3 py-2.5 text-xs font-medium text-warning-foreground">
+          <div className="bg-warning/8 text-warning-foreground rounded-xl px-3 py-2.5 text-xs font-medium">
             {unavailableMessage}
           </div>
         )}
 
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-muted-foreground">
+          <span className="text-muted-foreground text-sm font-medium">
             Total
           </span>
-          <span className="text-2xl font-black tracking-tight text-primary">
+          <span className="text-primary text-2xl font-black tracking-tight">
             {formatCurrency(total)}
           </span>
         </div>
@@ -303,7 +303,7 @@ export function OrderSidebar({
                 type="button"
                 variant={selected ? "default" : "ghost"}
                 className={cn(
-                  "flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all",
+                  "flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[10px] font-bold tracking-wider uppercase transition-all",
                   selected
                     ? "shadow-primary/20 bg-primary text-primary-foreground shadow-md"
                     : "bg-muted/50 hover:bg-primary/5 text-muted-foreground hover:text-primary"
@@ -333,7 +333,7 @@ export function OrderSidebar({
                 className="border-border/60 h-12 rounded-xl pr-14 text-lg font-bold"
                 disabled={isCharging}
               />
-              <span className="text-muted-foreground/50 absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium">
+              <span className="text-muted-foreground/50 absolute top-1/2 right-3 -translate-y-1/2 text-xs font-medium">
                 PHP
               </span>
             </div>
@@ -378,12 +378,12 @@ export function OrderSidebar({
                       className="object-cover"
                     />
                   </div>
-                  <span className="text-xs font-bold text-success">
+                  <span className="text-success text-xs font-bold">
                     Photo attached - tap to change
                   </span>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="text-muted-foreground flex items-center gap-2">
                   <Camera className="h-5 w-5" />
                   <span className="text-xs font-bold">Take receipt photo</span>
                 </div>
@@ -405,7 +405,7 @@ export function OrderSidebar({
           <Button
             type="button"
             variant="outline"
-            className="border-border/60 hover:bg-destructive/10 hover:border-destructive/20 h-12 w-12 shrink-0 rounded-xl hover:text-destructive"
+            className="border-border/60 hover:bg-destructive/10 hover:border-destructive/20 hover:text-destructive h-12 w-12 shrink-0 rounded-xl"
             onClick={() => setIsConfirmClearOpen(true)}
             disabled={items.length === 0 || isCharging}
           >

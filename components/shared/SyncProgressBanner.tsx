@@ -76,18 +76,18 @@ export function SyncProgressBanner({
       <div className="flex items-center justify-center gap-2 px-4 py-2">
         {doneVisible ? (
           <>
-            <CheckCircle2 className="animate-in zoom-in-50 h-3.5 w-3.5 text-success duration-300" />
-            <span className="text-xs font-semibold text-success">
+            <CheckCircle2 className="animate-in zoom-in-50 text-success h-3.5 w-3.5 duration-300" />
+            <span className="text-success text-xs font-semibold">
               Offline data ready — you can safely go offline
             </span>
           </>
         ) : (
           <>
-            <CloudDownload className="h-3.5 w-3.5 animate-pulse text-primary" />
+            <CloudDownload className="text-primary h-3.5 w-3.5 animate-pulse" />
             <span className="text-primary/80 text-xs font-semibold">
               {progress?.label ?? "Preparing offline data\u2026"}
             </span>
-            <span className="ml-1 text-[0.65rem] font-bold text-muted-foreground">
+            <span className="text-muted-foreground ml-1 text-[0.65rem] font-bold">
               {progress?.step ?? 0}/{progress?.totalSteps ?? 0}
             </span>
           </>

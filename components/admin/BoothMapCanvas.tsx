@@ -177,14 +177,14 @@ export function BoothMapCanvas({
     <div className={cn("bg-muted/20 relative min-h-[18rem]", className)}>
       <div ref={containerRef} className="h-full min-h-[18rem] w-full" />
       {!isReady ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+        <div className="text-muted-foreground pointer-events-none absolute inset-0 flex items-center justify-center text-sm">
           <div className="flex items-center gap-2">
-            <MapPin className="size-4 text-primary" />
+            <MapPin className="text-primary size-4" />
             Loading map...
           </div>
         </div>
       ) : loadError ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        <div className="text-muted-foreground pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm">
           {loadError}
         </div>
       ) : null}

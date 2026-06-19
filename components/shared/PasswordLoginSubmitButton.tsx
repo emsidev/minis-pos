@@ -21,7 +21,7 @@ export function PasswordLoginSubmitButton({
       size="lg"
       disabled={isDisabled}
       aria-busy={pending}
-      className="group flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary text-lg font-bold shadow-candy transition-all hover:brightness-110 active:scale-[0.98] disabled:active:scale-100"
+      className="group bg-primary shadow-candy flex h-14 w-full items-center justify-center gap-2 rounded-full text-lg font-bold transition-all hover:brightness-110 active:scale-[0.98] disabled:active:scale-100"
     >
       {pending ? (
         <>

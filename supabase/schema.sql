@@ -404,6 +404,7 @@ as $$
 declare
   v_start timestamptz := (p_date::timestamp at time zone 'Asia/Manila');
   v_end timestamptz := ((p_date + 1)::timestamp at time zone 'Asia/Manila');
+  v_trend_start timestamptz := ((p_date - 6)::timestamp at time zone 'Asia/Manila');
   v_result jsonb;
 begin
   if not public.current_employee_is_admin() then
@@ -412,15 +413,40 @@ begin
 
   with
   filtered_sales as materialized (
-    select booth_id, payment_method, total_amount
-    from public.sales
-    where created_at >= v_start
-      and created_at < v_end
+    select
+      sale.id,
+      sale.booth_id,
+      sale.employee_id,
+      sale.payment_method,
+      sale.receipt_photo_path,
+      sale.status,
+      sale.total_amount,
+      sale.created_at
+    from public.sales as sale
+    where sale.created_at >= v_start
+      and sale.created_at < v_end
   ),
   filtered_schedules as materialized (
     select booth_id, status
     from public.booth_schedules
     where date = p_date
+  ),
+  trend_sales as materialized (
+    select sale.id, sale.created_at, sale.total_amount
+    from public.sales as sale
+    where sale.created_at >= v_trend_start
+      and sale.created_at < v_end
+  ),
+  filtered_sale_items as materialized (
+    select
+      item.sale_id,
+      item.product_id,
+      item.quantity,
+      item.subtotal,
+      coalesce(product.name, 'Unknown Product') as product_name
+    from public.sale_items as item
+    join filtered_sales as sale on sale.id = item.sale_id
+    left join public.products as product on product.id = item.product_id
   ),
   booth_sales as (
     select
@@ -468,6 +494,46 @@ begin
     from payment_methods as methods
     left join filtered_sales as sales on sales.payment_method = methods.method
     group by methods.method
+  ),
+  trend_days as (
+    select generate_series(p_date - 6, p_date, interval '1 day')::date as trend_date
+  ),
+  trend_rows as (
+    select
+      days.trend_date,
+      coalesce(sum(sale.total_amount), 0)::numeric as revenue,
+      count(sale.id)::bigint as transactions
+    from trend_days as days
+    left join trend_sales as sale
+      on sale.created_at >= (days.trend_date::timestamp at time zone 'Asia/Manila')
+      and sale.created_at < ((days.trend_date + 1)::timestamp at time zone 'Asia/Manila')
+    group by days.trend_date
+  ),
+  top_product_rows as (
+    select
+      item.product_id,
+      max(item.product_name) as product_name,
+      coalesce(sum(item.quantity), 0)::bigint as quantity_sold,
+      coalesce(sum(item.subtotal), 0)::numeric as revenue
+    from filtered_sale_items as item
+    group by item.product_id
+    order by revenue desc, quantity_sold desc, product_name
+    limit 5
+  ),
+  recent_transaction_rows as (
+    select
+      sale.id,
+      sale.created_at,
+      coalesce(booth.name, 'Unknown booth') as booth_name,
+      coalesce(employee.name, 'Unknown employee') as employee_name,
+      sale.payment_method,
+      sale.total_amount,
+      sale.receipt_photo_path is not null as has_receipt,
+      sale.status
+    from filtered_sales as sale
+    left join public.booths as booth on booth.id = sale.booth_id
+    left join public.employees as employee on employee.id = sale.employee_id
+    order by sale.created_at desc, sale.id desc
   )
   select jsonb_build_object(
     'summary', jsonb_build_object(
@@ -503,6 +569,45 @@ begin
         order by total_revenue desc, booth_name
       )
       from booth_rows
+    ), '[]'::jsonb),
+    'trendSeries', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'date', trend_date,
+          'revenue', revenue,
+          'transactions', transactions
+        )
+        order by trend_date
+      )
+      from trend_rows
+    ), '[]'::jsonb),
+    'topProducts', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'productId', product_id,
+          'productName', product_name,
+          'quantitySold', quantity_sold,
+          'revenue', revenue
+        )
+        order by revenue desc, quantity_sold desc, product_name
+      )
+      from top_product_rows
+    ), '[]'::jsonb),
+    'recentTransactions', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'id', id,
+          'createdAt', created_at,
+          'boothName', booth_name,
+          'employeeName', employee_name,
+          'paymentMethod', payment_method,
+          'totalAmount', total_amount,
+          'hasReceipt', has_receipt,
+          'status', status
+        )
+        order by created_at desc, id desc
+      )
+      from recent_transaction_rows
     ), '[]'::jsonb)
   ) into v_result;
 
@@ -1743,16 +1848,18 @@ begin
   end if;
 
   if v_schedule.status <> 'scheduled'
-    or v_schedule.date <> timezone('Asia/Manila', v_now)::date
-    or v_schedule.start_time > timezone('Asia/Manila', v_now)::time then
+    or (
+      v_schedule.date > timezone('Asia/Manila', v_now)::date
+      or (
+        v_schedule.date = timezone('Asia/Manila', v_now)::date
+        and v_schedule.start_time > timezone('Asia/Manila', v_now)::time
+      )
+    ) then
     raise exception using message = 'SHIFT_NOT_ACTIVE_FOR_CLOSEOUT';
   end if;
 
-  if (
-    v_schedule.operator_employee_id is null
-    or v_schedule.operator_employee_id <> v_employee_id
-  )
-    and v_employee_role <> 'admin' then
+  if v_schedule.operator_employee_id is null
+    or v_schedule.operator_employee_id <> v_employee_id then
     raise exception using message = 'EMPLOYEE_NOT_OPERATOR';
   end if;
 

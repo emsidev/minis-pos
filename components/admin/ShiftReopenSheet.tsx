@@ -75,7 +75,7 @@ export function ShiftReopenSheet({
         side="right"
         className="flex h-full w-full max-w-lg flex-col p-0"
       >
-        <div className="shrink-0 border-b border-border px-6 pb-5 pt-6">
+        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
           <SheetTitle>Reopen Shift</SheetTitle>
           <SheetDescription>
             Reopen {boothName} on {shiftLabel}. This keeps the previous closeout
@@ -107,7 +107,7 @@ export function ShiftReopenSheet({
             </FieldGroup>
           </form>
         </div>
-        <footer className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
           <Button
             type="button"
             variant="outline"

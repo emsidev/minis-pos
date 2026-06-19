@@ -4,8 +4,8 @@ import { headers } from "next/headers"
  * Detects the request origin from headers.
  * Useful for generating full redirect URLs in server actions and routes.
  */
-export function getRequestOrigin() {
-  const headerList = headers()
+export async function getRequestOrigin() {
+  const headerList = await headers()
   const forwardedHost = headerList.get("x-forwarded-host")
   const host = forwardedHost ?? headerList.get("host")
   const protocol =

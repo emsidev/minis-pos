@@ -269,12 +269,12 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
         ),
         cell: ({ row }) => (
           <div className="flex min-w-[10rem] flex-col gap-0.5">
-            <span className="font-medium text-foreground">
+            <span className="text-foreground font-medium">
               {data.startDate === data.endDate
                 ? formatTime(row.original.createdAt)
                 : formatDateTime(row.original.createdAt)}
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               {row.original.shiftLabel}
             </span>
           </div>
@@ -286,7 +286,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
           <DataTableColumnHeader column={column} title="Receipt ID" />
         ),
         cell: ({ row }) => (
-          <div className="font-mono text-xs text-muted-foreground">
+          <div className="text-muted-foreground font-mono text-xs">
             {row.original.id.slice(0, 8)}
           </div>
         ),
@@ -299,7 +299,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
         cell: ({ row }) => (
           <div className="flex min-w-[10rem] items-center gap-2">
             <Store className="text-primary" />
-            <span className="font-medium text-foreground">
+            <span className="text-foreground font-medium">
               {row.original.boothName}
             </span>
           </div>
@@ -328,7 +328,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
               row.original.paymentMethod === "cash" ? "outline" : "secondary"
             }
             className={cn(
-              "rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.18em]",
+              "rounded-full px-2 py-0.5 text-[0.65rem] font-semibold tracking-[0.18em] uppercase",
               row.original.paymentMethod === "cash" &&
                 "border-success/20 bg-success/10 text-success"
             )}
@@ -348,7 +348,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
               row.original.status === "completed" ? "outline" : "secondary"
             }
             className={cn(
-              "rounded-full px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.18em]",
+              "rounded-full px-2 py-0.5 text-[0.65rem] font-semibold tracking-[0.18em] uppercase",
               row.original.status === "completed" &&
                 "border-primary/20 bg-primary/5 text-primary"
             )}
@@ -363,7 +363,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
           <DataTableColumnHeader column={column} title="Amount" align="right" />
         ),
         cell: ({ row }) => (
-          <div className="text-right font-semibold text-foreground">
+          <div className="text-foreground text-right font-semibold">
             {formatCurrency(row.original.totalAmount)}
           </div>
         ),
@@ -459,8 +459,8 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       </header>
 
       {isPending ? (
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-          <Loader2 className="animate-spin text-primary" />
+        <div className="border-border bg-card text-muted-foreground flex items-center gap-2 rounded-xl border px-4 py-3 text-sm">
+          <Loader2 className="text-primary animate-spin" />
           Loading sales data...
         </div>
       ) : null}
@@ -472,7 +472,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
             <CardDescription>Visible filtered sales</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-primary">
+            <p className="text-primary text-3xl font-semibold">
               {formatCurrency(summary.revenue)}
             </p>
           </CardContent>
@@ -483,7 +483,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
             <CardDescription>Rows matching current filters</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-foreground">
+            <p className="text-foreground text-3xl font-semibold">
               {summary.saleCount}
             </p>
           </CardContent>
@@ -494,7 +494,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
             <CardDescription>Cash-only totals</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-foreground">
+            <p className="text-foreground text-3xl font-semibold">
               {formatCurrency(summary.cashRevenue)}
             </p>
           </CardContent>
@@ -505,7 +505,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
             <CardDescription>Receipt-backed totals</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-foreground">
+            <p className="text-foreground text-3xl font-semibold">
               {formatCurrency(summary.nonCashRevenue)}
             </p>
           </CardContent>

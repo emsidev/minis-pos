@@ -26,7 +26,7 @@ export function ProductCard({ product, featured = false }: ProductCardProps) {
       disabled={disabled}
       onClick={() => addItem(product)}
       className={cn(
-        "app-panel group flex h-full min-h-[13.5rem] flex-col items-stretch justify-start gap-4 whitespace-normal p-4 text-left transition-transform duration-200 hover:-translate-y-0.5 hover:bg-card disabled:cursor-not-allowed disabled:opacity-55 sm:p-5",
+        "app-panel group hover:bg-card flex h-full min-h-[13.5rem] flex-col items-stretch justify-start gap-4 p-4 text-left whitespace-normal transition-transform duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 sm:p-5",
         featured ? "bg-primary-container/70" : "bg-card/95"
       )}
     >
@@ -55,7 +55,7 @@ export function ProductCard({ product, featured = false }: ProductCardProps) {
         <Badge
           variant={disabled ? "outline" : "secondary"}
           className={cn(
-            "rounded-full px-2.5 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.18em]",
+            "rounded-full px-2.5 py-1 text-[0.6rem] font-semibold tracking-[0.18em] uppercase",
             disabled
               ? "border-destructive/30 bg-destructive/5 text-destructive"
               : "bg-primary/10 text-primary"
@@ -68,20 +68,20 @@ export function ProductCard({ product, featured = false }: ProductCardProps) {
       <div className="flex flex-1 flex-col justify-between gap-4">
         <div className="space-y-1">
           <p className="app-kicker">{product.category ?? "Artisanal"}</p>
-          <h3 className="line-clamp-2 text-base font-semibold leading-6 text-foreground sm:text-lg">
+          <h3 className="text-foreground line-clamp-2 text-base leading-6 font-semibold sm:text-lg">
             {product.name}
           </h3>
         </div>
 
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-xl font-semibold tracking-tight text-primary sm:text-2xl">
+            <p className="text-primary text-xl font-semibold tracking-tight sm:text-2xl">
               {formatCurrency(Number(product.price))}
             </p>
           </div>
           <span
             className={cn(
-              "inline-flex h-11 w-11 items-center justify-center rounded-full border text-primary transition-colors",
+              "text-primary inline-flex h-11 w-11 items-center justify-center rounded-full border transition-colors",
               disabled
                 ? "bg-muted/60 border-border text-muted-foreground"
                 : "border-primary/15 bg-primary/8 group-hover:bg-primary group-hover:text-primary-foreground"

@@ -97,10 +97,10 @@ export function AdminProductsClient({ products }: AdminProductsClientProps) {
         ),
         cell: ({ row }) => (
           <div className="flex min-w-[12rem] flex-col gap-0.5">
-            <span className="font-medium text-foreground">
+            <span className="text-foreground font-medium">
               {row.original.name}
             </span>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-muted-foreground text-sm">
               {row.original.category ?? "Uncategorized"}
             </span>
           </div>
@@ -112,7 +112,7 @@ export function AdminProductsClient({ products }: AdminProductsClientProps) {
           <DataTableColumnHeader column={column} title="Category" />
         ),
         cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">
+          <span className="text-muted-foreground text-sm">
             {row.original.category ?? "Uncategorized"}
           </span>
         ),
@@ -123,7 +123,7 @@ export function AdminProductsClient({ products }: AdminProductsClientProps) {
           <DataTableColumnHeader column={column} title="Price" align="right" />
         ),
         cell: ({ row }) => (
-          <div className="text-right font-semibold text-foreground">
+          <div className="text-foreground text-right font-semibold">
             {formatCurrency(Number(row.original.price))}
           </div>
         ),

@@ -3,11 +3,18 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
-import { CalendarDays, Loader2, Radio } from "lucide-react"
+import { Bar, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts"
+import {
+  CalendarDays,
+  CreditCard,
+  Loader2,
+  Radio,
+  Receipt,
+  Store,
+} from "lucide-react"
 
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -16,10 +23,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import type {
   AdminDashboardData,
   DashboardBoothCard,
-  DashboardPaymentBreakdown,
+  DashboardRecentTransaction,
 } from "@/lib/adminDashboard"
 import { createClient } from "@/lib/supabase"
 import { formatCurrency, getBusinessDate } from "@/lib/utils"
@@ -35,6 +51,104 @@ const paymentLabels: Record<string, string> = {
   maribank: "Maribank",
   unionbank: "UnionBank",
   other: "Other",
+}
+
+const chartConfig = {
+  revenue: {
+    label: "Revenue",
+    color: "var(--primary)",
+  },
+  transactions: {
+    label: "Transactions",
+    color: "color-mix(in oklab, var(--secondary) 72%, white 12%)",
+  },
+} satisfies ChartConfig
+
+const trendDateFormatter = new Intl.DateTimeFormat("en-PH", {
+  day: "numeric",
+  month: "short",
+  timeZone: "Asia/Manila",
+})
+
+const transactionTimeFormatter = new Intl.DateTimeFormat("en-PH", {
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "Asia/Manila",
+})
+
+const transactionDateTimeFormatter = new Intl.DateTimeFormat("en-PH", {
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  month: "short",
+  timeZone: "Asia/Manila",
+})
+
+function formatTrendDateLabel(value: string) {
+  return trendDateFormatter.format(new Date(`${value}T12:00:00+08:00`))
+}
+
+function formatTransactionDateTime(value: string) {
+  return transactionDateTimeFormatter.format(new Date(value))
+}
+
+function formatTransactionTime(value: string) {
+  return transactionTimeFormatter.format(new Date(value))
+}
+
+function formatPercentage(value: number) {
+  return `${Math.round(value)}%`
+}
+
+function titleCase(value: string) {
+  return value.replace(/[_-]/g, " ").replace(/\b\w/g, (character) => {
+    return character.toUpperCase()
+  })
+}
+
+function KpiCard({
+  title,
+  description,
+  value,
+  accent,
+  footer,
+  icon: Icon,
+}: {
+  title: string
+  description: string
+  value: string
+  accent: "primary" | "secondary" | "tertiary"
+  footer: string
+  icon: typeof Store
+}) {
+  const accentClassName =
+    accent === "primary"
+      ? "bg-primary/12 text-primary"
+      : accent === "secondary"
+        ? "bg-secondary/12 text-secondary"
+        : "bg-tertiary/12 text-tertiary"
+
+  return (
+    <Card className="border-border/70 bg-card/95 shadow-candy">
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <CardDescription>{description}</CardDescription>
+          <CardTitle className="text-base">{title}</CardTitle>
+        </div>
+        <div
+          className={`flex size-11 items-center justify-center rounded-full ${accentClassName}`}
+        >
+          <Icon />
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-foreground text-3xl font-semibold tracking-tight">
+          {value}
+        </p>
+        <p className="text-muted-foreground text-sm">{footer}</p>
+      </CardContent>
+    </Card>
+  )
 }
 
 export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
@@ -53,6 +167,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
     }
 
     const supabase = createClient()
+
     const scheduleRefresh = () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current)
@@ -63,6 +178,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
         router.refresh()
       }, 500)
     }
+
     const channel = supabase
       .channel("admin-dashboard-live")
       .on(
@@ -87,12 +203,14 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
         clearTimeout(refreshTimerRef.current)
         refreshTimerRef.current = null
       }
+
       void supabase.removeChannel(channel)
     }
   }, [data.isLiveDate, router])
 
   const handleDateChange = (nextDate: string) => {
     setSelectedDate(nextDate)
+
     startTransition(() => {
       if (nextDate === getBusinessDate()) {
         router.push("/admin/dashboard")
@@ -103,41 +221,6 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
     })
   }
 
-  const paymentColumns = useMemo<ColumnDef<DashboardPaymentBreakdown>[]>(
-    () => [
-      {
-        accessorKey: "method",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Method" />
-        ),
-        cell: ({ row }) => (
-          <span className="font-medium text-foreground">
-            {paymentLabels[row.original.method]}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "count",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Transactions" />
-        ),
-        cell: ({ row }) => row.original.count,
-      },
-      {
-        accessorKey: "total",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Total" align="right" />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right font-semibold text-foreground">
-            {formatCurrency(row.original.total)}
-          </div>
-        ),
-      },
-    ],
-    []
-  )
-
   const boothColumns = useMemo<ColumnDef<DashboardBoothCard>[]>(
     () => [
       {
@@ -146,11 +229,11 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
           <DataTableColumnHeader column={column} title="Booth" />
         ),
         cell: ({ row }) => (
-          <div className="flex min-w-[12rem] flex-col gap-0.5">
-            <span className="font-medium text-foreground">
+          <div className="flex min-w-[11rem] flex-col gap-1">
+            <span className="text-foreground font-medium">
               {row.original.boothName}
             </span>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-muted-foreground text-sm">
               {row.original.isActive ? "Active booth" : "Inactive booth"}
             </span>
           </div>
@@ -172,13 +255,13 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
         accessorKey: "totalRevenue",
         header: ({ column }) => (
           <DataTableColumnHeader
+            align="right"
             column={column}
             title="Revenue"
-            align="right"
           />
         ),
         cell: ({ row }) => (
-          <div className="text-right font-semibold text-foreground">
+          <div className="text-foreground text-right font-semibold">
             {formatCurrency(row.original.totalRevenue)}
           </div>
         ),
@@ -186,7 +269,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
       {
         accessorKey: "saleCount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Sales" align="right" />
+          <DataTableColumnHeader align="right" column={column} title="Sales" />
         ),
         cell: ({ row }) => (
           <div className="text-right">{row.original.saleCount}</div>
@@ -195,7 +278,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
       {
         accessorKey: "cashRevenue",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Cash" align="right" />
+          <DataTableColumnHeader align="right" column={column} title="Cash" />
         ),
         cell: ({ row }) => (
           <div className="text-right">
@@ -207,9 +290,9 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
         accessorKey: "nonCashRevenue",
         header: ({ column }) => (
           <DataTableColumnHeader
-            column={column}
-            title="Non-Cash"
             align="right"
+            column={column}
+            title="Non-cash"
           />
         ),
         cell: ({ row }) => (
@@ -221,7 +304,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
       {
         accessorKey: "openShiftCount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Open" align="right" />
+          <DataTableColumnHeader align="right" column={column} title="Open" />
         ),
         cell: ({ row }) => (
           <div className="text-right">{row.original.openShiftCount}</div>
@@ -230,7 +313,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
       {
         accessorKey: "closedShiftCount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Closed" align="right" />
+          <DataTableColumnHeader align="right" column={column} title="Closed" />
         ),
         cell: ({ row }) => (
           <div className="text-right">{row.original.closedShiftCount}</div>
@@ -240,9 +323,9 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
         accessorKey: "cancelledShiftCount",
         header: ({ column }) => (
           <DataTableColumnHeader
+            align="right"
             column={column}
             title="Cancelled"
-            align="right"
           />
         ),
         cell: ({ row }) => (
@@ -253,28 +336,140 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
     []
   )
 
+  const recentTransactionColumns = useMemo<
+    ColumnDef<DashboardRecentTransaction>[]
+  >(
+    () => [
+      {
+        accessorKey: "createdAt",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Time" />
+        ),
+        cell: ({ row }) => (
+          <div className="flex min-w-[8.5rem] flex-col gap-1">
+            <span className="text-foreground font-medium">
+              {formatTransactionTime(row.original.createdAt)}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              {formatTransactionDateTime(row.original.createdAt)}
+            </span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "boothName",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Booth" />
+        ),
+        cell: ({ row }) => (
+          <div className="flex min-w-[9rem] flex-col gap-1">
+            <span className="text-foreground font-medium">
+              {row.original.boothName}
+            </span>
+            <span className="text-muted-foreground text-xs">
+              {row.original.employeeName}
+            </span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "paymentMethod",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Payment" />
+        ),
+        cell: ({ row }) => (
+          <Badge variant="secondary">
+            {paymentLabels[row.original.paymentMethod]}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Status" />
+        ),
+        cell: ({ row }) => (
+          <Badge variant="outline">{titleCase(row.original.status)}</Badge>
+        ),
+      },
+      {
+        id: "receipt",
+        accessorFn: (row) => (row.hasReceipt ? "attached" : "cash"),
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Receipt" />
+        ),
+        cell: ({ row }) => (
+          <span className="text-muted-foreground text-sm">
+            {row.original.hasReceipt ? "Attached" : "Cash sale"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "totalAmount",
+        header: ({ column }) => (
+          <DataTableColumnHeader align="right" column={column} title="Total" />
+        ),
+        cell: ({ row }) => (
+          <div className="text-foreground text-right font-semibold">
+            {formatCurrency(row.original.totalAmount)}
+          </div>
+        ),
+      },
+    ],
+    []
+  )
+
   const getBoothSearchText = useMemo(
-    () => (row: DashboardBoothCard) =>
-      [
+    () => (row: DashboardBoothCard) => {
+      return [
         row.boothName,
         row.isActive ? "active" : "inactive",
         row.totalRevenue,
         row.saleCount,
-      ].join(" "),
+        row.cashRevenue,
+        row.nonCashRevenue,
+      ].join(" ")
+    },
     []
   )
 
+  const getTransactionSearchText = useMemo(
+    () => (row: DashboardRecentTransaction) => {
+      return [
+        row.boothName,
+        row.employeeName,
+        paymentLabels[row.paymentMethod],
+        row.status,
+        row.totalAmount,
+      ].join(" ")
+    },
+    []
+  )
+
+  const activePaymentBreakdown = data.paymentBreakdown.filter(
+    (entry) => entry.count > 0
+  )
+  const averageTicket =
+    data.summary.saleCount > 0
+      ? data.summary.totalRevenue / data.summary.saleCount
+      : 0
+
   return (
     <div className="app-page flex flex-col gap-6">
-      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
+      <header className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+        <div className="flex flex-col gap-2">
           <p className="app-kicker">Admin Workspace</p>
-          <h1 className="text-3xl font-semibold">Dashboard</h1>
-          <p className="app-caption">
-            Revenue, payment mix, and booth performance for the selected
-            business day.
-          </p>
+          <div className="flex flex-col gap-2">
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Performance dashboard
+            </h1>
+            <p className="app-caption max-w-2xl">
+              Daily revenue, product velocity, and booth activity grounded in
+              the selected business date.
+            </p>
+          </div>
         </div>
+
         <div className="flex flex-wrap items-center gap-3">
           <DateRangePicker
             mode="single"
@@ -298,116 +493,271 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
       </header>
 
       {isPending ? (
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin text-primary" />
+        <div className="border-border bg-card text-muted-foreground flex items-center gap-2 rounded-xl border px-4 py-3 text-sm">
+          <Loader2 className="text-primary size-4 animate-spin" />
           Loading dashboard data...
         </div>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Total Revenue</CardTitle>
-            <CardDescription>All completed sales</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold text-primary">
-              {formatCurrency(data.summary.totalRevenue)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Transactions</CardTitle>
-            <CardDescription>Completed sale count</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold">{data.summary.saleCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Cash vs Non-Cash</CardTitle>
-            <CardDescription>Payment mix for the day</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Cash</span>
-              <span className="font-medium">
-                {formatCurrency(data.summary.cashRevenue)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Non-cash</span>
-              <span className="font-medium">
-                {formatCurrency(data.summary.nonCashRevenue)}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Shift Status</CardTitle>
-            <CardDescription>Open, closed, and cancelled</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Open</span>
-              <span className="font-medium">{data.summary.openShiftCount}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Closed</span>
-              <span className="font-medium">
-                {data.summary.closedShiftCount}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Cancelled</span>
-              <span className="font-medium">
-                {data.summary.cancelledShiftCount}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+      <section className="grid gap-4 xl:grid-cols-3">
+        <KpiCard
+          title="Revenue"
+          description="Completed sales for the selected day"
+          value={formatCurrency(data.summary.totalRevenue)}
+          accent="primary"
+          footer={`Average ticket ${formatCurrency(averageTicket)}`}
+          icon={CreditCard}
+        />
+        <KpiCard
+          title="Transactions"
+          description="Recorded sale count"
+          value={data.summary.saleCount.toString()}
+          accent="secondary"
+          footer={`${activePaymentBreakdown.length} payment method${activePaymentBreakdown.length === 1 ? "" : "s"} used`}
+          icon={Receipt}
+        />
+        <KpiCard
+          title="Shift coverage"
+          description="Open, closed, and cancelled schedules"
+          value={`${data.summary.openShiftCount}/${data.summary.closedShiftCount}/${data.summary.cancelledShiftCount}`}
+          accent="tertiary"
+          footer="Open / Closed / Cancelled"
+          icon={Store}
+        />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Payment Breakdown</CardTitle>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(22rem,1fr)]">
+        <Card className="border-border/70 bg-card/95 shadow-candy">
+          <CardHeader className="gap-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <CardTitle>Seven-day revenue trend</CardTitle>
+                <CardDescription>
+                  Revenue and transaction count ending on {data.selectedDate}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">
+                  {data.trendSeries.length} day window
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={chartConfig} className="min-h-72 w-full">
+              <ComposedChart data={data.trendSeries}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  axisLine={false}
+                  dataKey="date"
+                  minTickGap={24}
+                  tickFormatter={formatTrendDateLabel}
+                  tickLine={false}
+                  tickMargin={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickFormatter={(value) => formatCurrency(Number(value))}
+                  tickLine={false}
+                  tickMargin={12}
+                  yAxisId="revenue"
+                  width={96}
+                />
+                <YAxis
+                  hide
+                  yAxisId="transactions"
+                  orientation="right"
+                  width={0}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name) => {
+                        if (name === "Revenue") {
+                          return (
+                            <div className="flex w-full items-center justify-between gap-4">
+                              <span className="text-muted-foreground">
+                                Revenue
+                              </span>
+                              <span className="text-foreground font-medium">
+                                {formatCurrency(Number(value))}
+                              </span>
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <div className="flex w-full items-center justify-between gap-4">
+                            <span className="text-muted-foreground">
+                              Transactions
+                            </span>
+                            <span className="text-foreground font-medium">
+                              {Number(value)}
+                            </span>
+                          </div>
+                        )
+                      }}
+                      indicator="line"
+                      labelFormatter={(label) =>
+                        formatTrendDateLabel(String(label))
+                      }
+                    />
+                  }
+                />
+                <ChartLegend
+                  content={<ChartLegendContent />}
+                  verticalAlign="top"
+                />
+                <Bar
+                  dataKey="transactions"
+                  fill="var(--color-transactions)"
+                  radius={[12, 12, 0, 0]}
+                  yAxisId="transactions"
+                />
+                <Line
+                  dataKey="revenue"
+                  dot={false}
+                  stroke="var(--color-revenue)"
+                  strokeWidth={3}
+                  type="monotone"
+                  yAxisId="revenue"
+                />
+              </ComposedChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4">
+          <Card className="border-border/70 bg-card/95 shadow-candy">
+            <CardHeader className="gap-1">
+              <CardTitle>Payment mix</CardTitle>
+              <CardDescription>
+                Method totals for {data.selectedDate}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {activePaymentBreakdown.length > 0 ? (
+                activePaymentBreakdown.map((entry) => {
+                  const share =
+                    data.summary.saleCount > 0
+                      ? (entry.count / data.summary.saleCount) * 100
+                      : 0
+
+                  return (
+                    <div
+                      key={entry.method}
+                      className="border-border/70 bg-muted/30 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
+                    >
+                      <div className="flex flex-col gap-1">
+                        <span className="text-foreground font-medium">
+                          {paymentLabels[entry.method]}
+                        </span>
+                        <span className="text-muted-foreground text-sm">
+                          {entry.count} transaction
+                          {entry.count === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-foreground font-semibold">
+                          {formatCurrency(entry.total)}
+                        </p>
+                        <p className="text-muted-foreground text-sm">
+                          {formatPercentage(share)}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="border-border bg-muted/20 text-muted-foreground rounded-2xl border border-dashed px-4 py-6 text-sm">
+                  No payment activity recorded for this day.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70 bg-card/95 shadow-candy">
+            <CardHeader className="gap-1">
+              <CardTitle>Top-selling products</CardTitle>
+              <CardDescription>
+                Best performers from sale-item totals
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {data.topProducts.length > 0 ? (
+                data.topProducts.map((product, index) => (
+                  <div
+                    key={product.productId}
+                    className="border-border/70 bg-muted/30 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="bg-primary/12 text-primary flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold">
+                        {index + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-foreground truncate font-medium">
+                          {product.productName}
+                        </p>
+                        <p className="text-muted-foreground text-sm">
+                          {product.quantitySold} sold
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-foreground font-semibold">
+                        {formatCurrency(product.revenue)}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="border-border bg-muted/20 text-muted-foreground rounded-2xl border border-dashed px-4 py-6 text-sm">
+                  No sale items were recorded for this day.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <Card className="border-border/70 bg-card/95 shadow-candy">
+          <CardHeader className="gap-1">
+            <CardTitle>Recent transactions</CardTitle>
             <CardDescription>
-              Method totals for {data.selectedDate}
+              Latest recorded sales for the selected business day
             </CardDescription>
           </CardHeader>
           <CardContent>
             <DataTable
-              columns={paymentColumns}
-              data={data.paymentBreakdown}
-              showSearch={false}
+              columns={recentTransactionColumns}
+              data={data.recentTransactions}
+              emptyMessage="No sales have been recorded for the selected day."
+              getSearchText={getTransactionSearchText}
+              initialSorting={[{ id: "createdAt", desc: true }]}
+              pageSize={8}
+              searchPlaceholder="Search by booth, employee, payment, or status"
               showColumnVisibility={false}
-              enablePagination={false}
-              emptyMessage="No payment data for the selected day."
-              initialSorting={[{ id: "total", desc: true }]}
             />
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Booth Revenue</CardTitle>
+        <Card className="border-border/70 bg-card/95 shadow-candy">
+          <CardHeader className="gap-1">
+            <CardTitle>Booth performance</CardTitle>
             <CardDescription>
-              Performance totals sorted by revenue
+              Revenue and shift coverage sorted by booth results
             </CardDescription>
           </CardHeader>
           <CardContent>
             <DataTable
               columns={boothColumns}
               data={data.boothCards}
-              searchPlaceholder="Search booths"
+              emptyMessage="No booth data is available for the selected day."
               getSearchText={getBoothSearchText}
-              enablePagination={false}
-              emptyMessage="No booth revenue data for the selected day."
               initialSorting={[{ id: "totalRevenue", desc: true }]}
+              pageSize={6}
+              searchPlaceholder="Search booths"
             />
           </CardContent>
         </Card>

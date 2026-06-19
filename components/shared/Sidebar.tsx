@@ -84,11 +84,11 @@ export function Sidebar({ role, className, onNavigate }: SidebarProps) {
               aria-disabled="true"
               className={cn(
                 sharedClasses,
-                "border-border/70 bg-muted/45 cursor-not-allowed border border-dashed text-muted-foreground"
+                "border-border/70 bg-muted/45 text-muted-foreground cursor-not-allowed border border-dashed"
               )}
             >
               <div className="flex min-w-0 items-center gap-3">
-                <span className="border-border/70 bg-background/70 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-muted-foreground">
+                <span className="border-border/70 bg-background/70 text-muted-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full border">
                   <Icon className="h-[18px] w-[18px]" />
                 </span>
                 <span className="truncate font-medium">{item.label}</span>
@@ -96,7 +96,7 @@ export function Sidebar({ role, className, onNavigate }: SidebarProps) {
               {item.comingSoon ? (
                 <Badge
                   variant="outline"
-                  className="border-border/70 bg-background/85 rounded-full px-2.5 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.18em]"
+                  className="border-border/70 bg-background/85 rounded-full px-2.5 py-1 text-[0.6rem] font-semibold tracking-[0.18em] uppercase"
                 >
                   Soon
                 </Badge>

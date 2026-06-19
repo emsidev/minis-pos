@@ -26,7 +26,7 @@ export function BoothMapPreview({
   return (
     <div
       className={cn(
-        "bg-muted/30 overflow-hidden rounded-[calc(var(--radius)-0.2rem)] border border-border",
+        "bg-muted/30 border-border overflow-hidden rounded-[calc(var(--radius)-0.2rem)] border",
         className
       )}
     >
@@ -40,14 +40,14 @@ export function BoothMapPreview({
         />
       ) : (
         <div className="flex min-h-[18rem] flex-col items-center justify-center gap-3 px-6 py-8 text-center">
-          <div className="bg-primary/10 flex size-12 items-center justify-center rounded-full text-primary">
+          <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full">
             <MapPin />
           </div>
           <div className="space-y-1.5">
-            <p className="text-sm font-semibold text-foreground">
+            <p className="text-foreground text-sm font-semibold">
               {emptyTitle}
             </p>
-            <p className="text-sm leading-6 text-muted-foreground">
+            <p className="text-muted-foreground text-sm leading-6">
               {emptyDescription}
             </p>
           </div>

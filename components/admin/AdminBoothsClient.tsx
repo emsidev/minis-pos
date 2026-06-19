@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Loader2, MapPin, Pencil, Plus, RotateCcw, Store } from "lucide-react"
+import {
+  Loader2,
+  MapPin,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Store,
+  TableProperties,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -16,6 +24,7 @@ import { AdminScheduleCalendar } from "@/components/admin/AdminScheduleCalendar"
 import { BoothFormSheet } from "@/components/admin/BoothFormSheet"
 import { ScheduleFormSheet } from "@/components/admin/ScheduleFormSheet"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import { ShiftCloseoutSheet } from "@/components/shifts/ShiftCloseoutSheet"
 import { ShiftDetailSheet } from "@/components/shifts/ShiftDetailSheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -35,6 +44,7 @@ import type {
   AdminShiftDetailData,
 } from "@/lib/adminBooths"
 import type { Booth } from "@/lib/shifts"
+import { hasBusinessShiftPassed } from "@/lib/utils"
 import { joinSchedule } from "@/app/actions/shifts"
 
 type AdminBoothsClientProps = {
@@ -64,6 +74,7 @@ export function AdminBoothsClient({
   const [selectedDetail, setSelectedDetail] =
     useState<AdminShiftDetailData | null>(null)
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false)
+  const [closeoutOpen, setCloseoutOpen] = useState(false)
   const [scheduleDetailLoading, setScheduleDetailLoading] = useState(false)
   const [scheduleDetailError, setScheduleDetailError] = useState<string | null>(
     null
@@ -145,6 +156,10 @@ export function AdminBoothsClient({
   }
 
   const selectedSchedule = selectedDetail?.schedule ?? null
+  const selectedOperatorCanClose =
+    selectedSchedule?.operator_employee_id === currentEmployeeId &&
+    selectedSchedule.status === "scheduled" &&
+    hasBusinessShiftPassed(selectedSchedule.date, selectedSchedule.end_time)
   const adminAssignedToSelected =
     selectedSchedule?.booth_schedule_assignments.some(
       (assignment) => assignment.employee_id === currentEmployeeId
@@ -220,6 +235,24 @@ export function AdminBoothsClient({
     }
   }
 
+  const handleCloseoutSaved = () => {
+    if (!selectedSchedule) {
+      return
+    }
+
+    const scheduleId = selectedSchedule.id
+
+    setSelectedDetail((current) =>
+      current?.schedule?.id === scheduleId
+        ? {
+            ...current,
+            schedule: { ...current.schedule, status: "closed" },
+          }
+        : current
+    )
+    router.refresh()
+  }
+
   return (
     <div className="app-page flex flex-col gap-6">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -231,6 +264,15 @@ export function AdminBoothsClient({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            render={<Link href="/admin/booths/bulk" />}
+            nativeButton={false}
+            size="lg"
+            variant="outline"
+          >
+            <TableProperties data-icon="inline-start" />
+            Bulk Schedule
+          </Button>
           <Button
             type="button"
             size="lg"
@@ -255,7 +297,7 @@ export function AdminBoothsClient({
         </TabsList>
         <TabsContent value="booths">
           {displayBooths.length === 0 ? (
-            <div className="app-panel p-8 text-center text-sm text-muted-foreground">
+            <div className="app-panel text-muted-foreground p-8 text-center text-sm">
               No booths have been added yet.
             </div>
           ) : (
@@ -272,7 +314,7 @@ export function AdminBoothsClient({
                     <CardHeader>
                       <CardTitle>{booth.name}</CardTitle>
                       <CardDescription className="flex items-center gap-1.5">
-                        <MapPin className="size-4 text-primary" />
+                        <MapPin className="text-primary size-4" />
                         {booth.location_text ?? "No location details"}
                       </CardDescription>
                       <CardAction>
@@ -284,8 +326,8 @@ export function AdminBoothsClient({
                       </CardAction>
                     </CardHeader>
                     <CardContent className="flex flex-col gap-4">
-                      <div className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
-                        <span className="font-medium text-foreground">
+                      <div className="bg-muted text-muted-foreground rounded-xl px-4 py-3 text-sm">
+                        <span className="text-foreground font-medium">
                           {scheduleCount}
                         </span>{" "}
                         scheduled shift{scheduleCount === 1 ? "" : "s"} this
@@ -413,8 +455,21 @@ export function AdminBoothsClient({
         }
         closeouts={selectedSchedule?.shift_closeouts ?? []}
         allowOfflineSaleCache={false}
+        canCloseShift={selectedOperatorCanClose}
+        onCloseShift={
+          selectedOperatorCanClose
+            ? () => {
+                setScheduleDetailOpen(false)
+                setCloseoutOpen(true)
+              }
+            : undefined
+        }
         onEdit={
-          selectedSchedule
+          selectedSchedule &&
+          !hasBusinessShiftPassed(
+            selectedSchedule.date,
+            selectedSchedule.end_time
+          )
             ? () => {
                 setScheduleDetailOpen(false)
                 setEditingSchedule(selectedSchedule)
@@ -423,7 +478,11 @@ export function AdminBoothsClient({
             : undefined
         }
         onCancel={
-          selectedSchedule
+          selectedSchedule &&
+          !hasBusinessShiftPassed(
+            selectedSchedule.date,
+            selectedSchedule.end_time
+          )
             ? () => {
                 setScheduleDetailOpen(false)
                 setCancellingSchedule(selectedSchedule)
@@ -433,6 +492,16 @@ export function AdminBoothsClient({
         onOverride={undefined}
         onReopen={undefined}
       />
+      {selectedSchedule ? (
+        <ShiftCloseoutSheet
+          open={closeoutOpen}
+          onOpenChange={setCloseoutOpen}
+          schedule={selectedSchedule}
+          products={selectedDetail?.products ?? []}
+          sales={selectedDetail?.sales ?? []}
+          onSaved={handleCloseoutSaved}
+        />
+      ) : null}
       <ConfirmDialog
         open={Boolean(deactivatingBooth)}
         onOpenChange={(open) => {

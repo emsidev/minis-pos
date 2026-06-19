@@ -33,7 +33,7 @@ export function CategoryTabs({
                 variant={isActive ? "default" : "outline"}
                 onClick={() => onCategoryChange(category)}
                 className={cn(
-                  "min-h-11 rounded-full px-4 text-xs font-semibold uppercase tracking-[0.16em]",
+                  "min-h-11 rounded-full px-4 text-xs font-semibold tracking-[0.16em] uppercase",
                   !isActive &&
                     "border-border/70 bg-background/80 text-muted-foreground hover:text-foreground"
                 )}
@@ -44,7 +44,7 @@ export function CategoryTabs({
           })}
 
           {isPending ? (
-            <span className="inline-flex h-11 items-center px-2 text-muted-foreground">
+            <span className="text-muted-foreground inline-flex h-11 items-center px-2">
               <Loader2 className="h-4 w-4 animate-spin" />
             </span>
           ) : null}

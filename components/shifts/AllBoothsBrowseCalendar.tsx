@@ -41,11 +41,11 @@ export function AllBoothsBrowseCalendar({
   }
 
   return (
-    <div className="bg-border/60 grid grid-cols-7 gap-px overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border border-border">
+    <div className="bg-border/60 border-border grid grid-cols-7 gap-px overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border">
       {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
         <div
           key={day}
-          className="bg-muted px-2 py-3 text-center text-xs font-medium text-muted-foreground"
+          className="bg-muted text-muted-foreground px-2 py-3 text-center text-xs font-medium"
         >
           {day}
         </div>
@@ -66,7 +66,7 @@ export function AllBoothsBrowseCalendar({
           <div
             key={date}
             className={cn(
-              "min-h-24 bg-card p-1.5 sm:min-h-32 sm:p-2",
+              "bg-card min-h-24 p-1.5 sm:min-h-32 sm:p-2",
               isToday && "bg-primary/5",
               isSelected && "ring-primary/20 ring-2 ring-inset"
             )}
@@ -89,20 +89,20 @@ export function AllBoothsBrowseCalendar({
                   type="button"
                   onClick={() => onSelectSchedule(schedule)}
                   className={cn(
-                    "focus-visible:ring-3 focus-visible:ring-ring/50 w-full rounded-lg border px-1.5 py-1 text-left text-[0.62rem] transition-colors hover:bg-muted focus-visible:outline-none sm:text-xs",
+                    "focus-visible:ring-ring/50 hover:bg-muted w-full rounded-lg border px-1.5 py-1 text-left text-[0.62rem] transition-colors focus-visible:ring-3 focus-visible:outline-none sm:text-xs",
                     getScheduleCardClassName(schedule.status)
                   )}
                 >
                   <span className="flex items-center gap-1 font-medium">
-                    <Store className="size-3 shrink-0 text-primary" />
+                    <Store className="text-primary size-3 shrink-0" />
                     <span className="truncate">{schedule.booth_name}</span>
                   </span>
-                  <span className="mt-0.5 flex items-center gap-1 truncate text-muted-foreground">
+                  <span className="text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
                     <Clock className="size-3 shrink-0" />
                     {schedule.start_time.slice(0, 5)} -{" "}
                     {schedule.end_time.slice(0, 5)}
                   </span>
-                  <span className="block truncate text-muted-foreground">
+                  <span className="text-muted-foreground block truncate">
                     {schedule.assigned_employee_names.length > 0
                       ? schedule.assigned_employee_names.join(", ")
                       : "Open shift"}
@@ -124,7 +124,7 @@ export function AllBoothsBrowseCalendar({
                   ) : schedule.status === "closed" ? (
                     <Badge
                       variant="outline"
-                      className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] uppercase text-emerald-700"
+                      className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] text-emerald-700 uppercase"
                     >
                       Closed
                     </Badge>

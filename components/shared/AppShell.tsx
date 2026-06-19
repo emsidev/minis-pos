@@ -479,7 +479,7 @@ export function AppShell({
   ])
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="bg-background text-foreground min-h-screen">
       <header className="border-border/80 bg-background/88 fixed inset-x-0 top-0 z-40 border-b backdrop-blur-xl">
         <div className="mx-auto flex h-[4.5rem] w-full items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
@@ -494,7 +494,7 @@ export function AppShell({
               <span className="sr-only">Open navigation</span>
             </Button>
 
-            <p className="truncate text-base font-semibold tracking-tight text-foreground sm:text-lg">
+            <p className="text-foreground truncate text-base font-semibold tracking-tight sm:text-lg">
               Mini&apos;s Pastries
             </p>
           </div>
@@ -505,7 +505,7 @@ export function AppShell({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="rounded-full px-3 text-[0.65rem] font-semibold uppercase tracking-[0.2em]"
+                className="rounded-full px-3 text-[0.65rem] font-semibold tracking-[0.2em] uppercase"
                 disabled={isBusy}
                 onClick={() => {
                   void handleReconnect()
@@ -526,7 +526,7 @@ export function AppShell({
                     <Button
                       variant="destructive"
                       size="sm"
-                      className="hidden rounded-full px-3 text-[0.65rem] font-semibold uppercase tracking-[0.2em] sm:inline-flex"
+                      className="hidden rounded-full px-3 text-[0.65rem] font-semibold tracking-[0.2em] uppercase sm:inline-flex"
                     />
                   }
                 >
@@ -534,33 +534,33 @@ export function AppShell({
                   {failedCount} to review
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-96 max-w-[92vw] p-0">
-                  <PopoverHeader className="border-b border-border px-4 py-3">
+                  <PopoverHeader className="border-border border-b px-4 py-3">
                     <PopoverTitle>Needs Review</PopoverTitle>
                     <PopoverDescription>
                       These local POS records could not finish syncing online.
                     </PopoverDescription>
                   </PopoverHeader>
                   <ScrollArea className="max-h-80">
-                    <div className="flex flex-col divide-y divide-border">
+                    <div className="divide-border flex flex-col divide-y">
                       {failedSyncItems.map((item) => (
                         <div key={item.id} className="flex gap-3 px-4 py-3">
-                          <div className="bg-destructive/10 mt-1 flex size-8 shrink-0 items-center justify-center rounded-full text-destructive">
+                          <div className="bg-destructive/10 text-destructive mt-1 flex size-8 shrink-0 items-center justify-center rounded-full">
                             <RefreshCw className="size-4" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <p className="font-medium text-foreground">
+                              <p className="text-foreground font-medium">
                                 {item.title}
                               </p>
                               <Badge variant="outline" className="capitalize">
                                 {item.kind}
                               </Badge>
                             </div>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
+                            <p className="text-muted-foreground mt-0.5 text-xs">
                               {formatSyncFailureTime(item.occurredAt)} -{" "}
                               {item.detail}
                             </p>
-                            <p className="mt-2 text-xs leading-5 text-destructive">
+                            <p className="text-destructive mt-2 text-xs leading-5">
                               {item.error}
                             </p>
                             {item.canCancel ? (
@@ -586,8 +586,8 @@ export function AppShell({
                       ))}
                     </div>
                   </ScrollArea>
-                  <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3">
-                    <p className="flex-1 text-xs text-muted-foreground">
+                  <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3">
+                    <p className="text-muted-foreground flex-1 text-xs">
                       You will see items here after a retry hits a stock
                       conflict, receipt issue, or another sync error.
                     </p>
@@ -613,7 +613,7 @@ export function AppShell({
 
             {showPendingItems ? (
               <Badge
-                className="hidden rounded-full px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em] sm:inline-flex"
+                className="hidden rounded-full px-3 py-1 text-[0.65rem] font-semibold tracking-[0.2em] uppercase sm:inline-flex"
                 variant="secondary"
               >
                 <RefreshCw className="mr-1 h-3.5 w-3.5" />
@@ -624,7 +624,7 @@ export function AppShell({
             {isOffline ? (
               <Badge
                 variant="destructive"
-                className="hidden rounded-full px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em] sm:inline-flex"
+                className="hidden rounded-full px-3 py-1 text-[0.65rem] font-semibold tracking-[0.2em] uppercase sm:inline-flex"
               >
                 <WifiOff className="mr-1 h-3.5 w-3.5" />
                 {pendingCount !== undefined && pendingCount > 0
@@ -633,8 +633,8 @@ export function AppShell({
               </Badge>
             ) : null}
 
-            <div className="min-w-0 max-w-[9rem] text-right sm:max-w-[12rem]">
-              <p className="truncate text-sm font-medium text-foreground">
+            <div className="max-w-[9rem] min-w-0 text-right sm:max-w-[12rem]">
+              <p className="text-foreground truncate text-sm font-medium">
                 {userName}
               </p>
             </div>
@@ -661,7 +661,7 @@ export function AppShell({
       </Sheet>
 
       <div className="pt-[4.5rem] lg:pl-[18.5rem]">
-        <aside className="fixed bottom-0 left-0 top-[4.5rem] hidden w-[18.5rem] p-4 lg:block">
+        <aside className="fixed top-[4.5rem] bottom-0 left-0 hidden w-[18.5rem] p-4 lg:block">
           <Sidebar role={role} className="h-full" />
         </aside>
 

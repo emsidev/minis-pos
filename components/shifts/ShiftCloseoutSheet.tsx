@@ -273,7 +273,7 @@ export function ShiftCloseoutSheet({
         side="right"
         className="flex h-full w-full max-w-2xl flex-col p-0"
       >
-        <div className="shrink-0 border-b border-border px-6 pb-5 pt-6">
+        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
           <SheetTitle>End Of Day Closeout</SheetTitle>
           <SheetDescription>
             Count cash and final stock, review variances, then lock this shift.
@@ -287,7 +287,7 @@ export function ShiftCloseoutSheet({
             onSubmit={handleSubmit}
           >
             {isOffline ? (
-              <div className="border-destructive/20 bg-destructive/5 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm text-destructive">
+              <div className="border-destructive/20 bg-destructive/5 text-destructive flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
                 <WifiOff className="mt-0.5 size-4 shrink-0" />
                 <div>
                   <p className="font-medium">Closeout needs a connection.</p>
@@ -341,26 +341,26 @@ export function ShiftCloseoutSheet({
             ) : null}
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-border bg-card px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="border-border bg-card rounded-2xl border px-4 py-3">
+                <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
                   System Cash
                 </p>
-                <p className="mt-1 text-xl font-semibold text-foreground">
+                <p className="text-foreground mt-1 text-xl font-semibold">
                   {formatCurrency(systemCashSales)}
                 </p>
               </div>
-              <div className="rounded-2xl border border-border bg-card px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="border-border bg-card rounded-2xl border px-4 py-3">
+                <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
                   Counted Cash
                 </p>
-                <p className="mt-1 text-xl font-semibold text-foreground">
+                <p className="text-foreground mt-1 text-xl font-semibold">
                   {formatCurrency(
                     Number.isFinite(countedCashValue) ? countedCashValue : 0
                   )}
                 </p>
               </div>
-              <div className="rounded-2xl border border-border bg-card px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="border-border bg-card rounded-2xl border px-4 py-3">
+                <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
                   Cash Variance
                 </p>
                 <p
@@ -406,14 +406,14 @@ export function ShiftCloseoutSheet({
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  <h2 className="text-muted-foreground text-sm font-semibold tracking-[0.18em] uppercase">
                     Closing Stock
                   </h2>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     Count the remaining stock for each assigned product.
                   </p>
                 </div>
-                <div className="rounded-full border border-border px-3 py-1 text-xs font-semibold">
+                <div className="border-border rounded-full border px-3 py-1 text-xs font-semibold">
                   {countedStockTotal} counted / {systemStockTotal} system
                 </div>
               </div>
@@ -427,18 +427,18 @@ export function ShiftCloseoutSheet({
                   return (
                     <div
                       key={product.id}
-                      className="grid gap-3 rounded-2xl border border-border bg-card px-4 py-3 lg:grid-cols-[minmax(0,1fr)_6rem_minmax(7rem,8rem)_6rem] lg:items-start"
+                      className="border-border bg-card grid gap-3 rounded-2xl border px-4 py-3 lg:grid-cols-[minmax(0,1fr)_6rem_minmax(7rem,8rem)_6rem] lg:items-start"
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-foreground">
+                        <p className="text-foreground font-medium">
                           {product.name}
                         </p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-muted-foreground text-sm">
                           System stock: {systemStock}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-muted px-3 py-2 text-sm">
-                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      <div className="bg-muted rounded-xl px-3 py-2 text-sm">
+                        <p className="text-muted-foreground text-xs tracking-[0.14em] uppercase">
                           System
                         </p>
                         <p className="mt-1 font-semibold">{systemStock}</p>
@@ -460,8 +460,8 @@ export function ShiftCloseoutSheet({
                           }
                         />
                       </Field>
-                      <div className="rounded-xl bg-muted px-3 py-2 text-sm">
-                        <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      <div className="bg-muted rounded-xl px-3 py-2 text-sm">
+                        <p className="text-muted-foreground text-xs tracking-[0.14em] uppercase">
                           Variance
                         </p>
                         <p
@@ -484,24 +484,24 @@ export function ShiftCloseoutSheet({
             </section>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-border bg-card px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="border-border bg-card rounded-2xl border px-4 py-3">
+                <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
                   System Stock
                 </p>
-                <p className="mt-1 text-xl font-semibold text-foreground">
+                <p className="text-foreground mt-1 text-xl font-semibold">
                   {systemStockTotal}
                 </p>
               </div>
-              <div className="rounded-2xl border border-border bg-card px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="border-border bg-card rounded-2xl border px-4 py-3">
+                <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
                   Counted Stock
                 </p>
-                <p className="mt-1 text-xl font-semibold text-foreground">
+                <p className="text-foreground mt-1 text-xl font-semibold">
                   {countedStockTotal}
                 </p>
               </div>
-              <div className="rounded-2xl border border-border bg-card px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="border-border bg-card rounded-2xl border px-4 py-3">
+                <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
                   Stock Variance
                 </p>
                 <p
@@ -519,10 +519,10 @@ export function ShiftCloseoutSheet({
               </div>
             </div>
 
-            <div className="border-primary/15 bg-primary/5 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm text-muted-foreground">
-              <Lock className="mt-0.5 size-4 shrink-0 text-primary" />
+            <div className="border-primary/15 bg-primary/5 text-muted-foreground flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
+              <Lock className="text-primary mt-0.5 size-4 shrink-0" />
               <div>
-                <p className="font-medium text-foreground">
+                <p className="text-foreground font-medium">
                   Final confirmation
                 </p>
                 <p>
@@ -534,7 +534,7 @@ export function ShiftCloseoutSheet({
           </form>
         </div>
 
-        <footer className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
           <Button
             type="button"
             variant="outline"

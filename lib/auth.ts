@@ -143,8 +143,10 @@ function isConnectivityLikeError(message: string) {
   ].some((pattern) => lowered.includes(pattern))
 }
 
-function getSnapshotForUser(userId: string): EmployeeRecord | null {
-  const cookieStore = cookies()
+async function getSnapshotForUser(
+  userId: string
+): Promise<EmployeeRecord | null> {
+  const cookieStore = await cookies()
   const snapshot = parseEmployeeSnapshot(
     cookieStore.get(EMPLOYEE_SNAPSHOT_COOKIE)?.value
   )
@@ -179,7 +181,7 @@ export const getCurrentSessionContext = cache(
         return null
       }
 
-      const snapshotEmployee = getSnapshotForUser(session.user.id)
+      const snapshotEmployee = await getSnapshotForUser(session.user.id)
       if (snapshotEmployee) {
         return {
           employee: snapshotEmployee,
@@ -202,7 +204,7 @@ export const getCurrentSessionContext = cache(
       .maybeSingle()
 
     if (employeeError) {
-      const snapshotEmployee = getSnapshotForUser(user.id)
+      const snapshotEmployee = await getSnapshotForUser(user.id)
 
       if (snapshotEmployee) {
         return {

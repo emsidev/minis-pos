@@ -142,13 +142,13 @@ export function SearchPicker(props: SearchPickerProps) {
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-[calc(var(--radius)-0.25rem)] border border-border p-3",
+        "border-border flex flex-col gap-2 rounded-[calc(var(--radius)-0.25rem)] border p-3",
         disabled && "pointer-events-none opacity-50",
         className
       )}
     >
       {props.mode === "single" ? (
-        <p className="text-sm font-medium text-foreground">{selectedLabel}</p>
+        <p className="text-foreground text-sm font-medium">{selectedLabel}</p>
       ) : selectedOptions.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {selectedOptions.map((option) => (
@@ -172,7 +172,7 @@ export function SearchPicker(props: SearchPickerProps) {
           ))}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">{placeholder}</p>
+        <p className="text-muted-foreground text-sm">{placeholder}</p>
       )}
 
       <Input
@@ -209,14 +209,14 @@ export function SearchPicker(props: SearchPickerProps) {
                   role="option"
                   aria-selected={isSelected}
                   className={cn(
-                    "flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm transition-colors hover:bg-muted",
+                    "hover:bg-muted flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm transition-colors",
                     isSelected && "bg-primary/10 text-foreground"
                   )}
                   onClick={() => toggleOption(option.value)}
                 >
                   <span className="font-medium">{option.label}</span>
                   {option.description ? (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-muted-foreground text-xs">
                       {option.description}
                     </span>
                   ) : null}

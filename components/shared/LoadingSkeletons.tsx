@@ -5,8 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export function LoadingBanner({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-      <Loader2 className="size-4 animate-spin text-primary" />
+    <div className="border-border bg-card text-muted-foreground flex items-center gap-2 rounded-xl border px-4 py-3 text-sm">
+      <Loader2 className="text-primary size-4 animate-spin" />
       <span>{label}</span>
     </div>
   )
@@ -66,8 +66,8 @@ export function DataTableSkeleton({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-[calc(var(--radius)+0.15rem)] border border-border bg-card">
-        <div className="bg-muted/40 border-b border-border px-4 py-3">
+      <div className="border-border bg-card overflow-hidden rounded-[calc(var(--radius)+0.15rem)] border">
+        <div className="bg-muted/40 border-border border-b px-4 py-3">
           <div className="grid grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, index) => (
               <Skeleton key={index} className="h-4 w-20" />
@@ -103,11 +103,11 @@ export function CalendarSkeleton() {
         </div>
       </div>
 
-      <div className="bg-border/40 grid grid-cols-7 gap-px overflow-hidden rounded-[calc(var(--radius)*1.5)] border border-border">
+      <div className="bg-border/40 border-border grid grid-cols-7 gap-px overflow-hidden rounded-[calc(var(--radius)*1.5)] border">
         {Array.from({ length: 35 }).map((_, index) => (
           <div
             key={index}
-            className="min-h-[100px] bg-background p-2 sm:min-h-[140px]"
+            className="bg-background min-h-[100px] p-2 sm:min-h-[140px]"
           >
             <Skeleton className="h-7 w-7 rounded-full" />
             <div className="mt-2 space-y-2">

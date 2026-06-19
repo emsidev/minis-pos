@@ -6,7 +6,7 @@ import { publicEnv } from "@/lib/env"
 import { cn } from "@/lib/utils"
 
 type OfflineAccessPageProps = {
-  searchParams?: Record<string, string | string[] | undefined>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
 function readQueryValue(value: string | string[] | undefined) {
@@ -33,30 +33,31 @@ function getReasonContent(reason: string | undefined) {
   }
 }
 
-export default function OfflineAccessPage({
+export default async function OfflineAccessPage({
   searchParams,
 }: OfflineAccessPageProps) {
-  const reason = readQueryValue(searchParams?.reason)
+  const resolvedSearchParams = await searchParams
+  const reason = readQueryValue(resolvedSearchParams?.reason)
   const content = getReasonContent(reason)
   const Icon = content.icon
 
   return (
-    <main className="selection:bg-primary/30 relative flex min-h-screen flex-col overflow-hidden bg-background px-4 py-12 selection:text-primary-foreground">
+    <main className="selection:bg-primary/30 bg-background selection:text-primary-foreground relative flex min-h-screen flex-col overflow-hidden px-4 py-12">
       <div className="pointer-events-none absolute inset-0 opacity-40">
-        <div className="bg-primary/20 absolute -left-24 -top-20 h-80 w-80 rounded-full blur-3xl"></div>
-        <div className="bg-secondary/20 absolute bottom-0 right-0 h-72 w-72 rounded-full blur-3xl"></div>
+        <div className="bg-primary/20 absolute -top-20 -left-24 h-80 w-80 rounded-full blur-3xl"></div>
+        <div className="bg-secondary/20 absolute right-0 bottom-0 h-72 w-72 rounded-full blur-3xl"></div>
       </div>
 
       <div className="relative mx-auto flex w-full max-w-xl flex-1 items-center">
-        <section className="border-primary/10 w-full rounded-[2.25rem] border bg-card p-8 shadow-candy sm:p-10">
-          <div className="bg-primary/10 mb-6 inline-flex rounded-full p-4 text-primary">
+        <section className="border-primary/10 bg-card shadow-candy w-full rounded-[2.25rem] border p-8 sm:p-10">
+          <div className="bg-primary/10 text-primary mb-6 inline-flex rounded-full p-4">
             <Icon className="h-7 w-7" />
           </div>
 
-          <h1 className="font-heading text-3xl font-bold text-foreground">
+          <h1 className="font-heading text-foreground text-3xl font-bold">
             {content.title}
           </h1>
-          <p className="mt-3 text-base text-muted-foreground">
+          <p className="text-muted-foreground mt-3 text-base">
             {content.description}
           </p>
           <p className="text-muted-foreground/90 mt-2 text-sm font-medium">
@@ -87,7 +88,7 @@ export default function OfflineAccessPage({
         </section>
       </div>
 
-      <footer className="text-muted-foreground/50 relative mt-6 text-center text-[11px] uppercase tracking-[0.22em]">
+      <footer className="text-muted-foreground/50 relative mt-6 text-center text-[11px] tracking-[0.22em] uppercase">
         {publicEnv.appName}
       </footer>
     </main>

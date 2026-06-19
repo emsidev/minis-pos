@@ -20,7 +20,7 @@ function EmptyImage({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="empty-image"
       className={cn(
-        "bg-primary/10 animate-in zoom-in-75 flex h-20 w-20 items-center justify-center rounded-full text-primary shadow-[0_8px_16px_-6px_rgba(224,64,160,0.4)] duration-700",
+        "bg-primary/10 animate-in zoom-in-75 text-primary flex h-20 w-20 items-center justify-center rounded-full shadow-[0_8px_16px_-6px_rgba(224,64,160,0.4)] duration-700",
         className
       )}
       {...props}
@@ -43,7 +43,7 @@ function EmptyTitle({ className, ...props }: React.ComponentProps<"h3">) {
     <h3
       data-slot="empty-title"
       className={cn(
-        "font-heading text-2xl font-bold tracking-tight text-foreground sm:text-3xl",
+        "font-heading text-foreground text-2xl font-bold tracking-tight sm:text-3xl",
         className
       )}
       {...props}

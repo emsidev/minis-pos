@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner"
 
 import {
+  resendEmployeeInvite,
   updateEmployeeRole,
   updateEmployeeStatus,
 } from "@/app/actions/adminEmployees"
@@ -120,6 +121,32 @@ export function AdminEmployeesClient({
     [displayEmployees]
   )
 
+  const handleResendInvite = useCallback(
+    async (employee: AdminEmployeeRecord) => {
+      setPendingEmployeeId(employee.id)
+      const result = await resendEmployeeInvite(employee.id)
+      setPendingEmployeeId(null)
+
+      if (!result.ok) {
+        toast.error(result.error ?? "Unable to resend the invite email.")
+        return
+      }
+
+      if (result.inviteLink) {
+        try {
+          await navigator.clipboard.writeText(result.inviteLink)
+          toast.success(`${result.message} Backup link copied.`)
+          return
+        } catch {
+          // Fall back to the server-action message if clipboard access fails.
+        }
+      }
+
+      toast.success(result.message)
+    },
+    []
+  )
+
   const columns = useMemo<ColumnDef<AdminEmployeeRecord>[]>(
     () => [
       {
@@ -129,10 +156,10 @@ export function AdminEmployeesClient({
         ),
         cell: ({ row }) => (
           <div className="flex min-w-[12rem] flex-col gap-0.5">
-            <span className="font-medium text-foreground">
+            <span className="text-foreground font-medium">
               {row.original.name}
             </span>
-            <span className="text-sm text-muted-foreground">
+            <span className="text-muted-foreground text-sm">
               {row.original.email}
             </span>
           </div>
@@ -144,7 +171,7 @@ export function AdminEmployeesClient({
           <DataTableColumnHeader column={column} title="Email" />
         ),
         cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">
+          <span className="text-muted-foreground text-sm">
             {row.original.email}
           </span>
         ),
@@ -199,6 +226,7 @@ export function AdminEmployeesClient({
           const pending = pendingEmployeeId === employee.id
           const isAdmin = employee.role === "admin"
           const isActive = employee.is_active !== false
+          const canResendInvite = isActive && !employee.user_id
 
           return (
             <div className="flex justify-end">
@@ -210,6 +238,20 @@ export function AdminEmployeesClient({
                   <span className="sr-only">Open employee actions</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    disabled={pending || !canResendInvite}
+                    onClick={() => handleResendInvite(employee)}
+                  >
+                    {pending ? (
+                      <Loader2
+                        data-icon="inline-start"
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <Mail data-icon="inline-start" />
+                    )}
+                    Resend Invite Email
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     disabled={pending || isAdmin}
                     onClick={() => handleRoleChange(employee.id, "admin")}
@@ -252,7 +294,7 @@ export function AdminEmployeesClient({
                     ) : (
                       <UserCheck data-icon="inline-start" />
                     )}
-                    {isActive ? "Deactivate" : "Activate"}
+                    {isActive ? "Disable User" : "Enable User"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -261,7 +303,12 @@ export function AdminEmployeesClient({
         },
       },
     ],
-    [handleRoleChange, handleStatusChange, pendingEmployeeId]
+    [
+      handleResendInvite,
+      handleRoleChange,
+      handleStatusChange,
+      pendingEmployeeId,
+    ]
   )
 
   return (

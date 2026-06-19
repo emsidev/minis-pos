@@ -5,18 +5,19 @@ import {
 } from "@/lib/adminSales"
 
 type AdminSalesPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     from?: string
     to?: string
-  }
+  }>
 }
 
 export default async function AdminSalesPage({
   searchParams,
 }: AdminSalesPageProps) {
+  const resolvedSearchParams = await searchParams
   const range = normalizeAdminSalesDateRange(
-    searchParams?.from,
-    searchParams?.to
+    resolvedSearchParams?.from,
+    resolvedSearchParams?.to
   )
   const data = await getAdminSalesLedger(range.startDate, range.endDate)
 

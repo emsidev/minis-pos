@@ -41,7 +41,7 @@ export function ConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="border-primary/10 rounded-[2.5rem] shadow-panel">
+      <AlertDialogContent className="border-primary/10 shadow-panel rounded-[2.5rem]">
         <AlertDialogHeader>
           <AlertDialogTitle className="text-xl font-bold tracking-tight">
             {title}
@@ -53,7 +53,7 @@ export function ConfirmDialog({
         <AlertDialogFooter className="mt-4 gap-2">
           <AlertDialogCancel
             disabled={pending}
-            className="border-border/40 rounded-full font-bold hover:bg-muted"
+            className="border-border/40 hover:bg-muted rounded-full font-bold"
           >
             {cancelLabel}
           </AlertDialogCancel>
@@ -72,8 +72,8 @@ export function ConfirmDialog({
             }}
             className={
               variant === "destructive"
-                ? "hover:bg-destructive/90 rounded-full bg-destructive font-bold text-destructive-foreground transition-all active:scale-95"
-                : "hover:bg-primary/90 rounded-full bg-primary font-bold text-primary-foreground transition-all active:scale-95"
+                ? "hover:bg-destructive/90 bg-destructive text-destructive-foreground rounded-full font-bold transition-all active:scale-95"
+                : "hover:bg-primary/90 bg-primary text-primary-foreground rounded-full font-bold transition-all active:scale-95"
             }
           >
             {pending ? (

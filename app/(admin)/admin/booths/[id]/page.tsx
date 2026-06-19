@@ -11,19 +11,20 @@ import {
 } from "@/lib/adminBooths"
 
 type AdminBoothDetailPageProps = {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export default async function AdminBoothDetailPage({
   params,
 }: AdminBoothDetailPageProps) {
+  const { id } = await params
   const { employee } = await requireEmployeeRole("admin")
   const [booth, booths, schedules, employees, products] = await Promise.all([
-    getAdminBoothById(params.id),
+    getAdminBoothById(id),
     getAdminBooths(),
-    getAdminSchedules(params.id),
+    getAdminSchedules(id),
     getActiveEmployeeOptions(),
     getAvailableProductOptions(),
   ])

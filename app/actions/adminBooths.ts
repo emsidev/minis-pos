@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache"
 import { requireEmployeeRole } from "@/lib/auth"
 import {
   type AdminShiftDetailData,
+  type BulkScheduleEditableRow,
+  type BulkScheduleLoadFilters,
+  type BulkScheduleSaveResult,
+  type BulkScheduleSaveRowInput,
+  getBulkEditableScheduleRows,
   getAdminScheduleById,
   getAdminScheduleCalendarItems,
 } from "@/lib/adminBooths"
@@ -12,7 +17,11 @@ import { buildGoogleMapsLink } from "@/lib/boothMaps"
 import type { Booth } from "@/lib/shifts"
 import type { Json } from "@/lib/database.types"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
-import { getBusinessDate, getBusinessTime } from "@/lib/utils"
+import {
+  getBusinessDate,
+  getBusinessTime,
+  hasBusinessShiftStarted,
+} from "@/lib/utils"
 import { getBoothScheduleSales } from "@/lib/shifts"
 
 export type BoothFormInput = {
@@ -30,6 +39,11 @@ type ScheduleFormInputBase = {
   operatorEmployeeId: string | null
   startTime: string
   endTime: string
+}
+
+type ScheduleRowInput = ScheduleFormInputBase & {
+  id?: string
+  date: string
 }
 
 export type ScheduleFormInput =
@@ -201,14 +215,47 @@ function parseBoothInput(input: BoothFormInput): {
 type ParsedScheduleInput =
   | ({
       mode: "edit"
-      id: string
-      date: string
-    } & ScheduleFormInputBase & { employeeIds: string[] })
+    } & ParsedScheduleRowInput)
   | ({
       mode: "create-range"
       startDate: string
       endDate: string
     } & ScheduleFormInputBase & { employeeIds: string[] })
+
+type ParsedScheduleRowInput = {
+  id?: string
+  boothId: string
+  employeeIds: string[]
+  operatorEmployeeId: string | null
+  date: string
+  startTime: string
+  endTime: string
+}
+
+type EmployeeScheduleConflictRow = {
+  employee_id: string
+  booth_schedules: {
+    id: string
+    date: string
+    start_time: string
+    end_time: string
+    status: string
+  } | null
+}
+
+type ScheduleConflictLookupInput = {
+  employeeIds: string[]
+  targetDates: string[]
+  startTime: string
+  endTime: string
+  ignoreScheduleId?: string
+}
+
+const ymdPattern = /^\d{4}-\d{2}-\d{2}$/
+
+function isYmd(value: string) {
+  return ymdPattern.test(value)
+}
 
 function enumerateDateRange(startDate: string, endDate: string) {
   const dates: string[] = []
@@ -223,10 +270,82 @@ function enumerateDateRange(startDate: string, endDate: string) {
   return dates
 }
 
+function parseScheduleRowInput(input: ScheduleRowInput): {
+  value?: ParsedScheduleRowInput
+  error?: string
+} {
+  const operatorEmployeeId = input.operatorEmployeeId?.trim() || null
+  const employeeIds = Array.from(
+    new Set(
+      input.employeeIds.map((employeeId) => employeeId.trim()).filter(Boolean)
+    )
+  )
+
+  if (
+    !input.boothId ||
+    !input.date ||
+    !input.startTime ||
+    !input.endTime ||
+    !isYmd(input.date)
+  ) {
+    return {
+      error: "Booth, date, start time, and end time are required.",
+    }
+  }
+
+  if (operatorEmployeeId && !employeeIds.includes(operatorEmployeeId)) {
+    return { error: "Select a POS operator from the assigned employees." }
+  }
+
+  if (input.startTime >= input.endTime) {
+    return { error: "End time must be later than start time." }
+  }
+
+  return {
+    value: {
+      id: input.id,
+      boothId: input.boothId,
+      employeeIds,
+      operatorEmployeeId,
+      date: input.date,
+      startTime: input.startTime,
+      endTime: input.endTime,
+    },
+  }
+}
+
 function parseScheduleInput(input: ScheduleFormInput): {
   value?: ParsedScheduleInput
   error?: string
 } {
+  if ("date" in input && input.id) {
+    const rowParsed = parseScheduleRowInput(input)
+    if (!rowParsed.value) {
+      return { error: rowParsed.error }
+    }
+
+    return {
+      value: {
+        mode: "edit",
+        ...rowParsed.value,
+      },
+    }
+  }
+
+  if (
+    !("startDate" in input) ||
+    !("endDate" in input) ||
+    !input.startDate ||
+    !input.endDate ||
+    !input.startTime ||
+    !input.endTime
+  ) {
+    return {
+      error:
+        "Booth, employee, date range, start time, and end time are required.",
+    }
+  }
+
   const operatorEmployeeId = input.operatorEmployeeId?.trim() || null
   const employeeIds = Array.from(
     new Set(
@@ -249,41 +368,6 @@ function parseScheduleInput(input: ScheduleFormInput): {
     return { error: "End time must be later than start time." }
   }
 
-  if ("date" in input && input.id) {
-    if (!input.date || !input.startTime || !input.endTime) {
-      return {
-        error: "Booth, employee, date, start time, and end time are required.",
-      }
-    }
-
-    return {
-      value: {
-        mode: "edit",
-        id: input.id,
-        boothId: input.boothId,
-        employeeIds,
-        operatorEmployeeId,
-        date: input.date,
-        startTime: input.startTime,
-        endTime: input.endTime,
-      },
-    }
-  }
-
-  if (
-    !("startDate" in input) ||
-    !("endDate" in input) ||
-    !input.startDate ||
-    !input.endDate ||
-    !input.startTime ||
-    !input.endTime
-  ) {
-    return {
-      error:
-        "Booth, employee, date range, start time, and end time are required.",
-    }
-  }
-
   if (input.startDate > input.endDate) {
     return { error: "Range end date must be on or after the start date." }
   }
@@ -302,14 +386,116 @@ function parseScheduleInput(input: ScheduleFormInput): {
   }
 }
 
-function revalidateBoothRoutes(boothId?: string) {
+function revalidateBoothRoutes(boothIds?: string | string[]) {
   revalidatePath("/admin/booths")
-  if (boothId) {
+  revalidatePath("/admin/booths/bulk")
+
+  const boothIdList = Array.isArray(boothIds)
+    ? boothIds
+    : boothIds
+      ? [boothIds]
+      : []
+
+  Array.from(new Set(boothIdList.filter(Boolean))).forEach((boothId) => {
     revalidatePath(`/admin/booths/${boothId}`)
-  }
+  })
   revalidatePath("/")
   revalidatePath("/schedule")
   revalidatePath("/shift")
+}
+
+async function getScheduleConflictDates(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  input: ScheduleConflictLookupInput
+): Promise<{ dates: string[]; error?: string }> {
+  if (input.employeeIds.length === 0 || input.targetDates.length === 0) {
+    return { dates: [] as string[] }
+  }
+
+  const { data, error } = await supabase
+    .from("booth_schedule_assignments")
+    .select(
+      "employee_id, booth_schedules!inner(id, date, start_time, end_time, status)"
+    )
+    .in("employee_id", input.employeeIds)
+    .in("booth_schedules.date", input.targetDates)
+    .eq("booth_schedules.status", "scheduled")
+
+  if (error) {
+    return { dates: [], error: getActionErrorMessage(error.message) }
+  }
+
+  const conflictDates = new Set<string>()
+
+  for (const row of (data ?? []) as EmployeeScheduleConflictRow[]) {
+    const schedule = row.booth_schedules
+    if (!schedule) {
+      continue
+    }
+
+    if (input.ignoreScheduleId && schedule.id === input.ignoreScheduleId) {
+      continue
+    }
+
+    if (
+      schedule.start_time < input.endTime &&
+      schedule.end_time > input.startTime
+    ) {
+      conflictDates.add(schedule.date)
+    }
+  }
+
+  return { dates: Array.from(conflictDates).sort() }
+}
+
+function buildScheduleConflictMessage(conflictDates: string[]) {
+  const conflictLabel =
+    conflictDates.length <= 4
+      ? conflictDates.join(", ")
+      : `${conflictDates.slice(0, 4).join(", ")}, and ${conflictDates.length - 4} more`
+
+  return `An assigned employee already has an overlapping shift on: ${conflictLabel}.`
+}
+
+async function persistScheduleRow(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  row: ParsedScheduleRowInput
+) {
+  const { data, error } = await supabase.rpc("save_booth_schedule", {
+    p_schedule_id: row.id ?? null,
+    p_booth_id: row.boothId,
+    p_employee_ids: row.employeeIds,
+    p_operator_employee_id: row.operatorEmployeeId,
+    p_date: row.date,
+    p_start_time: row.startTime,
+    p_end_time: row.endTime,
+    p_current_date: getBusinessDate(),
+    p_current_time: getBusinessTime(),
+  })
+
+  if (error) {
+    return { error: getActionErrorMessage(error.message) }
+  }
+
+  return { id: data }
+}
+
+function buildBulkEditableRow(
+  row: ParsedScheduleRowInput,
+  savedId?: string | null
+): BulkScheduleEditableRow {
+  return {
+    id: savedId ?? row.id,
+    boothId: row.boothId,
+    date: row.date,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    employeeIds: row.employeeIds,
+    operatorEmployeeId: row.operatorEmployeeId,
+    startedLocked: Boolean(savedId ?? row.id)
+      ? hasBusinessShiftStarted(row.date, row.startTime)
+      : false,
+  }
 }
 
 function getActionErrorMessage(message: string) {
@@ -493,6 +679,99 @@ export async function reactivateBooth(
   return { ok: true, message: "Booth reactivated.", booth: data as Booth }
 }
 
+export async function loadBulkScheduleRows(input: BulkScheduleLoadFilters) {
+  await requireEmployeeRole("admin")
+
+  if (
+    !isYmd(input.startDate) ||
+    !isYmd(input.endDate) ||
+    input.startDate > input.endDate
+  ) {
+    throw new Error("Invalid bulk schedule range.")
+  }
+
+  return getBulkEditableScheduleRows(
+    input.startDate,
+    input.endDate,
+    input.boothIds
+  )
+}
+
+export async function saveBulkScheduleRows(
+  rows: BulkScheduleSaveRowInput[]
+): Promise<BulkScheduleSaveResult[]> {
+  await requireEmployeeRole("admin")
+
+  if (rows.length === 0) {
+    return []
+  }
+
+  const supabase = createServerSupabaseClient()
+  const results: BulkScheduleSaveResult[] = []
+  const touchedBoothIds = new Set<string>()
+
+  for (const row of rows) {
+    const parsed = parseScheduleRowInput(row)
+    if (!parsed.value) {
+      results.push({
+        rowKey: row.rowKey,
+        ok: false,
+        error: parsed.error,
+      })
+      continue
+    }
+
+    const conflicts = await getScheduleConflictDates(supabase, {
+      employeeIds: parsed.value.employeeIds,
+      targetDates: [parsed.value.date],
+      startTime: parsed.value.startTime,
+      endTime: parsed.value.endTime,
+      ignoreScheduleId: parsed.value.id,
+    })
+
+    if (conflicts.error) {
+      results.push({
+        rowKey: row.rowKey,
+        ok: false,
+        error: conflicts.error,
+      })
+      continue
+    }
+
+    if (conflicts.dates.length > 0) {
+      results.push({
+        rowKey: row.rowKey,
+        ok: false,
+        error: buildScheduleConflictMessage(conflicts.dates),
+      })
+      continue
+    }
+
+    const persisted = await persistScheduleRow(supabase, parsed.value)
+    if (persisted.error) {
+      results.push({
+        rowKey: row.rowKey,
+        ok: false,
+        error: persisted.error,
+      })
+      continue
+    }
+
+    touchedBoothIds.add(parsed.value.boothId)
+    results.push({
+      rowKey: row.rowKey,
+      ok: true,
+      row: buildBulkEditableRow(parsed.value, persisted.id),
+    })
+  }
+
+  if (touchedBoothIds.size > 0) {
+    revalidateBoothRoutes(Array.from(touchedBoothIds))
+  }
+
+  return results
+}
+
 export async function saveBoothSchedule(
   input: ScheduleFormInput
 ): Promise<AdminActionResult> {
@@ -510,81 +789,49 @@ export async function saveBoothSchedule(
       ? [value.date]
       : enumerateDateRange(value.startDate, value.endDate)
 
-  const { data: assignmentRows, error: conflictsError } =
-    value.employeeIds.length === 0
-      ? { data: [], error: null }
-      : await supabase
-          .from("booth_schedule_assignments")
-          .select(
-            "employee_id, booth_schedules!inner(id, date, start_time, end_time, status)"
-          )
-          .in("employee_id", value.employeeIds)
-          .in("booth_schedules.date", targetDates)
-          .eq("booth_schedules.status", "scheduled")
-
-  if (conflictsError) {
-    return { ok: false, error: getActionErrorMessage(conflictsError.message) }
-  }
-
-  const conflictDates = new Set<string>()
-  ;(assignmentRows ?? []).forEach((row) => {
-    const schedule = row.booth_schedules
-    if (!schedule) {
-      return
-    }
-
-    if (value.mode === "edit" && schedule.id === value.id) {
-      return
-    }
-
-    if (
-      schedule.start_time < value.endTime &&
-      schedule.end_time > value.startTime
-    ) {
-      conflictDates.add(schedule.date)
-    }
+  const conflicts = await getScheduleConflictDates(supabase, {
+    employeeIds: value.employeeIds,
+    targetDates,
+    startTime: value.startTime,
+    endTime: value.endTime,
+    ignoreScheduleId: value.mode === "edit" ? value.id : undefined,
   })
 
-  if (conflictDates.size > 0) {
-    const sortedDates = Array.from(conflictDates).sort()
-    const conflictLabel =
-      sortedDates.length <= 4
-        ? sortedDates.join(", ")
-        : `${sortedDates.slice(0, 4).join(", ")}, and ${sortedDates.length - 4} more`
+  if (conflicts.error) {
+    return { ok: false, error: conflicts.error }
+  }
 
+  if (conflicts.dates.length > 0) {
     return {
       ok: false,
-      error: `An assigned employee already has an overlapping shift on: ${conflictLabel}.`,
+      error: buildScheduleConflictMessage(conflicts.dates),
     }
   }
 
-  const rpcResult =
-    value.mode === "edit"
-      ? await supabase.rpc("save_booth_schedule", {
-          p_schedule_id: value.id,
-          p_booth_id: value.boothId,
-          p_employee_ids: value.employeeIds,
-          p_operator_employee_id: value.operatorEmployeeId,
-          p_date: value.date,
-          p_start_time: value.startTime,
-          p_end_time: value.endTime,
-          p_current_date: getBusinessDate(),
-          p_current_time: getBusinessTime(),
-        })
-      : await supabase.rpc("save_booth_schedule_range", {
-          p_booth_id: value.boothId,
-          p_employee_ids: value.employeeIds,
-          p_operator_employee_id: value.operatorEmployeeId,
-          p_start_date: value.startDate,
-          p_end_date: value.endDate,
-          p_start_time: value.startTime,
-          p_end_time: value.endTime,
-          p_current_date: getBusinessDate(),
-          p_current_time: getBusinessTime(),
-        })
+  if (value.mode === "edit") {
+    const persisted = await persistScheduleRow(supabase, value)
+    if (persisted.error) {
+      return { ok: false, error: persisted.error }
+    }
+  } else {
+    const rpcResult = await supabase.rpc("save_booth_schedule_range", {
+      p_booth_id: value.boothId,
+      p_employee_ids: value.employeeIds,
+      p_operator_employee_id: value.operatorEmployeeId,
+      p_start_date: value.startDate,
+      p_end_date: value.endDate,
+      p_start_time: value.startTime,
+      p_end_time: value.endTime,
+      p_current_date: getBusinessDate(),
+      p_current_time: getBusinessTime(),
+    })
 
-  if (rpcResult.error) {
-    return { ok: false, error: getActionErrorMessage(rpcResult.error.message) }
+    if (rpcResult.error) {
+      return {
+        ok: false,
+        error: getActionErrorMessage(rpcResult.error.message),
+      }
+    }
   }
 
   revalidateBoothRoutes(value.boothId)

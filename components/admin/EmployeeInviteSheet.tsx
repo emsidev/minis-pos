@@ -134,7 +134,7 @@ export function EmployeeInviteSheet({
         side="right"
         className="flex h-full w-full max-w-xl flex-col p-0"
       >
-        <div className="shrink-0 border-b border-border px-6 pb-5 pt-6">
+        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
           <SheetTitle>Invite Employee</SheetTitle>
           <SheetDescription>
             Create the employee record, choose their access level, and send the
@@ -216,7 +216,7 @@ export function EmployeeInviteSheet({
             </FieldGroup>
           </form>
         </div>
-        <footer className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
           <Button
             type="button"
             variant="outline"

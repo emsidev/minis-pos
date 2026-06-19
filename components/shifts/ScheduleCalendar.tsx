@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
@@ -12,6 +13,7 @@ import {
 } from "@/app/actions/shifts"
 import { LoadingBanner } from "@/components/shared/LoadingSkeletons"
 import { AllBoothsBrowseCalendar } from "@/components/shifts/AllBoothsBrowseCalendar"
+import { ShiftCloseoutSheet } from "@/components/shifts/ShiftCloseoutSheet"
 import { ShiftDetailSheet } from "@/components/shifts/ShiftDetailSheet"
 import { Button } from "@/components/ui/button"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
@@ -29,7 +31,7 @@ import type {
   ShiftDetailData,
   SharedBoothSchedule,
 } from "@/lib/shifts"
-import { getBusinessDate } from "@/lib/utils"
+import { getBusinessDate, hasBusinessShiftPassed } from "@/lib/utils"
 
 type ScheduleCalendarProps = {
   employeeId: string
@@ -115,6 +117,7 @@ export function ScheduleCalendar({
   browseSchedules,
   preferCachedData = false,
 }: ScheduleCalendarProps) {
+  const router = useRouter()
   const businessDate = getBusinessDate()
   const initialMonth = getBusinessMonthStart()
   const initialMonthKey = getMonthKey(initialMonth)
@@ -127,6 +130,7 @@ export function ScheduleCalendar({
     useState<ScheduleBrowserItem | null>(null)
   const [shiftData, setShiftData] = useState<ShiftDetailData>(emptyShiftDetail)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [closeoutOpen, setCloseoutOpen] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isOnline, setIsOnline] = useState(() =>
     typeof window === "undefined" ? true : window.navigator.onLine
@@ -321,11 +325,49 @@ export function ScheduleCalendar({
   const selectedScheduleStatus =
     shiftData.schedule?.status ?? selectedSchedule?.status
   const isAssignedToSelected = selectedSchedule?.is_assigned ?? false
+  const selectedDetailSchedule = shiftData.schedule
+  const selectedOperatorCanClose =
+    selectedDetailSchedule?.operator_employee_id === employeeId &&
+    selectedDetailSchedule.status === "scheduled" &&
+    hasBusinessShiftPassed(
+      selectedDetailSchedule.date,
+      selectedDetailSchedule.end_time
+    )
   const canJoinSelectedSchedule =
     Boolean(selectedSchedule) &&
     !isAssignedToSelected &&
     selectedScheduleStatus === "scheduled" &&
     isOnline
+
+  const handleCloseoutSaved = () => {
+    if (!selectedDetailSchedule) {
+      return
+    }
+
+    const scheduleId = selectedDetailSchedule.id
+
+    setSelectedSchedule((current) =>
+      current && current.id === scheduleId
+        ? { ...current, status: "closed" }
+        : current
+    )
+    setCurrentMonthSchedules((current) =>
+      current.map((schedule) =>
+        schedule.id === scheduleId
+          ? { ...schedule, status: "closed" }
+          : schedule
+      )
+    )
+    setShiftData((current) =>
+      current.schedule?.id === scheduleId
+        ? {
+            ...current,
+            schedule: { ...current.schedule, status: "closed" },
+          }
+        : current
+    )
+    router.refresh()
+  }
 
   return (
     <>
@@ -333,11 +375,11 @@ export function ScheduleCalendar({
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             <p className="app-kicker">All Booths</p>
-            <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            <h2 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
               {monthName}{" "}
-              <span className="font-medium text-muted-foreground">{year}</span>
+              <span className="text-muted-foreground font-medium">{year}</span>
             </h2>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-muted-foreground text-sm">
               Tap any shift to view details. Joined shifts open in normal mode,
               and available shifts can be joined from the same sheet.
             </p>
@@ -393,13 +435,13 @@ export function ScheduleCalendar({
         ) : null}
 
         {usingFallbackCalendar ? (
-          <div className="rounded-[var(--radius)] border border-border px-4 py-3 text-sm text-muted-foreground">
+          <div className="border-border text-muted-foreground rounded-[var(--radius)] border px-4 py-3 text-sm">
             {preferCachedData || !isOnline
               ? "Offline view is limited to your cached joined shifts. Reconnect once to browse the full All Booths calendar."
               : monthLoadError}
           </div>
         ) : monthLoadError ? (
-          <div className="border-destructive/20 bg-destructive/5 rounded-[var(--radius)] border px-4 py-3 text-sm text-destructive">
+          <div className="border-destructive/20 bg-destructive/5 text-destructive rounded-[var(--radius)] border px-4 py-3 text-sm">
             {monthLoadError}
           </div>
         ) : null}
@@ -412,7 +454,7 @@ export function ScheduleCalendar({
         />
 
         {visibleMonthSchedules.length === 0 ? (
-          <div className="rounded-[var(--radius)] border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+          <div className="border-border text-muted-foreground rounded-[var(--radius)] border border-dashed px-4 py-6 text-center text-sm">
             No booth shifts are visible for this month.
           </div>
         ) : null}
@@ -429,8 +471,29 @@ export function ScheduleCalendar({
         readOnly={!isAssignedToSelected}
         canJoin={canJoinSelectedSchedule}
         joinPending={isJoiningShift}
-        onJoin={handleJoinSelectedSchedule}
+        onJoin={
+          canJoinSelectedSchedule ? handleJoinSelectedSchedule : undefined
+        }
+        canCloseShift={selectedOperatorCanClose}
+        onCloseShift={
+          selectedOperatorCanClose
+            ? () => {
+                setSheetOpen(false)
+                setCloseoutOpen(true)
+              }
+            : undefined
+        }
       />
+      {selectedDetailSchedule ? (
+        <ShiftCloseoutSheet
+          open={closeoutOpen}
+          onOpenChange={setCloseoutOpen}
+          schedule={selectedDetailSchedule}
+          products={shiftData.products}
+          sales={shiftData.sales}
+          onSaved={handleCloseoutSaved}
+        />
+      ) : null}
     </>
   )
 }

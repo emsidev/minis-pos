@@ -9,14 +9,15 @@ import { ShiftPageClient } from "@/components/shifts/ShiftPageClient"
 import type { Product, SaleWithJoins, SharedBoothSchedule } from "@/lib/shifts"
 
 type ShiftDetailsPageProps = {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export default async function ShiftDetailsPage({
   params,
 }: ShiftDetailsPageProps) {
+  const { id } = await params
   const { employee, profileSource } = await requireEmployeeRole([
     "employee",
     "admin",
@@ -29,7 +30,7 @@ export default async function ShiftDetailsPage({
 
   if (profileSource !== "snapshot") {
     try {
-      schedule = await getBoothScheduleById(params.id)
+      schedule = await getBoothScheduleById(id)
       if (schedule) {
         ;[products, sales, availableProducts] = await Promise.all([
           getBoothScheduleProducts(schedule.id),
@@ -47,7 +48,7 @@ export default async function ShiftDetailsPage({
       employeeId={employee.id}
       employeeRole={employee.role}
       mode="fixed"
-      scheduleId={params.id}
+      scheduleId={id}
       initialData={{
         schedule,
         products,

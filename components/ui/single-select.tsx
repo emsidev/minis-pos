@@ -97,7 +97,7 @@ function SingleSelect({
       {open ? (
         <div
           className={cn(
-            "absolute left-0 right-0 top-full z-50 mt-2 max-h-64 overflow-y-auto rounded-[calc(var(--radius)-0.2rem)] border border-border bg-popover p-1 shadow-md",
+            "border-border bg-popover absolute top-full right-0 left-0 z-50 mt-2 max-h-64 overflow-y-auto rounded-[calc(var(--radius)-0.2rem)] border p-1 shadow-md",
             contentClassName
           )}
         >
@@ -110,7 +110,7 @@ function SingleSelect({
                 aria-selected={value === option.value}
                 onClick={() => handleSelect(option.value)}
                 className={cn(
-                  "rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted",
+                  "hover:bg-muted rounded-md px-3 py-2 text-left text-sm transition-colors",
                   value === option.value && "bg-primary/10 text-foreground"
                 )}
               >

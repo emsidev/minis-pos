@@ -28,8 +28,8 @@ function readRequiredFormString(formData: FormData, key: string) {
 }
 
 export async function requestMagicLinkAction(formData: FormData) {
-  const origin = getRequestOrigin()
-  const cookieStore = cookies()
+  const origin = await getRequestOrigin()
+  const cookieStore = await cookies()
 
   if (!isSupabaseConfigured) {
     redirect(buildLoginUrl(origin, { error: "config" }))
@@ -60,8 +60,8 @@ export async function requestMagicLinkAction(formData: FormData) {
 }
 
 export async function signInWithPasswordAction(formData: FormData) {
-  const origin = getRequestOrigin()
-  const cookieStore = cookies()
+  const origin = await getRequestOrigin()
+  const cookieStore = await cookies()
 
   if (!isSupabaseConfigured) {
     redirect(buildLoginUrl(origin, { error: "config" }))
@@ -121,8 +121,8 @@ export async function signInWithPasswordAction(formData: FormData) {
 }
 
 export async function requestPasswordResetAction(formData: FormData) {
-  const origin = getRequestOrigin()
-  const cookieStore = cookies()
+  const origin = await getRequestOrigin()
+  const cookieStore = await cookies()
 
   if (!isSupabaseConfigured) {
     redirect(buildForgotPasswordUrl(origin, { error: "config" }))
@@ -164,8 +164,8 @@ export async function requestPasswordResetAction(formData: FormData) {
 }
 
 export async function updatePasswordAction(formData: FormData) {
-  const origin = getRequestOrigin()
-  const cookieStore = cookies()
+  const origin = await getRequestOrigin()
+  const cookieStore = await cookies()
 
   if (!isSupabaseConfigured) {
     redirect(buildResetPasswordUrl(origin, { error: "config" }))
@@ -243,7 +243,7 @@ export async function updatePasswordAction(formData: FormData) {
 }
 
 export async function signOutAction() {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
 
   if (isSupabaseConfigured) {
     const supabase = createServerSupabaseClient()

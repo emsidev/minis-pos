@@ -75,18 +75,18 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
       >
         <TableCell className="w-10 p-0 pl-4">
           {isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            <ChevronDown className="text-muted-foreground h-4 w-4" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="text-muted-foreground h-4 w-4" />
           )}
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-3">
-            <div className="bg-primary/10 flex h-9 w-9 items-center justify-center rounded-full text-primary">
+            <div className="bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-full">
               <Receipt className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">
+              <p className="text-foreground text-sm font-semibold">
                 {sale.created_at
                   ? new Date(sale.created_at).toLocaleTimeString("en-PH", {
                       hour: "numeric",
@@ -94,7 +94,7 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
                     })
                   : "Time unavailable"}
               </p>
-              <p className="text-[0.65rem] uppercase tracking-wider text-muted-foreground">
+              <p className="text-muted-foreground text-[0.65rem] tracking-wider uppercase">
                 ID: {sale.id.slice(0, 8)}
               </p>
             </div>
@@ -104,7 +104,7 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
           <Badge
             variant="outline"
             className={cn(
-              "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold uppercase tracking-wider",
+              "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold tracking-wider uppercase",
               sale.payment_method === "cash"
                 ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                 : "border-secondary/20 bg-secondary/10 text-secondary"
@@ -113,7 +113,7 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
             {sale.payment_method}
           </Badge>
         </TableCell>
-        <TableCell className="text-right font-bold text-foreground">
+        <TableCell className="text-foreground text-right font-bold">
           {formatCurrency(Number(sale.total_amount))}
         </TableCell>
       </TableRow>
@@ -121,20 +121,20 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
         <TableRow className="bg-surface-container-low/30 hover:bg-surface-container-low/30">
           <TableCell colSpan={4} className="p-0">
             <div className="space-y-3 px-14 py-4">
-              <h4 className="text-[0.62rem] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              <h4 className="text-muted-foreground text-[0.62rem] font-bold tracking-[0.2em] uppercase">
                 Sale Items
               </h4>
               {isPending ? (
-                <div className="flex animate-pulse items-center gap-2 py-2 text-xs text-muted-foreground">
+                <div className="text-muted-foreground flex animate-pulse items-center gap-2 py-2 text-xs">
                   <div className="bg-primary/40 h-2 w-2 rounded-full" />
                   Loading items...
                 </div>
               ) : loadError ? (
-                <p className="py-2 text-xs text-muted-foreground">
+                <p className="text-muted-foreground py-2 text-xs">
                   {loadError}
                 </p>
               ) : items.length === 0 ? (
-                <p className="py-2 text-xs text-muted-foreground">
+                <p className="text-muted-foreground py-2 text-xs">
                   No items found for this sale.
                 </p>
               ) : (
@@ -145,7 +145,7 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
                       className="flex items-center justify-between text-sm"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground">
+                        <span className="text-foreground font-medium">
                           {item.quantity}x
                         </span>
                         <span className="text-muted-foreground">
@@ -158,7 +158,7 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
                     </div>
                   ))}
                   <div className="bg-border/50 my-2 h-px" />
-                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+                  <div className="flex items-center justify-between text-xs font-bold tracking-wider uppercase">
                     <span>Total</span>
                     <span className="text-primary">
                       {formatCurrency(Number(sale.total_amount))}
@@ -187,10 +187,10 @@ export function SalesTable({
     return (
       <div className="app-panel-muted flex min-h-[14rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
         <Receipt className="text-primary/35 h-10 w-10" />
-        <h3 className="text-lg font-semibold text-foreground">
+        <h3 className="text-foreground text-lg font-semibold">
           No sales recorded
         </h3>
-        <p className="max-w-[200px] text-sm text-muted-foreground">
+        <p className="text-muted-foreground max-w-[200px] text-sm">
           Transactions will appear here once they are completed.
         </p>
       </div>
@@ -203,13 +203,13 @@ export function SalesTable({
         <TableHeader className="bg-surface-container-low">
           <TableRow>
             <TableHead className="w-10"></TableHead>
-            <TableHead className="text-[0.62rem] uppercase tracking-[0.2em]">
+            <TableHead className="text-[0.62rem] tracking-[0.2em] uppercase">
               Transaction
             </TableHead>
-            <TableHead className="text-[0.62rem] uppercase tracking-[0.2em]">
+            <TableHead className="text-[0.62rem] tracking-[0.2em] uppercase">
               Payment
             </TableHead>
-            <TableHead className="text-right text-[0.62rem] uppercase tracking-[0.2em]">
+            <TableHead className="text-right text-[0.62rem] tracking-[0.2em] uppercase">
               Amount
             </TableHead>
           </TableRow>

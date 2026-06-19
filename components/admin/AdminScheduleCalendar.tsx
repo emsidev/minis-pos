@@ -142,7 +142,7 @@ export function AdminScheduleCalendar({
           <p className="app-kicker">Schedule Calendar</p>
           <h2 className="app-section-title">
             {monthName}{" "}
-            <span className="font-normal text-muted-foreground">{year}</span>
+            <span className="text-muted-foreground font-normal">{year}</span>
           </h2>
         </div>
         <div className="flex items-center gap-2">
@@ -179,11 +179,11 @@ export function AdminScheduleCalendar({
         </div>
       </header>
 
-      <div className="bg-border/60 grid grid-cols-7 gap-px overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border border-border">
+      <div className="bg-border/60 border-border grid grid-cols-7 gap-px overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
           <div
             key={day}
-            className="bg-muted px-2 py-3 text-center text-xs font-medium text-muted-foreground"
+            className="bg-muted text-muted-foreground px-2 py-3 text-center text-xs font-medium"
           >
             {day}
           </div>
@@ -202,7 +202,7 @@ export function AdminScheduleCalendar({
             <div
               key={date}
               className={cn(
-                "min-h-24 bg-card p-1.5 sm:min-h-32 sm:p-2",
+                "bg-card min-h-24 p-1.5 sm:min-h-32 sm:p-2",
                 date === businessDate && "bg-primary/5"
               )}
             >
@@ -222,15 +222,15 @@ export function AdminScheduleCalendar({
                       type="button"
                       onClick={() => onSelectSchedule(schedule.id)}
                       className={cn(
-                        "focus-visible:ring-3 focus-visible:ring-ring/50 w-full rounded-lg border bg-background px-1.5 py-1 text-left text-[0.62rem] transition-colors hover:bg-muted focus-visible:outline-none sm:text-xs",
+                        "focus-visible:ring-ring/50 bg-background hover:bg-muted w-full rounded-lg border px-1.5 py-1 text-left text-[0.62rem] transition-colors focus-visible:ring-3 focus-visible:outline-none sm:text-xs",
                         getScheduleCardClassName(schedule.status)
                       )}
                     >
                       <span className="flex items-center gap-1 font-medium">
                         {boothDetailMode ? (
-                          <Clock className="size-3 shrink-0 text-primary" />
+                          <Clock className="text-primary size-3 shrink-0" />
                         ) : (
-                          <Store className="size-3 shrink-0 text-primary" />
+                          <Store className="text-primary size-3 shrink-0" />
                         )}
                         <span className="truncate">
                           {boothDetailMode
@@ -238,13 +238,13 @@ export function AdminScheduleCalendar({
                             : schedule.booths.name}
                         </span>
                       </span>
-                      <span className="block truncate text-muted-foreground">
+                      <span className="text-muted-foreground block truncate">
                         {schedule.start_time.slice(0, 5)} -{" "}
                         {schedule.end_time.slice(0, 5)}
                       </span>
                       {!boothDetailMode &&
                       schedule.booth_schedule_assignments.length > 0 ? (
-                        <span className="block truncate text-muted-foreground">
+                        <span className="text-muted-foreground block truncate">
                           {schedule.booth_schedule_assignments
                             .map(
                               (assignment) =>
@@ -263,7 +263,7 @@ export function AdminScheduleCalendar({
                       ) : schedule.status === "closed" ? (
                         <Badge
                           variant="outline"
-                          className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] uppercase text-emerald-700"
+                          className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] text-emerald-700 uppercase"
                         >
                           Closed
                         </Badge>
@@ -274,15 +274,15 @@ export function AdminScheduleCalendar({
                       key={schedule.id}
                       href={`/admin/booths/${schedule.booth_id}`}
                       className={cn(
-                        "rounded-lg border bg-background px-1.5 py-1 text-[0.62rem] transition-colors hover:bg-muted sm:text-xs",
+                        "bg-background hover:bg-muted rounded-lg border px-1.5 py-1 text-[0.62rem] transition-colors sm:text-xs",
                         getScheduleCardClassName(schedule.status)
                       )}
                     >
                       <span className="flex items-center gap-1 font-medium">
                         {boothDetailMode ? (
-                          <Clock className="size-3 shrink-0 text-primary" />
+                          <Clock className="text-primary size-3 shrink-0" />
                         ) : (
-                          <Store className="size-3 shrink-0 text-primary" />
+                          <Store className="text-primary size-3 shrink-0" />
                         )}
                         <span className="truncate">
                           {boothDetailMode
@@ -290,7 +290,7 @@ export function AdminScheduleCalendar({
                             : schedule.booths.name}
                         </span>
                       </span>
-                      <span className="block truncate text-muted-foreground">
+                      <span className="text-muted-foreground block truncate">
                         {schedule.start_time.slice(0, 5)} -{" "}
                         {schedule.end_time.slice(0, 5)}
                       </span>
@@ -304,7 +304,7 @@ export function AdminScheduleCalendar({
                       ) : schedule.status === "closed" ? (
                         <Badge
                           variant="outline"
-                          className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] uppercase text-emerald-700"
+                          className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] text-emerald-700 uppercase"
                         >
                           Closed
                         </Badge>

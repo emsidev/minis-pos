@@ -35,7 +35,7 @@ export function DataTableColumnHeader<TData, TValue>({
       variant="ghost"
       size="sm"
       className={cn(
-        "hover:bg-muted/80 h-8 px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground",
+        "hover:bg-muted/80 text-muted-foreground hover:text-foreground h-8 px-2 text-xs font-semibold tracking-[0.18em] uppercase",
         align === "right" && "ml-auto",
         className
       )}

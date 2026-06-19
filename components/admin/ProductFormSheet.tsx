@@ -121,7 +121,7 @@ export function ProductFormSheet({
         side="right"
         className="flex h-full w-full max-w-xl flex-col p-0"
       >
-        <div className="shrink-0 border-b border-border px-6 pb-5 pt-6">
+        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
           <SheetTitle>{product ? "Edit Product" : "Add Product"}</SheetTitle>
           <SheetDescription>
             Keep the product catalog accurate for Counter and shift inventory
@@ -204,7 +204,7 @@ export function ProductFormSheet({
             </FieldGroup>
           </form>
         </div>
-        <footer className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
           <Button
             type="button"
             variant="outline"

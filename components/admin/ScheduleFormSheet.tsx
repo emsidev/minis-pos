@@ -179,7 +179,7 @@ export function ScheduleFormSheet({
         side="right"
         className="flex h-full w-full max-w-xl flex-col p-0"
       >
-        <div className="shrink-0 border-b border-border px-6 pb-5 pt-6">
+        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
           <SheetTitle>{schedule ? "Edit Shift" : "Schedule Shift"}</SheetTitle>
           <SheetDescription>
             Assign the booth team and time slot. A shift can stay unassigned
@@ -196,7 +196,7 @@ export function ScheduleFormSheet({
               <Field>
                 <FieldLabel>Booth</FieldLabel>
                 {boothLocked ? (
-                  <p className="text-sm font-medium text-foreground">
+                  <p className="text-foreground text-sm font-medium">
                     {lockedBoothName}
                   </p>
                 ) : booths.length === 0 ? (
@@ -331,7 +331,7 @@ export function ScheduleFormSheet({
             </FieldGroup>
           </form>
         </div>
-        <footer className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
           <Button
             type="button"
             variant="outline"

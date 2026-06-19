@@ -185,8 +185,8 @@ export function BoothLocationPicker({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-[calc(var(--radius)-0.2rem)] border border-input bg-background px-3.5 py-3">
-        <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
+      <div className="border-input bg-background rounded-[calc(var(--radius)-0.2rem)] border px-3.5 py-3">
+        <div className="text-foreground mb-3 flex items-center gap-2 text-sm font-medium">
           <Search data-icon="inline-start" className="size-4" />
           Pin Location
           {isSearching ? (
@@ -233,7 +233,7 @@ export function BoothLocationPicker({
                 onClick={() => handleSelectResult(result)}
               >
                 <div className="flex flex-col items-start gap-1 whitespace-normal">
-                  <span className="text-sm font-medium text-foreground">
+                  <span className="text-foreground text-sm font-medium">
                     {result.raw.display_name?.trim() || result.label}
                   </span>
                 </div>
@@ -245,7 +245,7 @@ export function BoothLocationPicker({
 
       {searchError ? <FieldDescription>{searchError}</FieldDescription> : null}
 
-      <div className="overflow-hidden rounded-[calc(var(--radius)-0.2rem)] border border-border">
+      <div className="border-border overflow-hidden rounded-[calc(var(--radius)-0.2rem)] border">
         <BoothMapCanvas
           bounds={searchBounds}
           center={selectedCoordinates}
