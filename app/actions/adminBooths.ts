@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { requireEmployeeRole } from "@/lib/auth"
 import {
+  type AdminShiftDetailData,
   getAdminScheduleById,
   getAdminScheduleCalendarItems,
 } from "@/lib/adminBooths"
@@ -12,6 +13,7 @@ import type { Booth } from "@/lib/shifts"
 import type { Json } from "@/lib/database.types"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { getBusinessDate, getBusinessTime } from "@/lib/utils"
+import { getBoothScheduleSales } from "@/lib/shifts"
 
 export type BoothFormInput = {
   id?: string
@@ -25,7 +27,7 @@ export type BoothFormInput = {
 type ScheduleFormInputBase = {
   boothId: string
   employeeIds: string[]
-  operatorEmployeeId: string
+  operatorEmployeeId: string | null
   startTime: string
   endTime: string
 }
@@ -63,14 +65,45 @@ export async function loadAdminScheduleCalendarItems(
   return getAdminScheduleCalendarItems(startDate, endDate, boothId)
 }
 
-export async function loadAdminScheduleDetail(scheduleId: string) {
+export async function loadAdminShiftDetail(
+  scheduleId: string
+): Promise<AdminShiftDetailData> {
   await requireEmployeeRole("admin")
 
   if (!scheduleId.trim()) {
-    return null
+    return {
+      schedule: null,
+      products: [],
+      sales: [],
+    }
   }
 
-  return getAdminScheduleById(scheduleId)
+  const schedule = await getAdminScheduleById(scheduleId)
+  if (!schedule) {
+    return {
+      schedule: null,
+      products: [],
+      sales: [],
+    }
+  }
+
+  const sales = await getBoothScheduleSales(scheduleId)
+
+  return {
+    schedule,
+    products: schedule.booth_schedule_products.flatMap((item) =>
+      item.products
+        ? [
+            {
+              ...item.products,
+              quantity: item.quantity,
+              stock: item.stock,
+            },
+          ]
+        : []
+    ),
+    sales,
+  }
 }
 
 export type InventoryOverrideInput = {
@@ -194,20 +227,21 @@ function parseScheduleInput(input: ScheduleFormInput): {
   value?: ParsedScheduleInput
   error?: string
 } {
+  const operatorEmployeeId = input.operatorEmployeeId?.trim() || null
   const employeeIds = Array.from(
     new Set(
       input.employeeIds.map((employeeId) => employeeId.trim()).filter(Boolean)
     )
   )
 
-  if (!input.boothId || employeeIds.length === 0 || !input.operatorEmployeeId) {
+  if (!input.boothId) {
     return {
       error:
-        "Booth, employee, date or date range, start time, and end time are required.",
+        "Booth, date or date range, start time, and end time are required.",
     }
   }
 
-  if (!employeeIds.includes(input.operatorEmployeeId)) {
+  if (operatorEmployeeId && !employeeIds.includes(operatorEmployeeId)) {
     return { error: "Select a POS operator from the assigned employees." }
   }
 
@@ -228,7 +262,7 @@ function parseScheduleInput(input: ScheduleFormInput): {
         id: input.id,
         boothId: input.boothId,
         employeeIds,
-        operatorEmployeeId: input.operatorEmployeeId,
+        operatorEmployeeId,
         date: input.date,
         startTime: input.startTime,
         endTime: input.endTime,
@@ -259,7 +293,7 @@ function parseScheduleInput(input: ScheduleFormInput): {
       mode: "create-range",
       boothId: input.boothId,
       employeeIds,
-      operatorEmployeeId: input.operatorEmployeeId,
+      operatorEmployeeId,
       startDate: input.startDate,
       endDate: input.endDate,
       startTime: input.startTime,
@@ -304,7 +338,10 @@ function getActionErrorMessage(message: string) {
     message.includes("INVALID_ASSIGNMENTS") ||
     message.includes("OPERATOR_NOT_ASSIGNED")
   ) {
-    return "Assign at least one employee and choose a POS operator from the team."
+    return "If you choose a POS operator, they must also be part of the assigned team."
+  }
+  if (message.includes("LIVE_SHIFT_CORE_FIELDS_LOCKED")) {
+    return "Once a shift has started, only the assigned employees and POS operator can be changed."
   }
   if (message.includes("ACTIVE_INITIALIZED_SHIFT_REQUIRED")) {
     return "Stock overrides are available only for an active shift after opening inventory is saved."
@@ -473,14 +510,17 @@ export async function saveBoothSchedule(
       ? [value.date]
       : enumerateDateRange(value.startDate, value.endDate)
 
-  const { data: assignmentRows, error: conflictsError } = await supabase
-    .from("booth_schedule_assignments")
-    .select(
-      "employee_id, booth_schedules!inner(id, date, start_time, end_time, status)"
-    )
-    .in("employee_id", value.employeeIds)
-    .in("booth_schedules.date", targetDates)
-    .eq("booth_schedules.status", "scheduled")
+  const { data: assignmentRows, error: conflictsError } =
+    value.employeeIds.length === 0
+      ? { data: [], error: null }
+      : await supabase
+          .from("booth_schedule_assignments")
+          .select(
+            "employee_id, booth_schedules!inner(id, date, start_time, end_time, status)"
+          )
+          .in("employee_id", value.employeeIds)
+          .in("booth_schedules.date", targetDates)
+          .eq("booth_schedules.status", "scheduled")
 
   if (conflictsError) {
     return { ok: false, error: getActionErrorMessage(conflictsError.message) }

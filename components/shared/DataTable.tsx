@@ -1,6 +1,12 @@
 "use client"
 
-import { useDeferredValue, useMemo, useState, type ReactNode } from "react"
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react"
 import {
   flexRender,
   getCoreRowModel,
@@ -9,6 +15,7 @@ import {
   getSortedRowModel,
   useReactTable,
   type ColumnDef,
+  type PaginationState,
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table"
@@ -97,6 +104,10 @@ export function DataTable<TData, TValue>({
   const [columnVisibility, setColumnVisibility] =
     useState<VisibilityState>(initialVisibility)
   const [globalFilter, setGlobalFilter] = useState("")
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize,
+  })
   const deferredGlobalFilter = useDeferredValue(globalFilter)
   const searchTextCache = useMemo(() => {
     const nextCache = new WeakMap<object, string>()
@@ -132,6 +143,14 @@ export function DataTable<TData, TValue>({
       .trim()
   }
 
+  useEffect(() => {
+    setPagination((current) =>
+      current.pageSize === pageSize
+        ? { ...current, pageIndex: 0 }
+        : { pageIndex: 0, pageSize }
+    )
+  }, [data, deferredGlobalFilter, pageSize, sorting])
+
   const table = useReactTable({
     data,
     columns,
@@ -139,10 +158,12 @@ export function DataTable<TData, TValue>({
       sorting,
       columnVisibility,
       globalFilter: deferredGlobalFilter,
+      pagination,
     },
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -155,11 +176,6 @@ export function DataTable<TData, TValue>({
 
       return getCachedSearchText(row.original).includes(search)
     },
-    initialState: {
-      pagination: {
-        pageSize,
-      },
-    },
   })
 
   const hideableColumns = table
@@ -169,10 +185,9 @@ export function DataTable<TData, TValue>({
   const visibleColumnCount = table.getVisibleLeafColumns().length || 1
   const showToolbar =
     showSearch || showColumnVisibility || Boolean(toolbarContent)
+  const filteredRowCount = table.getFilteredRowModel().rows.length
   const showPagination =
-    enablePagination &&
-    table.getPageCount() > 1 &&
-    table.getRowModel().rows.length > 0
+    enablePagination && table.getPageCount() > 1 && filteredRowCount > 0
 
   return (
     <div className="flex flex-col gap-4">
@@ -265,8 +280,8 @@ export function DataTable<TData, TValue>({
 
       <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <p>
-          {table.getFilteredRowModel().rows.length} result
-          {table.getFilteredRowModel().rows.length === 1 ? "" : "s"}
+          {filteredRowCount} result
+          {filteredRowCount === 1 ? "" : "s"}
         </p>
 
         {showPagination ? (

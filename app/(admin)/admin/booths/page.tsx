@@ -1,4 +1,5 @@
 import { AdminBoothsClient } from "@/components/admin/AdminBoothsClient"
+import { requireEmployeeRole } from "@/lib/auth"
 import {
   getActiveEmployeeOptions,
   getAdminBooths,
@@ -18,6 +19,7 @@ function getCurrentMonthBounds() {
 }
 
 export default async function AdminBoothsPage() {
+  const { employee } = await requireEmployeeRole("admin")
   const { startDate, endDate } = getCurrentMonthBounds()
   const [booths, schedules, employees] = await Promise.all([
     getAdminBooths(),
@@ -30,6 +32,7 @@ export default async function AdminBoothsPage() {
       booths={booths}
       schedules={schedules}
       employees={employees}
+      currentEmployeeId={employee.id}
     />
   )
 }

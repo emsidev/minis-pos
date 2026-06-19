@@ -13,23 +13,18 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { cn, formatCurrency } from "@/lib/utils"
-import type { Product, SaleWithJoins } from "@/lib/shifts"
+import type { SaleItemWithProduct, SaleWithJoins } from "@/lib/shifts"
 import { getSaleItems } from "@/app/actions/shifts"
 import { cacheServerSaleItems, getCachedSaleItems } from "@/lib/offlineData"
 
-type SaleItems = Array<{
-  id: string
-  product_id: string | null
-  quantity: number
-  sale_id: string | null
-  subtotal: string
-  unit_price: string
-  products: Product | null
-}>
+type SaleRowProps = {
+  sale: SaleWithJoins
+  allowOfflineCache: boolean
+}
 
-function SaleRow({ sale }: { sale: SaleWithJoins }) {
+function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const [items, setItems] = useState<SaleItems>([])
+  const [items, setItems] = useState<SaleItemWithProduct[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -37,20 +32,28 @@ function SaleRow({ sale }: { sale: SaleWithJoins }) {
     if (!isExpanded && items.length === 0) {
       setLoadError(null)
       startTransition(async () => {
-        const cachedItems = await getCachedSaleItems(sale.id)
+        if (allowOfflineCache) {
+          const cachedItems = await getCachedSaleItems(sale.id)
 
-        if (cachedItems.length > 0 || !window.navigator.onLine) {
-          setItems(cachedItems)
-          setIsExpanded(true)
-          if (cachedItems.length === 0 && !window.navigator.onLine) {
-            setLoadError("Sale items are not available offline yet.")
+          if (cachedItems.length > 0 || !window.navigator.onLine) {
+            setItems(cachedItems)
+            setIsExpanded(true)
+            if (cachedItems.length === 0 && !window.navigator.onLine) {
+              setLoadError("Sale items are not available offline yet.")
+            }
+            return
           }
+        } else if (!window.navigator.onLine) {
+          setIsExpanded(true)
+          setLoadError("Reconnect to load sale items for this shift preview.")
           return
         }
 
         try {
           const data = await getSaleItems(sale.id)
-          await cacheServerSaleItems(data)
+          if (allowOfflineCache) {
+            await cacheServerSaleItems(data)
+          }
           setItems(data)
           setIsExpanded(true)
         } catch {
@@ -171,7 +174,15 @@ function SaleRow({ sale }: { sale: SaleWithJoins }) {
   )
 }
 
-export function SalesTable({ sales }: { sales: SaleWithJoins[] }) {
+type SalesTableProps = {
+  sales: SaleWithJoins[]
+  allowOfflineCache?: boolean
+}
+
+export function SalesTable({
+  sales,
+  allowOfflineCache = true,
+}: SalesTableProps) {
   if (sales.length === 0) {
     return (
       <div className="app-panel-muted flex min-h-[14rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
@@ -205,7 +216,11 @@ export function SalesTable({ sales }: { sales: SaleWithJoins[] }) {
         </TableHeader>
         <TableBody>
           {sales.map((sale) => (
-            <SaleRow key={sale.id} sale={sale} />
+            <SaleRow
+              key={sale.id}
+              sale={sale}
+              allowOfflineCache={allowOfflineCache}
+            />
           ))}
         </TableBody>
       </Table>

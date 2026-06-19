@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
   ChevronRight,
@@ -19,17 +20,17 @@ import { toast } from "sonner"
 import {
   cancelBoothSchedule,
   deactivateBooth,
-  loadAdminScheduleDetail,
+  loadAdminShiftDetail,
   reactivateBooth,
 } from "@/app/actions/adminBooths"
 import { BoothMapPreview } from "@/components/admin/BoothMapPreview"
 import { AdminScheduleCalendar } from "@/components/admin/AdminScheduleCalendar"
-import { AdminScheduleDetailSheet } from "@/components/admin/AdminScheduleDetailSheet"
 import { BoothFormSheet } from "@/components/admin/BoothFormSheet"
 import { InventoryOverrideSheet } from "@/components/admin/InventoryOverrideSheet"
 import { ScheduleFormSheet } from "@/components/admin/ScheduleFormSheet"
 import { ShiftReopenSheet } from "@/components/admin/ShiftReopenSheet"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import { ShiftDetailSheet } from "@/components/shifts/ShiftDetailSheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,9 +43,15 @@ import {
 } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { buildBoothMapLink, getBoothCoordinates } from "@/lib/boothMaps"
-import type { AdminEmployeeOption, AdminSchedule } from "@/lib/adminBooths"
+import { buildBoothAssignmentExportText } from "@/lib/scheduleExports"
+import type {
+  AdminEmployeeOption,
+  AdminSchedule,
+  AdminShiftDetailData,
+} from "@/lib/adminBooths"
 import type { Booth, Product } from "@/lib/shifts"
 import { hasBusinessShiftStarted, isCurrentBusinessShift } from "@/lib/utils"
+import { joinSchedule } from "@/app/actions/shifts"
 
 type AdminBoothDetailClientProps = {
   booth: Booth
@@ -52,10 +59,20 @@ type AdminBoothDetailClientProps = {
   employees: AdminEmployeeOption[]
   products: Product[]
   schedules: AdminSchedule[]
+  currentEmployeeId: string
 }
 
 function formatCoordinateLabel(value: number) {
   return value.toFixed(6)
+}
+
+function monthStartFromScheduleDate(value?: string) {
+  if (!value) {
+    return new Date()
+  }
+
+  const [year, month] = value.split("-").map(Number)
+  return new Date(year, Math.max(month - 1, 0), 1)
 }
 
 export function AdminBoothDetailClient({
@@ -64,7 +81,9 @@ export function AdminBoothDetailClient({
   employees,
   products,
   schedules,
+  currentEmployeeId,
 }: AdminBoothDetailClientProps) {
+  const router = useRouter()
   const [displayBooth, setDisplayBooth] = useState(booth)
   const [displayBooths, setDisplayBooths] = useState(booths)
   const [displaySchedules, setDisplaySchedules] = useState(schedules)
@@ -73,9 +92,14 @@ export function AdminBoothDetailClient({
   const [editingSchedule, setEditingSchedule] = useState<AdminSchedule | null>(
     null
   )
-  const [selectedSchedule, setSelectedSchedule] =
-    useState<AdminSchedule | null>(null)
+  const [selectedDetail, setSelectedDetail] =
+    useState<AdminShiftDetailData | null>(null)
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false)
+  const [scheduleDetailLoading, setScheduleDetailLoading] = useState(false)
+  const [scheduleDetailError, setScheduleDetailError] = useState<string | null>(
+    null
+  )
+  const [joiningSchedule, setJoiningSchedule] = useState(false)
   const [cancellingSchedule, setCancellingSchedule] =
     useState<AdminSchedule | null>(null)
   const [overridingSchedule, setOverridingSchedule] =
@@ -99,34 +123,6 @@ export function AdminBoothDetailClient({
     setDisplaySchedules(schedules)
   }, [schedules])
 
-  useEffect(() => {
-    setSelectedSchedule((current) => {
-      if (!current) {
-        return null
-      }
-
-      const nextSummary = displaySchedules.find(
-        (schedule) => schedule.id === current.id
-      )
-
-      if (!nextSummary) {
-        return current
-      }
-
-      return {
-        ...nextSummary,
-        booth_schedule_operator_periods:
-          nextSummary.booth_schedule_operator_periods.length > 0
-            ? nextSummary.booth_schedule_operator_periods
-            : current.booth_schedule_operator_periods,
-        inventory_events:
-          nextSummary.inventory_events.length > 0
-            ? nextSummary.inventory_events
-            : current.inventory_events,
-      }
-    })
-  }, [displaySchedules])
-
   const openScheduleCreate = () => {
     setEditingSchedule(null)
     setScheduleFormOpen(true)
@@ -137,20 +133,64 @@ export function AdminBoothDetailClient({
     setScheduleFormOpen(true)
   }
 
-  const openScheduleDetails = async (scheduleId: string) => {
+  const loadScheduleDetails = async (scheduleId: string) => {
     try {
-      const schedule = await loadAdminScheduleDetail(scheduleId)
-      if (!schedule) {
+      const detail = await loadAdminShiftDetail(scheduleId)
+      if (!detail.schedule) {
+        setSelectedDetail(null)
+        setScheduleDetailError("This shift is no longer available.")
         toast.error("This shift is no longer available.")
         return
       }
 
-      setSelectedSchedule(schedule)
-      setScheduleDetailOpen(true)
+      setSelectedDetail(detail)
+      setScheduleDetailError(null)
     } catch (error) {
       console.error("Unable to load shift details:", error)
+      setSelectedDetail(null)
+      setScheduleDetailError("Unable to load shift details.")
       toast.error("Unable to load shift details.")
+    } finally {
+      setScheduleDetailLoading(false)
     }
+  }
+
+  const openScheduleDetails = (scheduleId: string) => {
+    setScheduleDetailOpen(true)
+    setScheduleDetailLoading(true)
+    setScheduleDetailError(null)
+    setSelectedDetail(null)
+    void loadScheduleDetails(scheduleId)
+  }
+
+  const selectedSchedule = selectedDetail?.schedule ?? null
+  const adminAssignedToSelected =
+    selectedSchedule?.booth_schedule_assignments.some(
+      (assignment) => assignment.employee_id === currentEmployeeId
+    ) ?? false
+  const canJoinSelectedSchedule =
+    selectedSchedule !== null &&
+    selectedSchedule.status === "scheduled" &&
+    !adminAssignedToSelected
+
+  const handleJoinSelectedSchedule = async () => {
+    if (!selectedSchedule) {
+      return
+    }
+
+    setJoiningSchedule(true)
+    const result = await joinSchedule(selectedSchedule.id)
+    setJoiningSchedule(false)
+
+    if (!result.ok) {
+      toast.error(result.error ?? "Unable to join this shift.")
+      return
+    }
+
+    toast.success(result.message)
+    router.refresh()
+    setScheduleDetailLoading(true)
+    void loadScheduleDetails(selectedSchedule.id)
   }
 
   const openScheduleEditFromDetails = () => {
@@ -211,6 +251,7 @@ export function AdminBoothDetailClient({
       )
     )
     toast.success(result.message)
+    router.refresh()
   }
 
   const handleDeactivate = async () => {
@@ -227,6 +268,7 @@ export function AdminBoothDetailClient({
       )
     )
     toast.success(result.message)
+    router.refresh()
   }
 
   const handleReactivate = async () => {
@@ -261,6 +303,29 @@ export function AdminBoothDetailClient({
       toast.success("Map link copied.")
     } catch {
       toast.error("Unable to copy the map link.")
+    }
+  }
+
+  const handleCopyAssignments = async () => {
+    const text = buildBoothAssignmentExportText(
+      displayBooth.name,
+      displaySchedules.map((schedule) => ({
+        date: schedule.date,
+        startTime: schedule.start_time,
+        endTime: schedule.end_time,
+        status: schedule.status,
+        assignedEmployeeNames: schedule.booth_schedule_assignments
+          .map((assignment) => assignment.employees?.name ?? "")
+          .filter(Boolean),
+      })),
+      monthStartFromScheduleDate(displaySchedules[0]?.date)
+    )
+
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success("Assignment text copied.")
+    } catch {
+      toast.error("Unable to copy the assignment text.")
     }
   }
 
@@ -366,9 +431,19 @@ export function AdminBoothDetailClient({
           </Card>
 
           <section className="flex flex-col gap-4">
-            <div>
-              <p className="app-kicker">Assignment History</p>
-              <h2 className="app-section-title">Shift Setup And Actions</h2>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="app-kicker">Assignment History</p>
+                <h2 className="app-section-title">Shift Setup And Actions</h2>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCopyAssignments}
+              >
+                <Copy data-icon="inline-start" />
+                Copy Text
+              </Button>
             </div>
             {displaySchedules.length === 0 ? (
               <div className="app-panel p-8 text-center text-sm text-muted-foreground">
@@ -437,7 +512,7 @@ export function AdminBoothDetailClient({
                           </CardTitle>
                           <CardDescription className="flex items-center gap-1.5">
                             <UserRound className="size-4 text-primary" />
-                            POS: {schedule.operator?.name ?? "Unknown employee"}
+                            POS: {schedule.operator?.name ?? "Unassigned"}
                           </CardDescription>
                           <CardAction>
                             <Badge
@@ -542,10 +617,32 @@ export function AdminBoothDetailClient({
         </TabsContent>
       </Tabs>
 
-      <AdminScheduleDetailSheet
+      <ShiftDetailSheet
         open={scheduleDetailOpen}
         onOpenChange={setScheduleDetailOpen}
-        schedule={selectedSchedule}
+        detailData={selectedDetail}
+        loading={scheduleDetailLoading}
+        loadError={scheduleDetailError}
+        assignedEmployeeNames={
+          selectedSchedule?.booth_schedule_assignments
+            .map(
+              (assignment) => assignment.employees?.name ?? "Unknown employee"
+            )
+            .filter(Boolean) ?? []
+        }
+        operatorName={selectedSchedule?.operator?.name ?? null}
+        canJoin={canJoinSelectedSchedule}
+        joinPending={joiningSchedule}
+        onJoin={
+          canJoinSelectedSchedule ? handleJoinSelectedSchedule : undefined
+        }
+        showAdminAudit
+        inventoryEvents={selectedSchedule?.inventory_events ?? []}
+        operatorPeriods={
+          selectedSchedule?.booth_schedule_operator_periods ?? []
+        }
+        closeouts={selectedSchedule?.shift_closeouts ?? []}
+        allowOfflineSaleCache={false}
         onEdit={openScheduleEditFromDetails}
         onCancel={openCancelFromDetails}
         onOverride={openOverrideFromDetails}
@@ -572,7 +669,10 @@ export function AdminBoothDetailClient({
         boothLocked
         booths={displayBooths.filter((candidate) => candidate.is_active)}
         employees={employees}
-        onSaved={() => undefined}
+        onSaved={() => {
+          setEditingSchedule(null)
+          router.refresh()
+        }}
       />
       <InventoryOverrideSheet
         open={Boolean(overridingSchedule)}
@@ -583,7 +683,10 @@ export function AdminBoothDetailClient({
         }}
         schedule={overridingSchedule}
         products={products}
-        onSaved={() => undefined}
+        onSaved={() => {
+          setOverridingSchedule(null)
+          router.refresh()
+        }}
       />
       {reopeningSchedule ? (
         <ShiftReopenSheet
@@ -597,7 +700,10 @@ export function AdminBoothDetailClient({
           boothName={displayBooth.name}
           scheduleId={reopeningSchedule.id}
           shiftLabel={`${reopeningSchedule.date} / ${reopeningSchedule.start_time.slice(0, 5)} - ${reopeningSchedule.end_time.slice(0, 5)}`}
-          onSaved={() => undefined}
+          onSaved={() => {
+            setReopeningSchedule(null)
+            router.refresh()
+          }}
         />
       ) : null}
       <ConfirmDialog

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 
 import { AdminBoothDetailClient } from "@/components/admin/AdminBoothDetailClient"
+import { requireEmployeeRole } from "@/lib/auth"
 import {
   getActiveEmployeeOptions,
   getAdminBoothById,
@@ -18,6 +19,7 @@ type AdminBoothDetailPageProps = {
 export default async function AdminBoothDetailPage({
   params,
 }: AdminBoothDetailPageProps) {
+  const { employee } = await requireEmployeeRole("admin")
   const [booth, booths, schedules, employees, products] = await Promise.all([
     getAdminBoothById(params.id),
     getAdminBooths(),
@@ -37,6 +39,7 @@ export default async function AdminBoothDetailPage({
       schedules={schedules}
       employees={employees}
       products={products}
+      currentEmployeeId={employee.id}
     />
   )
 }

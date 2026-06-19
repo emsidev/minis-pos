@@ -11,7 +11,7 @@ import {
 import { EmployeeChipSelect } from "@/components/admin/EmployeeChipSelect"
 import type { AdminEmployeeOption, AdminSchedule } from "@/lib/adminBooths"
 import type { Booth } from "@/lib/shifts"
-import { getBusinessDate } from "@/lib/utils"
+import { getBusinessDate, hasBusinessShiftStarted } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -66,6 +66,9 @@ export function ScheduleFormSheet({
   const [pending, setPending] = useState(false)
 
   const isEditing = Boolean(schedule?.id)
+  const startedShiftLocked = schedule
+    ? hasBusinessShiftStarted(schedule.date, schedule.start_time)
+    : false
 
   const lockedBoothName =
     booths.find((booth) => booth.id === boothId)?.name ?? "Unknown booth"
@@ -124,7 +127,7 @@ export function ScheduleFormSheet({
   const handleEmployeeChange = (nextEmployeeIds: string[]) => {
     setEmployeeIds(nextEmployeeIds)
     if (!nextEmployeeIds.includes(operatorEmployeeId)) {
-      setOperatorEmployeeId(nextEmployeeIds[0] ?? "")
+      setOperatorEmployeeId("")
     }
   }
 
@@ -167,9 +170,6 @@ export function ScheduleFormSheet({
 
   const submitDisabled =
     pending ||
-    employees.length === 0 ||
-    employeeIds.length === 0 ||
-    !operatorEmployeeId ||
     !boothId ||
     (isEditing ? !date : !dateRange.startDate || !dateRange.endDate)
 
@@ -182,8 +182,8 @@ export function ScheduleFormSheet({
         <div className="shrink-0 border-b border-border px-6 pb-5 pt-6">
           <SheetTitle>{schedule ? "Edit Shift" : "Schedule Shift"}</SheetTitle>
           <SheetDescription>
-            Assign the booth team and time slot. One POS operator records
-            opening inventory and sales at a time.
+            Assign the booth team and time slot. A shift can stay unassigned
+            until someone is chosen as the POS operator.
           </SheetDescription>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -212,7 +212,7 @@ export function ScheduleFormSheet({
                     placeholder="Select a booth"
                     searchPlaceholder="Search booths"
                     emptyMessage="No booths found."
-                    disabled={pending}
+                    disabled={pending || startedShiftLocked}
                   />
                 )}
               </Field>
@@ -233,27 +233,46 @@ export function ScheduleFormSheet({
                   />
                 )}
                 <FieldDescription>
-                  Every selected employee can view the shared shift and sales.
+                  Leave this empty to keep the shift open for later pickup.
                 </FieldDescription>
               </Field>
               <Field>
                 <FieldLabel>POS Operator</FieldLabel>
                 {employeeIds.length === 0 ? (
                   <FieldDescription>
-                    Select at least one employee to choose a POS operator.
+                    Choose assigned employees first if you want to set a POS
+                    operator now.
                   </FieldDescription>
-                ) : (
+                ) : null}
+                <div className="flex flex-col gap-2">
                   <EmployeeChipSelect
                     mode="single"
                     options={operatorOptions}
                     value={operatorEmployeeId}
                     onChange={setOperatorEmployeeId}
-                    placeholder="Select POS operator"
+                    placeholder="No POS operator yet"
                     searchPlaceholder="Search operators"
                     emptyMessage="No operators found."
                     disabled={pending || employeeIds.length === 0}
                   />
-                )}
+                  {operatorEmployeeId ? (
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={pending}
+                        onClick={() => setOperatorEmployeeId("")}
+                      >
+                        Clear POS operator
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+                <FieldDescription>
+                  Assigned employees can stay on the team even when no POS
+                  operator is selected yet.
+                </FieldDescription>
               </Field>
               <Field>
                 <FieldLabel>{isEditing ? "Date" : "Date range"}</FieldLabel>
@@ -262,7 +281,7 @@ export function ScheduleFormSheet({
                     mode="single"
                     value={date}
                     onChange={setDate}
-                    disabled={pending}
+                    disabled={pending || startedShiftLocked}
                     minDate={getBusinessDate()}
                   />
                 ) : (
@@ -285,7 +304,7 @@ export function ScheduleFormSheet({
                   <TimeSelect
                     value={startTime}
                     onChange={setStartTime}
-                    disabled={pending}
+                    disabled={pending || startedShiftLocked}
                     stepMinutes={30}
                   />
                 </Field>
@@ -294,11 +313,17 @@ export function ScheduleFormSheet({
                   <TimeSelect
                     value={endTime}
                     onChange={setEndTime}
-                    disabled={pending}
+                    disabled={pending || startedShiftLocked}
                     stepMinutes={30}
                   />
                 </Field>
               </div>
+              {startedShiftLocked ? (
+                <FieldDescription>
+                  This shift has already started, so only the team and POS
+                  operator can be changed now.
+                </FieldDescription>
+              ) : null}
               <FieldDescription>
                 Opening inventory and sales are entered only by the current POS
                 operator while this shift is active.

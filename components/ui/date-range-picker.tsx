@@ -205,7 +205,6 @@ function RangeDatePicker({
             setDraftRange(nextRange ?? { from: undefined })
           }
           disabled={(date) => (min ? date < min : false)}
-          resetOnSelect
         />
         <div className="flex items-center justify-between gap-3 border-t border-border p-2">
           <p className="truncate text-xs text-muted-foreground">

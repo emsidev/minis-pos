@@ -65,7 +65,7 @@ export interface Database {
           date: string
           end_time: string
           id: string
-          operator_employee_id: string
+          operator_employee_id: string | null
           start_time: string
           status: ScheduleStatus
         }
@@ -75,7 +75,7 @@ export interface Database {
           date: string
           end_time: string
           id?: string
-          operator_employee_id: string
+          operator_employee_id?: string | null
           start_time: string
           status?: ScheduleStatus
         }
@@ -85,7 +85,7 @@ export interface Database {
           date?: string
           end_time?: string
           id?: string
-          operator_employee_id?: string
+          operator_employee_id?: string | null
           start_time?: string
           status?: ScheduleStatus
         }
@@ -575,7 +575,7 @@ export interface Database {
           p_schedule_id: string | null
           p_booth_id: string
           p_employee_ids: string[]
-          p_operator_employee_id: string
+          p_operator_employee_id: string | null
           p_date: string
           p_start_time: string
           p_end_time: string
@@ -588,7 +588,7 @@ export interface Database {
         Args: {
           p_booth_id: string
           p_employee_ids: string[]
-          p_operator_employee_id: string
+          p_operator_employee_id: string | null
           p_start_date: string
           p_end_date: string
           p_start_time: string
@@ -597,6 +597,31 @@ export interface Database {
           p_current_time: string
         }
         Returns: number
+      }
+      get_employee_schedule_browser: {
+        Args: {
+          p_start_date: string
+          p_end_date: string
+        }
+        Returns: Json
+      }
+      get_employee_schedule_detail: {
+        Args: {
+          p_schedule_id: string
+        }
+        Returns: Json
+      }
+      get_employee_schedule_sale_items: {
+        Args: {
+          p_sale_id: string
+        }
+        Returns: Json
+      }
+      join_booth_schedule: {
+        Args: {
+          p_schedule_id: string
+        }
+        Returns: string
       }
       claim_shift_operator: {
         Args: {

@@ -22,6 +22,24 @@ export type SharedBoothSchedule = BoothSchedule & {
   shift_closeouts?: ShiftCloseout[]
 }
 
+export type ScheduleBrowserItem = Pick<
+  BoothSchedule,
+  | "id"
+  | "booth_id"
+  | "date"
+  | "start_time"
+  | "end_time"
+  | "status"
+  | "created_at"
+  | "operator_employee_id"
+> & {
+  booth_name: string
+  booth_location_text: string | null
+  operator_name: string | null
+  assigned_employee_names: string[]
+  is_assigned: boolean
+}
+
 /**
  * Fetches the active shared booth schedule visible to an assigned employee.
  */
@@ -81,8 +99,19 @@ export type SaleWithJoins = Database["public"]["Tables"]["sales"]["Row"] & {
   booths: { name: string } | null
 }
 
+export type SaleItemWithProduct =
+  Database["public"]["Tables"]["sale_items"]["Row"] & {
+    products: Product | null
+  }
+
 export type EmployeeSalesHistoryGroup = {
   schedule: SharedBoothSchedule
+  sales: SaleWithJoins[]
+}
+
+export type ShiftDetailData = {
+  schedule: SharedBoothSchedule | null
+  products: Product[]
   sales: SaleWithJoins[]
 }
 
@@ -174,6 +203,157 @@ export async function getEmployeeSchedules(employeeId: string) {
   return data as SharedBoothSchedule[]
 }
 
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function emptyShiftDetailData(): ShiftDetailData {
+  return {
+    schedule: null,
+    products: [],
+    sales: [],
+  }
+}
+
+function parseSharedBoothSchedule(value: unknown): SharedBoothSchedule | null {
+  if (!isJsonRecord(value) || !isJsonRecord(value.booths)) {
+    return null
+  }
+
+  return {
+    ...(value as unknown as BoothSchedule),
+    booths: value.booths as Booth,
+    booth_schedule_assignments: Array.isArray(value.booth_schedule_assignments)
+      ? (value.booth_schedule_assignments as BoothScheduleAssignment[])
+      : [],
+    booth_schedule_operator_periods: Array.isArray(
+      value.booth_schedule_operator_periods
+    )
+      ? (value.booth_schedule_operator_periods as BoothScheduleOperatorPeriod[])
+      : [],
+    shift_closeouts: Array.isArray(value.shift_closeouts)
+      ? (value.shift_closeouts as ShiftCloseout[])
+      : [],
+  }
+}
+
+function parseProducts(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as Product[]
+  }
+
+  return value.filter(isJsonRecord) as Product[]
+}
+
+function parseSales(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as SaleWithJoins[]
+  }
+
+  return value.filter(isJsonRecord) as SaleWithJoins[]
+}
+
+function parseSaleItems(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as SaleItemWithProduct[]
+  }
+
+  return value.filter(isJsonRecord) as SaleItemWithProduct[]
+}
+
+export async function getEmployeeScheduleBrowser(
+  startDate: string,
+  endDate: string
+) {
+  const supabase = createServerSupabaseClient()
+  const { data, error } = await supabase.rpc("get_employee_schedule_browser", {
+    p_start_date: startDate,
+    p_end_date: endDate,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  if (!Array.isArray(data)) {
+    return [] as ScheduleBrowserItem[]
+  }
+
+  const items = data as Array<Record<string, unknown>>
+
+  return items.flatMap((item) => {
+    if (!isJsonRecord(item)) {
+      return []
+    }
+
+    return [
+      {
+        id: String(item.id),
+        booth_id: String(item.booth_id),
+        date: String(item.date),
+        start_time: String(item.start_time),
+        end_time: String(item.end_time),
+        status: item.status as BoothSchedule["status"],
+        created_at: String(item.created_at ?? ""),
+        operator_employee_id:
+          typeof item.operator_employee_id === "string"
+            ? item.operator_employee_id
+            : null,
+        booth_name: String(item.booth_name ?? ""),
+        booth_location_text:
+          typeof item.booth_location_text === "string"
+            ? item.booth_location_text
+            : null,
+        operator_name:
+          typeof item.operator_name === "string" ? item.operator_name : null,
+        assigned_employee_names: Array.isArray(item.assigned_employee_names)
+          ? item.assigned_employee_names.filter(
+              (value: unknown): value is string => typeof value === "string"
+            )
+          : [],
+        is_assigned: Boolean(item.is_assigned),
+      },
+    ]
+  })
+}
+
+export async function getEmployeeBrowsableShiftDetails(scheduleId: string) {
+  const supabase = createServerSupabaseClient()
+  const { data, error } = await supabase.rpc("get_employee_schedule_detail", {
+    p_schedule_id: scheduleId,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  if (!isJsonRecord(data)) {
+    return emptyShiftDetailData()
+  }
+
+  return {
+    schedule: parseSharedBoothSchedule(data.schedule),
+    products: parseProducts(data.products),
+    sales: parseSales(data.sales),
+  } satisfies ShiftDetailData
+}
+
+export async function getEmployeeBrowsableSaleItems(saleId: string) {
+  const supabase = createServerSupabaseClient()
+  const { data, error } = await supabase.rpc(
+    "get_employee_schedule_sale_items",
+    {
+      p_sale_id: saleId,
+    }
+  )
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return parseSaleItems(data)
+}
+
 /**
  * Fetches grouped sales history for an employee on one business date.
  */
@@ -262,7 +442,5 @@ export async function getSaleItems(saleId: string) {
     throw new Error(error.message)
   }
 
-  return data as (Database["public"]["Tables"]["sale_items"]["Row"] & {
-    products: Product
-  })[]
+  return data as SaleItemWithProduct[]
 }

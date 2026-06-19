@@ -2,14 +2,21 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Loader2, MapPin, Pencil, Plus, RotateCcw, Store } from "lucide-react"
 import { toast } from "sonner"
 
-import { deactivateBooth, reactivateBooth } from "@/app/actions/adminBooths"
+import {
+  cancelBoothSchedule,
+  deactivateBooth,
+  loadAdminShiftDetail,
+  reactivateBooth,
+} from "@/app/actions/adminBooths"
 import { AdminScheduleCalendar } from "@/components/admin/AdminScheduleCalendar"
 import { BoothFormSheet } from "@/components/admin/BoothFormSheet"
 import { ScheduleFormSheet } from "@/components/admin/ScheduleFormSheet"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import { ShiftDetailSheet } from "@/components/shifts/ShiftDetailSheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,14 +30,18 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type {
   AdminEmployeeOption,
+  AdminSchedule,
   AdminScheduleCalendarItem,
+  AdminShiftDetailData,
 } from "@/lib/adminBooths"
 import type { Booth } from "@/lib/shifts"
+import { joinSchedule } from "@/app/actions/shifts"
 
 type AdminBoothsClientProps = {
   booths: Booth[]
   schedules: AdminScheduleCalendarItem[]
   employees: AdminEmployeeOption[]
+  currentEmployeeId: string
 }
 
 function sortBooths(rows: Booth[]) {
@@ -41,10 +52,25 @@ export function AdminBoothsClient({
   booths,
   schedules,
   employees,
+  currentEmployeeId,
 }: AdminBoothsClientProps) {
+  const router = useRouter()
   const [displayBooths, setDisplayBooths] = useState(booths)
   const [formOpen, setFormOpen] = useState(false)
   const [scheduleFormOpen, setScheduleFormOpen] = useState(false)
+  const [editingSchedule, setEditingSchedule] = useState<AdminSchedule | null>(
+    null
+  )
+  const [selectedDetail, setSelectedDetail] =
+    useState<AdminShiftDetailData | null>(null)
+  const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false)
+  const [scheduleDetailLoading, setScheduleDetailLoading] = useState(false)
+  const [scheduleDetailError, setScheduleDetailError] = useState<string | null>(
+    null
+  )
+  const [joiningSchedule, setJoiningSchedule] = useState(false)
+  const [cancellingSchedule, setCancellingSchedule] =
+    useState<AdminSchedule | null>(null)
   const [editingBooth, setEditingBooth] = useState<Booth | null>(null)
   const [deactivatingBooth, setDeactivatingBooth] = useState<Booth | null>(null)
   const [reactivatingBoothId, setReactivatingBoothId] = useState<string | null>(
@@ -60,9 +86,92 @@ export function AdminBoothsClient({
     setFormOpen(true)
   }
 
+  const openScheduleCreate = () => {
+    setEditingSchedule(null)
+    setScheduleFormOpen(true)
+  }
+
   const openEdit = (booth: Booth) => {
     setEditingBooth(booth)
     setFormOpen(true)
+  }
+
+  const loadScheduleDetails = async (scheduleId: string) => {
+    try {
+      const detail = await loadAdminShiftDetail(scheduleId)
+      if (!detail.schedule) {
+        setSelectedDetail(null)
+        setScheduleDetailError("This shift is no longer available.")
+        toast.error("This shift is no longer available.")
+        return
+      }
+
+      setSelectedDetail(detail)
+      setScheduleDetailError(null)
+    } catch (error) {
+      console.error("Unable to load shift details:", error)
+      setSelectedDetail(null)
+      setScheduleDetailError("Unable to load shift details.")
+      toast.error("Unable to load shift details.")
+    } finally {
+      setScheduleDetailLoading(false)
+    }
+  }
+
+  const openScheduleDetails = (scheduleId: string) => {
+    setScheduleDetailOpen(true)
+    setScheduleDetailLoading(true)
+    setScheduleDetailError(null)
+    setSelectedDetail(null)
+    void loadScheduleDetails(scheduleId)
+  }
+
+  const handleCancelSchedule = async () => {
+    if (!cancellingSchedule) {
+      return
+    }
+
+    const result = await cancelBoothSchedule(
+      cancellingSchedule.id,
+      cancellingSchedule.booth_id
+    )
+    if (!result.ok) {
+      toast.error(result.error ?? "Unable to cancel shift.")
+      throw new Error(result.error ?? "Unable to cancel shift.")
+    }
+
+    toast.success(result.message)
+    router.refresh()
+  }
+
+  const selectedSchedule = selectedDetail?.schedule ?? null
+  const adminAssignedToSelected =
+    selectedSchedule?.booth_schedule_assignments.some(
+      (assignment) => assignment.employee_id === currentEmployeeId
+    ) ?? false
+  const canJoinSelectedSchedule =
+    selectedSchedule !== null &&
+    selectedSchedule.status === "scheduled" &&
+    !adminAssignedToSelected
+
+  const handleJoinSelectedSchedule = async () => {
+    if (!selectedSchedule) {
+      return
+    }
+
+    setJoiningSchedule(true)
+    const result = await joinSchedule(selectedSchedule.id)
+    setJoiningSchedule(false)
+
+    if (!result.ok) {
+      toast.error(result.error ?? "Unable to join this shift.")
+      return
+    }
+
+    toast.success(result.message)
+    router.refresh()
+    setScheduleDetailLoading(true)
+    void loadScheduleDetails(selectedSchedule.id)
   }
 
   const handleDeactivate = async () => {
@@ -126,7 +235,7 @@ export function AdminBoothsClient({
             type="button"
             size="lg"
             variant="outline"
-            onClick={() => setScheduleFormOpen(true)}
+            onClick={openScheduleCreate}
             disabled={!displayBooths.some((booth) => booth.is_active)}
           >
             <Plus data-icon="inline-start" />
@@ -242,7 +351,12 @@ export function AdminBoothsClient({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <AdminScheduleCalendar schedules={schedules} loadMonths />
+              <AdminScheduleCalendar
+                schedules={schedules}
+                loadMonths
+                onSelectSchedule={openScheduleDetails}
+                enableTextExport
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -264,11 +378,60 @@ export function AdminBoothsClient({
       <ScheduleFormSheet
         open={scheduleFormOpen}
         onOpenChange={setScheduleFormOpen}
-        schedule={null}
-        initialBoothId=""
+        schedule={editingSchedule}
+        initialBoothId={editingSchedule?.booth_id ?? ""}
         booths={displayBooths.filter((booth) => booth.is_active)}
         employees={employees}
-        onSaved={() => undefined}
+        onSaved={() => {
+          setEditingSchedule(null)
+          router.refresh()
+        }}
+      />
+      <ShiftDetailSheet
+        open={scheduleDetailOpen}
+        onOpenChange={setScheduleDetailOpen}
+        detailData={selectedDetail}
+        loading={scheduleDetailLoading}
+        loadError={scheduleDetailError}
+        assignedEmployeeNames={
+          selectedSchedule?.booth_schedule_assignments
+            .map(
+              (assignment) => assignment.employees?.name ?? "Unknown employee"
+            )
+            .filter(Boolean) ?? []
+        }
+        operatorName={selectedSchedule?.operator?.name ?? null}
+        canJoin={canJoinSelectedSchedule}
+        joinPending={joiningSchedule}
+        onJoin={
+          canJoinSelectedSchedule ? handleJoinSelectedSchedule : undefined
+        }
+        showAdminAudit
+        inventoryEvents={selectedSchedule?.inventory_events ?? []}
+        operatorPeriods={
+          selectedSchedule?.booth_schedule_operator_periods ?? []
+        }
+        closeouts={selectedSchedule?.shift_closeouts ?? []}
+        allowOfflineSaleCache={false}
+        onEdit={
+          selectedSchedule
+            ? () => {
+                setScheduleDetailOpen(false)
+                setEditingSchedule(selectedSchedule)
+                setScheduleFormOpen(true)
+              }
+            : undefined
+        }
+        onCancel={
+          selectedSchedule
+            ? () => {
+                setScheduleDetailOpen(false)
+                setCancellingSchedule(selectedSchedule)
+              }
+            : undefined
+        }
+        onOverride={undefined}
+        onReopen={undefined}
       />
       <ConfirmDialog
         open={Boolean(deactivatingBooth)}
@@ -284,6 +447,21 @@ export function AdminBoothsClient({
         cancelLabel="Keep Active"
         variant="destructive"
         onConfirm={handleDeactivate}
+      />
+      <ConfirmDialog
+        open={Boolean(cancellingSchedule)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCancellingSchedule(null)
+          }
+        }}
+        title="Cancel shift?"
+        description="This keeps the shift in history but removes it from active scheduling."
+        confirmLabel="Cancel Shift"
+        pendingLabel="Cancelling..."
+        cancelLabel="Keep Shift"
+        variant="destructive"
+        onConfirm={handleCancelSchedule}
       />
     </div>
   )

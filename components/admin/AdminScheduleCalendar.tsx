@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react"
 import Link from "next/link"
-import { ChevronLeft, ChevronRight, Clock, Store } from "lucide-react"
+import { ChevronLeft, ChevronRight, Clock, Copy, Store } from "lucide-react"
+import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,6 +17,7 @@ import {
   getBusinessMonthStart,
   getCalendarMonth,
 } from "@/lib/calendar"
+import { buildCalendarExportText } from "@/lib/scheduleExports"
 import { cn, getBusinessDate } from "@/lib/utils"
 
 type AdminScheduleCalendarProps = {
@@ -24,6 +26,7 @@ type AdminScheduleCalendarProps = {
   boothDetailMode?: boolean
   loadMonths?: boolean
   onSelectSchedule?: (scheduleId: string) => void
+  enableTextExport?: boolean
 }
 
 function getScheduleCardClassName(status: AdminSchedule["status"]) {
@@ -44,6 +47,7 @@ export function AdminScheduleCalendar({
   boothDetailMode = false,
   loadMonths = false,
   onSelectSchedule,
+  enableTextExport = false,
 }: AdminScheduleCalendarProps) {
   const [currentDate, setCurrentDate] = useState(getBusinessMonthStart)
   const [visibleSchedules, setVisibleSchedules] = useState(schedules)
@@ -108,6 +112,29 @@ export function AdminScheduleCalendar({
     })
   }
 
+  const handleCopyExport = async () => {
+    const text = buildCalendarExportText(
+      visibleSchedules.map((schedule) => ({
+        boothName: schedule.booths.name,
+        date: schedule.date,
+        startTime: schedule.start_time,
+        endTime: schedule.end_time,
+        status: schedule.status,
+        assignedEmployeeNames: schedule.booth_schedule_assignments
+          .map((assignment) => assignment.employees?.name ?? "")
+          .filter(Boolean),
+      })),
+      currentDate
+    )
+
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success("Schedule text copied.")
+    } catch {
+      toast.error("Unable to copy the schedule text.")
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <header className="flex items-center justify-between gap-4">
@@ -119,6 +146,16 @@ export function AdminScheduleCalendar({
           </h2>
         </div>
         <div className="flex items-center gap-2">
+          {enableTextExport ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleCopyExport()}
+            >
+              <Copy data-icon="inline-start" />
+              Copy Text
+            </Button>
+          ) : null}
           <Button
             type="button"
             size="icon"
@@ -179,7 +216,7 @@ export function AdminScheduleCalendar({
               </span>
               <div className="flex flex-col gap-1">
                 {daySchedules.map((schedule) =>
-                  boothDetailMode && onSelectSchedule ? (
+                  onSelectSchedule ? (
                     <button
                       key={schedule.id}
                       type="button"
@@ -190,15 +227,32 @@ export function AdminScheduleCalendar({
                       )}
                     >
                       <span className="flex items-center gap-1 font-medium">
-                        <Clock className="size-3 shrink-0 text-primary" />
+                        {boothDetailMode ? (
+                          <Clock className="size-3 shrink-0 text-primary" />
+                        ) : (
+                          <Store className="size-3 shrink-0 text-primary" />
+                        )}
                         <span className="truncate">
-                          {schedule.operator?.name ?? "Employee"}
+                          {boothDetailMode
+                            ? (schedule.operator?.name ?? "Unassigned")
+                            : schedule.booths.name}
                         </span>
                       </span>
                       <span className="block truncate text-muted-foreground">
                         {schedule.start_time.slice(0, 5)} -{" "}
                         {schedule.end_time.slice(0, 5)}
                       </span>
+                      {!boothDetailMode &&
+                      schedule.booth_schedule_assignments.length > 0 ? (
+                        <span className="block truncate text-muted-foreground">
+                          {schedule.booth_schedule_assignments
+                            .map(
+                              (assignment) =>
+                                assignment.employees?.name ?? "Employee"
+                            )
+                            .join(", ")}
+                        </span>
+                      ) : null}
                       {schedule.status === "cancelled" ? (
                         <Badge
                           variant="destructive"
@@ -232,7 +286,7 @@ export function AdminScheduleCalendar({
                         )}
                         <span className="truncate">
                           {boothDetailMode
-                            ? (schedule.operator?.name ?? "Employee")
+                            ? (schedule.operator?.name ?? "Unassigned")
                             : schedule.booths.name}
                         </span>
                       </span>

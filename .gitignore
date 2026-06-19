@@ -12,19 +12,31 @@
 # next.js
 /.next/
 /out/
+.turbo/
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
 *.pem
 
 # debug
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 /.codex-temp/
+.codex-dev-*.log
+.codex-dev-*.out.log
+.codex-dev-*.err.log
+.codex-next-dev.log
+.codex/
+.codex-artifacts/
+.cursor/
+.playwright-mcp/
+/scratch/
 
 # local env files
 .env*.local

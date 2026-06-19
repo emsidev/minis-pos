@@ -170,9 +170,13 @@ export function BoothLocationPicker({
 
   const handleMapSelect = (coordinates: BoothCoordinates) => {
     const resolvedLocationText =
-      locationText.trim() || boothName.trim() || "Pinned on map"
+      searchQuery.trim() ||
+      locationText.trim() ||
+      boothName.trim() ||
+      `${formatCoordinateInput(coordinates.latitude)}, ${formatCoordinateInput(coordinates.longitude)}`
 
     setSearchBounds(null)
+    setSearchQuery(resolvedLocationText)
     setSearchResults([])
     setSearchError(null)
     onPlaceSelected(buildSelectionValue(coordinates, resolvedLocationText))

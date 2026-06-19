@@ -32,7 +32,7 @@ create index if not exists employees_email_lower_idx
 create table if not exists public.booth_schedules (
   id uuid primary key default gen_random_uuid(),
   booth_id uuid references public.booths(id) not null,
-  operator_employee_id uuid references public.employees(id) not null,
+  operator_employee_id uuid references public.employees(id),
   date date not null,
   start_time time not null,
   end_time time not null,
@@ -87,6 +87,9 @@ alter table public.booth_schedules
   add column if not exists status text not null default 'scheduled';
 
 alter table public.booth_schedules
+  alter column operator_employee_id drop not null;
+
+alter table public.booth_schedules
   drop constraint if exists no_overlap;
 
 alter table public.booth_schedules
@@ -132,6 +135,7 @@ create index if not exists booth_schedule_assignments_employee_idx
 insert into public.booth_schedule_assignments (schedule_id, employee_id)
 select id, operator_employee_id
 from public.booth_schedules
+where operator_employee_id is not null
 on conflict (schedule_id, employee_id) do nothing;
 
 create table if not exists public.booth_schedule_operator_periods (
@@ -172,11 +176,12 @@ select
   'scheduled',
   (schedule.date + schedule.start_time) at time zone 'Asia/Manila'
 from public.booth_schedules as schedule
-where not exists (
-  select 1
-  from public.booth_schedule_operator_periods as period
-  where period.schedule_id = schedule.id
-);
+where schedule.operator_employee_id is not null
+  and not exists (
+    select 1
+    from public.booth_schedule_operator_periods as period
+    where period.schedule_id = schedule.id
+  );
 
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
@@ -538,22 +543,23 @@ declare
   v_schedule public.booth_schedules%rowtype;
   v_schedule_id uuid;
   v_current_employee_id uuid;
+  v_now timestamptz := now();
+  v_requested_employee_ids uuid[] := coalesce(p_employee_ids, array[]::uuid[]);
+  v_started boolean := false;
 begin
   if p_start_time >= p_end_time then
     raise exception using message = 'INVALID_SHIFT_TIME';
   end if;
 
-  if p_employee_ids is null
-    or cardinality(p_employee_ids) = 0
-    or cardinality(p_employee_ids) <> (
+  if cardinality(v_requested_employee_ids) <> (
       select count(distinct employee_id)
-      from unnest(p_employee_ids) as employee_id
+      from unnest(v_requested_employee_ids) as employee_id
     ) then
     raise exception using message = 'INVALID_ASSIGNMENTS';
   end if;
 
-  if p_operator_employee_id is null
-    or not (p_operator_employee_id = any(p_employee_ids)) then
+  if p_operator_employee_id is not null
+    and not (p_operator_employee_id = any(v_requested_employee_ids)) then
     raise exception using message = 'OPERATOR_NOT_ASSIGNED';
   end if;
 
@@ -565,7 +571,7 @@ begin
 
   if exists (
     select 1
-    from unnest(p_employee_ids) as requested(employee_id)
+    from unnest(v_requested_employee_ids) as requested(employee_id)
     left join public.employees as employee on employee.id = requested.employee_id
     where employee.id is null or employee.is_active is not true
   ) then
@@ -597,14 +603,31 @@ begin
     if v_schedule.status <> 'scheduled' then
       raise exception using message = 'SCHEDULE_CANCELLED';
     end if;
+
+    v_started := v_schedule.date < p_current_date
+      or (
+        v_schedule.date = p_current_date
+        and v_schedule.start_time <= p_current_time
+      );
+
+    if v_started
+      and (
+        v_schedule.booth_id is distinct from p_booth_id
+        or v_schedule.date is distinct from p_date
+        or v_schedule.start_time is distinct from p_start_time
+        or v_schedule.end_time is distinct from p_end_time
+      ) then
+      raise exception using message = 'LIVE_SHIFT_CORE_FIELDS_LOCKED';
+    end if;
   end if;
 
-  if exists (
+  if cardinality(v_requested_employee_ids) > 0
+    and exists (
     select 1
     from public.booth_schedule_assignments as assignment
     join public.booth_schedules as schedule
       on schedule.id = assignment.schedule_id
-    where assignment.employee_id = any(p_employee_ids)
+    where assignment.employee_id = any(v_requested_employee_ids)
       and schedule.date = p_date
       and schedule.status = 'scheduled'
       and (p_schedule_id is null or schedule.id <> p_schedule_id)
@@ -646,32 +669,65 @@ begin
   delete from public.booth_schedule_assignments
   where schedule_id = v_schedule_id;
 
-  insert into public.booth_schedule_assignments (schedule_id, employee_id)
-  select v_schedule_id, employee_id
-  from unnest(p_employee_ids) as employee_id;
-
-  delete from public.booth_schedule_operator_periods
-  where schedule_id = v_schedule_id;
-
-  v_current_employee_id := public.current_employee_id();
-  if v_current_employee_id is null then
-    raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+  if cardinality(v_requested_employee_ids) > 0 then
+    insert into public.booth_schedule_assignments (schedule_id, employee_id)
+    select v_schedule_id, employee_id
+    from unnest(v_requested_employee_ids) as employee_id;
   end if;
 
-  insert into public.booth_schedule_operator_periods (
-    schedule_id,
-    operator_employee_id,
-    initiated_by_employee_id,
-    transition_type,
-    starts_at
-  )
-  values (
-    v_schedule_id,
-    p_operator_employee_id,
-    v_current_employee_id,
-    'scheduled',
-    (p_date + p_start_time) at time zone 'Asia/Manila'
-  );
+  if p_schedule_id is null or not v_started then
+    delete from public.booth_schedule_operator_periods
+    where schedule_id = v_schedule_id;
+
+    if p_operator_employee_id is not null then
+      v_current_employee_id := public.current_employee_id();
+      if v_current_employee_id is null then
+        raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+      end if;
+
+      insert into public.booth_schedule_operator_periods (
+        schedule_id,
+        operator_employee_id,
+        initiated_by_employee_id,
+        transition_type,
+        starts_at
+      )
+      values (
+        v_schedule_id,
+        p_operator_employee_id,
+        v_current_employee_id,
+        'scheduled',
+        (p_date + p_start_time) at time zone 'Asia/Manila'
+      );
+    end if;
+  elsif v_schedule.operator_employee_id is distinct from p_operator_employee_id then
+    update public.booth_schedule_operator_periods
+    set ends_at = coalesce(ends_at, v_now)
+    where schedule_id = v_schedule_id
+      and ends_at is null;
+
+    if p_operator_employee_id is not null then
+      v_current_employee_id := public.current_employee_id();
+      if v_current_employee_id is null then
+        raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+      end if;
+
+      insert into public.booth_schedule_operator_periods (
+        schedule_id,
+        operator_employee_id,
+        initiated_by_employee_id,
+        transition_type,
+        starts_at
+      )
+      values (
+        v_schedule_id,
+        p_operator_employee_id,
+        v_current_employee_id,
+        'takeover',
+        v_now
+      );
+    end if;
+  end if;
 
   return v_schedule_id;
 end;
@@ -697,6 +753,7 @@ declare
   v_schedule_id uuid;
   v_current_employee_id uuid;
   v_created_count integer := 0;
+  v_requested_employee_ids uuid[] := coalesce(p_employee_ids, array[]::uuid[]);
 begin
   if p_start_time >= p_end_time then
     raise exception using message = 'INVALID_SHIFT_TIME';
@@ -706,17 +763,15 @@ begin
     raise exception using message = 'INVALID_DATE_RANGE';
   end if;
 
-  if p_employee_ids is null
-    or cardinality(p_employee_ids) = 0
-    or cardinality(p_employee_ids) <> (
+  if cardinality(v_requested_employee_ids) <> (
       select count(distinct employee_id)
-      from unnest(p_employee_ids) as employee_id
+      from unnest(v_requested_employee_ids) as employee_id
     ) then
     raise exception using message = 'INVALID_ASSIGNMENTS';
   end if;
 
-  if p_operator_employee_id is null
-    or not (p_operator_employee_id = any(p_employee_ids)) then
+  if p_operator_employee_id is not null
+    and not (p_operator_employee_id = any(v_requested_employee_ids)) then
     raise exception using message = 'OPERATOR_NOT_ASSIGNED';
   end if;
 
@@ -728,7 +783,7 @@ begin
 
   if exists (
     select 1
-    from unnest(p_employee_ids) as requested(employee_id)
+    from unnest(v_requested_employee_ids) as requested(employee_id)
     left join public.employees as employee on employee.id = requested.employee_id
     where employee.id is null or employee.is_active is not true
   ) then
@@ -744,12 +799,13 @@ begin
     v_date := v_date + 1;
   end loop;
 
-  if exists (
+  if cardinality(v_requested_employee_ids) > 0
+    and exists (
     select 1
     from public.booth_schedule_assignments as assignment
     join public.booth_schedules as schedule
       on schedule.id = assignment.schedule_id
-    where assignment.employee_id = any(p_employee_ids)
+    where assignment.employee_id = any(v_requested_employee_ids)
       and schedule.date between p_start_date and p_end_date
       and schedule.status = 'scheduled'
       and schedule.start_time < p_end_time
@@ -758,9 +814,11 @@ begin
     raise exception using message = 'SCHEDULE_CONFLICT';
   end if;
 
-  v_current_employee_id := public.current_employee_id();
-  if v_current_employee_id is null then
-    raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+  if p_operator_employee_id is not null then
+    v_current_employee_id := public.current_employee_id();
+    if v_current_employee_id is null then
+      raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+    end if;
   end if;
 
   v_date := p_start_date;
@@ -783,30 +841,364 @@ begin
     )
     returning id into v_schedule_id;
 
-    insert into public.booth_schedule_assignments (schedule_id, employee_id)
-    select v_schedule_id, employee_id
-    from unnest(p_employee_ids) as employee_id;
+    if cardinality(v_requested_employee_ids) > 0 then
+      insert into public.booth_schedule_assignments (schedule_id, employee_id)
+      select v_schedule_id, employee_id
+      from unnest(v_requested_employee_ids) as employee_id;
+    end if;
 
-    insert into public.booth_schedule_operator_periods (
-      schedule_id,
-      operator_employee_id,
-      initiated_by_employee_id,
-      transition_type,
-      starts_at
-    )
-    values (
-      v_schedule_id,
-      p_operator_employee_id,
-      v_current_employee_id,
-      'scheduled',
-      (v_date + p_start_time) at time zone 'Asia/Manila'
-    );
+    if p_operator_employee_id is not null then
+      insert into public.booth_schedule_operator_periods (
+        schedule_id,
+        operator_employee_id,
+        initiated_by_employee_id,
+        transition_type,
+        starts_at
+      )
+      values (
+        v_schedule_id,
+        p_operator_employee_id,
+        v_current_employee_id,
+        'scheduled',
+        (v_date + p_start_time) at time zone 'Asia/Manila'
+      );
+    end if;
 
     v_created_count := v_created_count + 1;
     v_date := v_date + 1;
   end loop;
 
   return v_created_count;
+end;
+$$;
+
+create or replace function public.get_employee_schedule_browser(
+  p_start_date date,
+  p_end_date date
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_employee_id uuid;
+begin
+  select employees.id
+  into v_employee_id
+  from public.employees
+  where employees.user_id = (select auth.uid())
+    and employees.is_active is true
+  limit 1;
+
+  if v_employee_id is null then
+    raise exception using message = 'EMPLOYEE_NOT_AUTHORIZED';
+  end if;
+
+  if p_start_date is null
+    or p_end_date is null
+    or p_start_date > p_end_date
+    or p_end_date - p_start_date > 31 then
+    raise exception using message = 'INVALID_DATE_RANGE';
+  end if;
+
+  return coalesce(
+    (
+      select jsonb_agg(
+        jsonb_build_object(
+          'id', schedule.id,
+          'booth_id', schedule.booth_id,
+          'date', schedule.date,
+          'start_time', schedule.start_time,
+          'end_time', schedule.end_time,
+          'status', schedule.status,
+          'created_at', schedule.created_at,
+          'operator_employee_id', schedule.operator_employee_id,
+          'booth_name', booth.name,
+          'booth_location_text', booth.location_text,
+          'operator_name', operator.name,
+          'assigned_employee_names', to_jsonb(coalesce(assignment_names.names, array[]::text[])),
+          'is_assigned', exists (
+            select 1
+            from public.booth_schedule_assignments as assignment
+            where assignment.schedule_id = schedule.id
+              and assignment.employee_id = v_employee_id
+          )
+        )
+        order by schedule.date, schedule.start_time, schedule.created_at
+      )
+      from public.booth_schedules as schedule
+      join public.booths as booth
+        on booth.id = schedule.booth_id
+      left join public.employees as operator
+        on operator.id = schedule.operator_employee_id
+      left join lateral (
+        select array_agg(employee.name order by employee.name) as names
+        from public.booth_schedule_assignments as assignment
+        join public.employees as employee
+          on employee.id = assignment.employee_id
+        where assignment.schedule_id = schedule.id
+      ) as assignment_names on true
+      where schedule.date between p_start_date and p_end_date
+    ),
+    '[]'::jsonb
+  );
+end;
+$$;
+
+create or replace function public.get_employee_schedule_detail(
+  p_schedule_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_employee_id uuid;
+  v_schedule public.booth_schedules%rowtype;
+  v_booth public.booths%rowtype;
+begin
+  select employees.id
+  into v_employee_id
+  from public.employees
+  where employees.user_id = (select auth.uid())
+    and employees.is_active is true
+  limit 1;
+
+  if v_employee_id is null then
+    raise exception using message = 'EMPLOYEE_NOT_AUTHORIZED';
+  end if;
+
+  select *
+  into v_schedule
+  from public.booth_schedules
+  where id = p_schedule_id;
+
+  if not found then
+    return null;
+  end if;
+
+  select *
+  into v_booth
+  from public.booths
+  where id = v_schedule.booth_id;
+
+  if not found then
+    return null;
+  end if;
+
+  return jsonb_build_object(
+    'schedule',
+    to_jsonb(v_schedule) || jsonb_build_object(
+      'booths',
+      to_jsonb(v_booth),
+      'booth_schedule_assignments',
+      coalesce(
+        (
+          select jsonb_agg(to_jsonb(assignment) order by assignment.assigned_at, assignment.employee_id)
+          from public.booth_schedule_assignments as assignment
+          where assignment.schedule_id = v_schedule.id
+        ),
+        '[]'::jsonb
+      ),
+      'booth_schedule_operator_periods',
+      coalesce(
+        (
+          select jsonb_agg(to_jsonb(period) order by period.starts_at, period.created_at)
+          from public.booth_schedule_operator_periods as period
+          where period.schedule_id = v_schedule.id
+        ),
+        '[]'::jsonb
+      ),
+      'shift_closeouts',
+      coalesce(
+        (
+          select jsonb_agg(to_jsonb(closeout) order by closeout.closed_at desc, closeout.id desc)
+          from public.shift_closeouts as closeout
+          where closeout.schedule_id = v_schedule.id
+        ),
+        '[]'::jsonb
+      )
+    ),
+    'products',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(product_row) order by product_row.name)
+        from (
+          select
+            product.id,
+            product.name,
+            product.price,
+            product.category,
+            product.image_url,
+            product.is_available,
+            product.created_at,
+            joint.quantity,
+            joint.stock
+          from public.booth_schedule_products as joint
+          join public.products as product
+            on product.id = joint.product_id
+          where joint.schedule_id = v_schedule.id
+        ) as product_row
+      ),
+      '[]'::jsonb
+    ),
+    'sales',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(sale_row) order by sale_row.created_at desc)
+        from (
+          select
+            sale.id,
+            sale.booth_id,
+            sale.employee_id,
+            sale.schedule_id,
+            sale.total_amount,
+            sale.payment_method,
+            null::text as receipt_photo_path,
+            sale.status,
+            sale.created_at,
+            case
+              when employee.id is null then null
+              else jsonb_build_object('name', employee.name)
+            end as employees,
+            jsonb_build_object('name', booth.name) as booths
+          from public.sales as sale
+          left join public.employees as employee
+            on employee.id = sale.employee_id
+          left join public.booths as booth
+            on booth.id = sale.booth_id
+          where sale.schedule_id = v_schedule.id
+        ) as sale_row
+      ),
+      '[]'::jsonb
+    )
+  );
+end;
+$$;
+
+create or replace function public.get_employee_schedule_sale_items(
+  p_sale_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_employee_id uuid;
+begin
+  select employees.id
+  into v_employee_id
+  from public.employees
+  where employees.user_id = (select auth.uid())
+    and employees.is_active is true
+  limit 1;
+
+  if v_employee_id is null then
+    raise exception using message = 'EMPLOYEE_NOT_AUTHORIZED';
+  end if;
+
+  return coalesce(
+    (
+      select jsonb_agg(to_jsonb(item_row) order by item_row.id)
+      from (
+        select
+          item.id,
+          item.sale_id,
+          item.product_id,
+          item.quantity,
+          item.unit_price,
+          item.subtotal,
+          case
+            when product.id is null then null
+            else jsonb_build_object(
+              'id', product.id,
+              'name', product.name,
+              'price', product.price,
+              'category', product.category,
+              'image_url', product.image_url,
+              'is_available', product.is_available,
+              'created_at', product.created_at
+            )
+          end as products
+        from public.sale_items as item
+        left join public.products as product
+          on product.id = item.product_id
+        where item.sale_id = p_sale_id
+      ) as item_row
+    ),
+    '[]'::jsonb
+  );
+end;
+$$;
+
+create or replace function public.join_booth_schedule(p_schedule_id uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_employee_id uuid;
+  v_schedule public.booth_schedules%rowtype;
+begin
+  select employees.id
+  into v_employee_id
+  from public.employees
+  where employees.user_id = (select auth.uid())
+    and employees.is_active is true
+  limit 1;
+
+  if v_employee_id is null then
+    raise exception using message = 'EMPLOYEE_NOT_AUTHORIZED';
+  end if;
+
+  select *
+  into v_schedule
+  from public.booth_schedules
+  where id = p_schedule_id
+  for update;
+
+  if not found
+    or v_schedule.status <> 'scheduled'
+    or v_schedule.date < timezone('Asia/Manila', now())::date
+    or (
+      v_schedule.date = timezone('Asia/Manila', now())::date
+      and v_schedule.end_time <= timezone('Asia/Manila', now())::time
+    ) then
+    raise exception using message = 'SHIFT_NOT_JOINABLE';
+  end if;
+
+  if exists (
+    select 1
+    from public.booth_schedule_assignments
+    where schedule_id = p_schedule_id
+      and employee_id = v_employee_id
+  ) then
+    return p_schedule_id;
+  end if;
+
+  if exists (
+    select 1
+    from public.booth_schedule_assignments as assignment
+    join public.booth_schedules as schedule
+      on schedule.id = assignment.schedule_id
+    where assignment.employee_id = v_employee_id
+      and schedule.id <> p_schedule_id
+      and schedule.status = 'scheduled'
+      and schedule.date = v_schedule.date
+      and schedule.start_time < v_schedule.end_time
+      and schedule.end_time > v_schedule.start_time
+  ) then
+    raise exception using message = 'SCHEDULE_CONFLICT';
+  end if;
+
+  insert into public.booth_schedule_assignments (schedule_id, employee_id)
+  values (p_schedule_id, v_employee_id);
+
+  return p_schedule_id;
 end;
 $$;
 
@@ -1356,7 +1748,10 @@ begin
     raise exception using message = 'SHIFT_NOT_ACTIVE_FOR_CLOSEOUT';
   end if;
 
-  if v_schedule.operator_employee_id <> v_employee_id
+  if (
+    v_schedule.operator_employee_id is null
+    or v_schedule.operator_employee_id <> v_employee_id
+  )
     and v_employee_role <> 'admin' then
     raise exception using message = 'EMPLOYEE_NOT_OPERATOR';
   end if;
@@ -1549,20 +1944,22 @@ begin
   set status = 'scheduled'
   where id = p_schedule_id;
 
-  insert into public.booth_schedule_operator_periods (
-    schedule_id,
-    operator_employee_id,
-    initiated_by_employee_id,
-    transition_type,
-    starts_at
-  )
-  values (
-    p_schedule_id,
-    v_schedule.operator_employee_id,
-    v_employee_id,
-    'takeover',
-    v_now
-  );
+  if v_schedule.operator_employee_id is not null then
+    insert into public.booth_schedule_operator_periods (
+      schedule_id,
+      operator_employee_id,
+      initiated_by_employee_id,
+      transition_type,
+      starts_at
+    )
+    values (
+      p_schedule_id,
+      v_schedule.operator_employee_id,
+      v_employee_id,
+      'takeover',
+      v_now
+    );
+  end if;
 
   return v_closeout_id;
 end;
@@ -1831,6 +2228,10 @@ $$;
 
 revoke execute on function public.save_booth_schedule(uuid, uuid, uuid[], uuid, date, time, time, date, time) from public;
 revoke execute on function public.save_booth_schedule_range(uuid, uuid[], uuid, date, date, time, time, date, time) from public;
+revoke execute on function public.get_employee_schedule_browser(date, date) from public;
+revoke execute on function public.get_employee_schedule_detail(uuid) from public;
+revoke execute on function public.get_employee_schedule_sale_items(uuid) from public;
+revoke execute on function public.join_booth_schedule(uuid) from public;
 revoke execute on function public.claim_shift_operator(uuid) from public;
 revoke execute on function public.close_shift(uuid, numeric, jsonb) from public;
 revoke execute on function public.deactivate_booth_and_cancel_future_schedules(uuid, date, time) from public;
@@ -1840,6 +2241,10 @@ revoke execute on function public.record_admin_inventory_override(uuid, uuid, te
 revoke execute on function public.reopen_shift(uuid, text) from public;
 grant execute on function public.save_booth_schedule(uuid, uuid, uuid[], uuid, date, time, time, date, time) to authenticated;
 grant execute on function public.save_booth_schedule_range(uuid, uuid[], uuid, date, date, time, time, date, time) to authenticated;
+grant execute on function public.get_employee_schedule_browser(date, date) to authenticated;
+grant execute on function public.get_employee_schedule_detail(uuid) to authenticated;
+grant execute on function public.get_employee_schedule_sale_items(uuid) to authenticated;
+grant execute on function public.join_booth_schedule(uuid) to authenticated;
 grant execute on function public.claim_shift_operator(uuid) to authenticated;
 grant execute on function public.close_shift(uuid, numeric, jsonb) to authenticated;
 grant execute on function public.deactivate_booth_and_cancel_future_schedules(uuid, date, time) to authenticated;

@@ -69,7 +69,7 @@ export function buildOpenStreetMapLink(
   return `https://www.openstreetmap.org/?mlat=${formattedLatitude}&mlon=${formattedLongitude}#map=${zoom}/${formattedLatitude}/${formattedLongitude}`
 }
 
-  export function buildGoogleMapsLink(latitude: number, longitude: number) {
+export function buildGoogleMapsLink(latitude: number, longitude: number) {
   const formattedLatitude = formatCoordinateValue(latitude)
   const formattedLongitude = formatCoordinateValue(longitude)
 

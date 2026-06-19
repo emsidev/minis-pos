@@ -1,5 +1,5 @@
 import type { Database } from "@/lib/database.types"
-import type { Booth, BoothSchedule, Product } from "@/lib/shifts"
+import type { Booth, BoothSchedule, Product, SaleWithJoins } from "@/lib/shifts"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 
 export type AdminEmployeeOption = Pick<
@@ -50,6 +50,12 @@ export type AdminSchedule = BoothSchedule & {
   shift_closeouts: AdminShiftCloseout[]
 }
 
+export type AdminShiftDetailData = {
+  schedule: AdminSchedule | null
+  products: Product[]
+  sales: SaleWithJoins[]
+}
+
 export type AdminScheduleCalendarItem = Pick<
   BoothSchedule,
   | "id"
@@ -63,6 +69,7 @@ export type AdminScheduleCalendarItem = Pick<
 > & {
   booths: Pick<Booth, "id" | "name">
   operator: AdminEmployeeOption | null
+  booth_schedule_assignments: AdminScheduleAssignment[]
 }
 
 export async function getAdminBooths() {
@@ -130,7 +137,7 @@ export async function getAdminScheduleCalendarItems(
   let query = supabase
     .from("booth_schedules")
     .select(
-      "id, booth_id, operator_employee_id, date, start_time, end_time, status, created_at, booths(id, name), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email)"
+      "id, booth_id, operator_employee_id, date, start_time, end_time, status, created_at, booths(id, name), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments(*, employees(id, name, email))"
     )
     .gte("date", startDate)
     .lte("date", endDate)

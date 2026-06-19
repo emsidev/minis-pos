@@ -27,6 +27,10 @@ drop function if exists public.save_booth_schedule_with_inventory(uuid, uuid, uu
 drop function if exists public.save_booth_schedule(uuid, uuid, uuid, date, time, time, date, time) cascade;
 drop function if exists public.save_booth_schedule(uuid, uuid, uuid[], uuid, date, time, time, date, time) cascade;
 drop function if exists public.save_booth_schedule_range(uuid, uuid[], uuid, date, date, time, time, date, time) cascade;
+drop function if exists public.get_employee_schedule_browser(date, date) cascade;
+drop function if exists public.get_employee_schedule_detail(uuid) cascade;
+drop function if exists public.get_employee_schedule_sale_items(uuid) cascade;
+drop function if exists public.join_booth_schedule(uuid) cascade;
 drop function if exists public.claim_shift_operator(uuid) cascade;
 drop function if exists public.record_shift_inventory_event(uuid, uuid, text, text, timestamptz, jsonb) cascade;
 drop function if exists public.record_admin_inventory_override(uuid, uuid, text, jsonb) cascade;
