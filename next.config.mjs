@@ -8,6 +8,11 @@ const withSerwist = withSerwistInit({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "5mb", // change to 2mb, 5mb, 10mb, etc.
+    },
+  },
   images: {
     remotePatterns: [
       {
