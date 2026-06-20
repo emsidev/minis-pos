@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import type { PaymentMethod } from "@/lib/database.types"
+import { prepareReceiptPhotoDataUrl } from "@/lib/receiptPhotoClient"
 import type { SaleReceiptSyncState } from "@/lib/shifts"
 import { cn, formatCurrency } from "@/lib/utils"
 
@@ -54,26 +55,6 @@ type ReceiptPhotoPreviewProps = {
   fallback?: ReactNode
   thumbnailClassName?: string
   onReplaceLocalReceipt?: (receiptPhotoDataUrl: string) => Promise<void>
-}
-
-async function readFileAsDataUrl(file: File) {
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () =>
-      reject(new Error("Unable to read the receipt photo."))
-    reader.onloadend = () => {
-      if (
-        typeof reader.result === "string" &&
-        reader.result.trim().length > 0
-      ) {
-        resolve(reader.result)
-        return
-      }
-
-      reject(new Error("Unable to read the receipt photo."))
-    }
-    reader.readAsDataURL(file)
-  })
 }
 
 function formatReceiptDateTime(value?: string) {
@@ -257,7 +238,7 @@ export function ReceiptPhotoPreview({
 
     try {
       setIsReplacing(true)
-      const receiptPhotoDataUrl = await readFileAsDataUrl(file)
+      const receiptPhotoDataUrl = await prepareReceiptPhotoDataUrl(file)
 
       if (canReplaceLocally && onReplaceLocalReceipt) {
         await onReplaceLocalReceipt(receiptPhotoDataUrl)

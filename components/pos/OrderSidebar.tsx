@@ -22,6 +22,7 @@ import {
   saveSaleOnlineConfirmed,
   syncPendingPosOperations,
 } from "@/lib/sync"
+import { prepareReceiptPhotoDataUrl } from "@/lib/receiptPhotoClient"
 import { useCart } from "@/components/pos/CartContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -77,6 +78,7 @@ export function OrderSidebar({
   const [cashReceived, setCashReceived] = useState("")
   const [receiptPhoto, setReceiptPhoto] = useState<string | null>(null)
   const [isCharging, setIsCharging] = useState(false)
+  const [isPreparingReceiptPhoto, setIsPreparingReceiptPhoto] = useState(false)
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false)
 
   const isCash = paymentMethod === "cash"
@@ -95,6 +97,7 @@ export function OrderSidebar({
     items.length > 0 &&
     hasSaleContext &&
     !isCharging &&
+    !isPreparingReceiptPhoto &&
     ((isCash && cashAmount >= total) || (!isCash && Boolean(receiptPhoto)))
 
   const changeDue = Math.max(0, cashAmount - total)
@@ -173,15 +176,26 @@ export function OrderSidebar({
     toast.info("Cart cleared")
   }
 
-  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setReceiptPhoto(typeof reader.result === "string" ? reader.result : null)
+    try {
+      setIsPreparingReceiptPhoto(true)
+      const nextReceiptPhoto = await prepareReceiptPhotoDataUrl(file)
+      setReceiptPhoto(nextReceiptPhoto)
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "Unable to prepare the receipt photo."
+      )
+    } finally {
+      event.target.value = ""
+      setIsPreparingReceiptPhoto(false)
     }
-    reader.readAsDataURL(file)
   }
 
   return (
@@ -382,6 +396,11 @@ export function OrderSidebar({
                     Photo attached - tap to change
                   </span>
                 </div>
+              ) : isPreparingReceiptPhoto ? (
+                <div className="text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-xs font-bold">Preparing photo...</span>
+                </div>
               ) : (
                 <div className="text-muted-foreground flex items-center gap-2">
                   <Camera className="h-5 w-5" />
@@ -395,8 +414,8 @@ export function OrderSidebar({
               accept="image/*"
               capture="environment"
               className="sr-only"
-              disabled={isCharging}
-              onChange={handlePhotoUpload}
+              disabled={isCharging || isPreparingReceiptPhoto}
+              onChange={(event) => void handlePhotoUpload(event)}
             />
           </div>
         )}
