@@ -3,21 +3,13 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
-import {
-  Copy,
-  Ellipsis,
-  Loader2,
-  Receipt,
-  Store,
-  UserRound,
-  Wallet,
-} from "lucide-react"
+import { Copy, Ellipsis, Loader2, Store, UserRound, Wallet } from "lucide-react"
 import { toast } from "sonner"
 
-import { getReceiptSignedUrl } from "@/app/actions/receipts"
 import { loadAdminSalesPage } from "@/app/actions/adminSales"
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
+import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -92,7 +84,6 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
   const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | "all">(
     "all"
   )
-  const [pendingReceiptId, setPendingReceiptId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   useEffect(() => {
@@ -220,24 +211,6 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       router.push(`/admin/sales?${params.toString()}`)
     })
   }
-
-  const handleReceiptView = useCallback(async (row: AdminSalesLedgerRow) => {
-    if (!row.receiptPhotoPath) {
-      toast.error("Receipt photo is not available.")
-      return
-    }
-
-    setPendingReceiptId(row.id)
-    const result = await getReceiptSignedUrl(row.receiptPhotoPath)
-    setPendingReceiptId(null)
-
-    if (!result.ok || !result.signedUrl) {
-      toast.error(result.error ?? "Unable to load this receipt photo.")
-      return
-    }
-
-    window.open(result.signedUrl, "_blank", "noopener,noreferrer")
-  }, [])
 
   const handleCopySaleId = useCallback(async (saleId: string) => {
     try {
@@ -375,62 +348,53 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
           <DataTableColumnHeader column={column} title="Receipt" />
         ),
         cell: ({ row }) => (
-          <Badge variant={row.original.hasReceipt ? "secondary" : "outline"}>
-            {row.original.hasReceipt ? "Available" : "Not required"}
-          </Badge>
+          <ReceiptPhotoPreview
+            saleId={row.original.id}
+            paymentMethod={row.original.paymentMethod}
+            receiptPhotoPath={row.original.receiptPhotoPath}
+            canEditReceipt={row.original.canEditReceipt}
+            boothName={row.original.boothName}
+            employeeName={row.original.employeeName}
+            shiftLabel={row.original.shiftLabel}
+            createdAt={row.original.createdAt}
+            amount={row.original.totalAmount}
+            fallback={
+              <Badge
+                variant={row.original.hasReceipt ? "secondary" : "outline"}
+              >
+                {row.original.hasReceipt ? "Available" : "Not required"}
+              </Badge>
+            }
+          />
         ),
       },
       {
         id: "actions",
         enableHiding: false,
         header: () => <div className="text-right">Actions</div>,
-        cell: ({ row }) => {
-          const pending = pendingReceiptId === row.original.id
-
-          return (
-            <div className="flex justify-end">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={<Button variant="ghost" size="icon-sm" />}
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" size="icon-sm" />}
+              >
+                <Ellipsis />
+                <span className="sr-only">Open sale actions</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => handleCopySaleId(row.original.id)}
                 >
-                  <Ellipsis />
-                  <span className="sr-only">Open sale actions</span>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={() => handleCopySaleId(row.original.id)}
-                  >
-                    <Copy data-icon="inline-start" />
-                    Copy Sale ID
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!row.original.hasReceipt || pending}
-                    onClick={() => handleReceiptView(row.original)}
-                  >
-                    {pending ? (
-                      <Loader2
-                        data-icon="inline-start"
-                        className="animate-spin"
-                      />
-                    ) : (
-                      <Receipt data-icon="inline-start" />
-                    )}
-                    View Receipt
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )
-        },
+                  <Copy data-icon="inline-start" />
+                  Copy Sale ID
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ),
       },
     ],
-    [
-      data.endDate,
-      data.startDate,
-      handleCopySaleId,
-      handleReceiptView,
-      pendingReceiptId,
-    ]
+    [data.endDate, data.startDate, handleCopySaleId]
   )
 
   return (

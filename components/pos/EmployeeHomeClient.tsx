@@ -60,6 +60,7 @@ export function EmployeeHomeClient({
       employeeId={employeeId}
       scheduleId={workspace.scheduleId}
       preferCachedWorkspace={false}
+      preferCachedInventoryData={preferCachedWorkspace}
       canSell
       showShiftInventoryEditor
     />

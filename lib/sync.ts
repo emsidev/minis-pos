@@ -1,5 +1,9 @@
 import { createClient } from "./supabase"
 import {
+  deleteReceiptPhoto,
+  uploadReceiptPhotoForSale,
+} from "@/app/actions/receipts"
+import {
   db,
   type LocalBooth,
   type LocalBoothSchedule,
@@ -221,10 +225,18 @@ function getSyncError(error: unknown): SyncFailureInfo {
     }
   }
 
+  if (normalized.includes("RECEIPT_PHOTO_UPLOAD_FAILED")) {
+    return {
+      message:
+        "The receipt photo could not be uploaded. Retry after reconnecting. If it still fails, retake the receipt photo.",
+      isConflict: false,
+      kind: "transient",
+    }
+  }
+
   if (
     normalized.includes("RECEIPT_PHOTO_NOT_FOUND") ||
-    normalized.includes("INVALID_RECEIPT_PHOTO_PATH") ||
-    normalized.includes("RECEIPT PHOTO UPLOAD FAILED")
+    normalized.includes("INVALID_RECEIPT_PHOTO_PATH")
   ) {
     return {
       message:
@@ -1348,6 +1360,57 @@ export async function saveSaleLocally(
   return sale
 }
 
+export async function replaceLocalSaleReceiptPhoto(
+  saleId: string,
+  receiptPhotoDataUrl: string
+) {
+  if (!saleId.trim()) {
+    throw new Error("Sale record is missing.")
+  }
+
+  if (!receiptPhotoDataUrl.trim()) {
+    throw new Error("Receipt photo is required.")
+  }
+
+  const sale = await db.sales.get(saleId)
+
+  if (!sale) {
+    throw new Error("This sale is no longer available on this device.")
+  }
+
+  if (sale.payment_method === "cash") {
+    throw new Error("Cash sales do not have receipt photos.")
+  }
+
+  if (sale.sync_state === "synced") {
+    throw new Error("Reconnect to update synced receipt photos.")
+  }
+
+  const schedule = await db.boothSchedules.get(sale.schedule_id)
+
+  if (!schedule || schedule.status !== "scheduled") {
+    throw new Error(
+      "Receipt photos can be changed only while the shift is open."
+    )
+  }
+
+  const shouldResetSyncState =
+    sale.sync_state !== "failed" || sale.sync_failure_kind !== "conflict"
+
+  await db.sales.update(saleId, {
+    receipt_photo_local: receiptPhotoDataUrl,
+    ...(shouldResetSyncState
+      ? {
+          sync_state: "pending",
+          sync_error: null,
+          sync_attempt_count: 0,
+          sync_failure_kind: null,
+          sync_next_retry_at: null,
+        }
+      : {}),
+  })
+}
+
 export async function pushSaleToSupabase(
   saleId: string
 ): Promise<SyncAttemptResult> {
@@ -1368,23 +1431,28 @@ export async function pushSaleToSupabase(
 
     const supabase = createClient()
     let receiptPhotoPath = sale.receipt_photo_path
+    const previousReceiptPhotoPath = sale.receipt_photo_path
 
     if (sale.receipt_photo_local) {
-      const response = await fetch(sale.receipt_photo_local)
-      const blob = await response.blob()
-      const extension = blob.type.split("/")[1] ?? "jpg"
-      receiptPhotoPath = `${sale.employee_id}/${sale.id}.${extension}`
+      const uploadResult = await uploadReceiptPhotoForSale(
+        sale.id,
+        sale.receipt_photo_local
+      )
 
-      const { error: uploadError } = await supabase.storage
-        .from("receipts")
-        .upload(receiptPhotoPath, blob, {
-          contentType: blob.type,
-          upsert: true,
+      if (!uploadResult.ok || !uploadResult.receiptPhotoPath) {
+        console.error("Receipt photo upload failed for sale sync.", {
+          saleId: sale.id,
+          scheduleId: sale.schedule_id,
+          employeeId: sale.employee_id,
+          error: uploadResult.error ?? "Missing receipt photo path.",
         })
-
-      if (uploadError) {
-        throw new Error(`Receipt photo upload failed: ${uploadError.message}`)
+        throw new Error(
+          uploadResult.error ??
+            "RECEIPT_PHOTO_UPLOAD_FAILED: Missing receipt photo path."
+        )
       }
+
+      receiptPhotoPath = uploadResult.receiptPhotoPath
 
       await db.sales.update(saleId, {
         receipt_photo_path: receiptPhotoPath,
@@ -1425,6 +1493,24 @@ export async function pushSaleToSupabase(
       receipt_photo_path: receiptPhotoPath,
       receipt_photo_local: null,
     })
+
+    if (
+      sale.receipt_photo_local &&
+      previousReceiptPhotoPath &&
+      previousReceiptPhotoPath !== receiptPhotoPath
+    ) {
+      const cleanupResult = await deleteReceiptPhoto(previousReceiptPhotoPath)
+
+      if (!cleanupResult.ok) {
+        console.warn("Unable to clean up replaced receipt photo after sync:", {
+          saleId,
+          previousReceiptPhotoPath,
+          receiptPhotoPath,
+          error: cleanupResult.error,
+        })
+      }
+    }
+
     return { synced: true }
   } catch (error) {
     const syncFailure = getSyncError(error)
@@ -1486,15 +1572,12 @@ async function rollbackStagedSale(saleId: string, cleanupReceiptPhoto = false) {
   )
 
   if (cleanupReceiptPhoto && sale.receipt_photo_path) {
-    const supabase = createClient()
-    const { error } = await supabase.storage
-      .from("receipts")
-      .remove([sale.receipt_photo_path])
+    const result = await deleteReceiptPhoto(sale.receipt_photo_path)
 
-    if (error) {
+    if (!result.ok) {
       console.warn(
         "Unable to clean up receipt photo for rolled-back sale:",
-        error
+        result.error
       )
     }
   }

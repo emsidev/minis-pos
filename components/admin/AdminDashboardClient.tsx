@@ -23,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
 import {
   ChartContainer,
   ChartLegend,
@@ -399,9 +400,21 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
           <DataTableColumnHeader column={column} title="Receipt" />
         ),
         cell: ({ row }) => (
-          <span className="text-muted-foreground text-sm">
-            {row.original.hasReceipt ? "Attached" : "Cash sale"}
-          </span>
+          <ReceiptPhotoPreview
+            saleId={row.original.id}
+            paymentMethod={row.original.paymentMethod}
+            receiptPhotoPath={row.original.receiptPhotoPath}
+            canEditReceipt={row.original.canEditReceipt}
+            boothName={row.original.boothName}
+            employeeName={row.original.employeeName}
+            createdAt={row.original.createdAt}
+            amount={row.original.totalAmount}
+            fallback={
+              <span className="text-muted-foreground text-sm">
+                {row.original.hasReceipt ? "Attached" : "Cash sale"}
+              </span>
+            }
+          />
         ),
       },
       {

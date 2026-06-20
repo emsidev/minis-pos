@@ -35,6 +35,7 @@ type ShiftInventoryEditorProps = {
   availableProducts: Product[]
   employeeId: string
   compact?: boolean
+  preferCachedData?: boolean
 }
 
 type QuantityValues = Record<string, string>
@@ -94,6 +95,7 @@ export function ShiftInventoryEditor({
   availableProducts,
   employeeId,
   compact = false,
+  preferCachedData = false,
 }: ShiftInventoryEditorProps) {
   const cachedShift = useLiveQuery(
     () => getCachedShiftDetails(schedule.id),
@@ -102,21 +104,29 @@ export function ShiftInventoryEditor({
   const cachedAvailableProducts = useLiveQuery(() =>
     getCachedAvailableProducts()
   )
+  const shouldUseCachedData =
+    typeof window !== "undefined" &&
+    (!window.navigator.onLine || preferCachedData)
   const localProducts =
-    cachedShift?.products && cachedShift.products.length > 0
+    shouldUseCachedData &&
+    cachedShift?.products &&
+    cachedShift.products.length > 0
       ? cachedShift.products
       : inventoryProducts
+  const activeAvailableProducts =
+    shouldUseCachedData &&
+    cachedAvailableProducts &&
+    cachedAvailableProducts.length > 0
+      ? cachedAvailableProducts
+      : availableProducts
+  const initialized = localProducts.length > 0
   const productOptions = useMemo(
     () =>
-      mergeProductOptions(
-        localProducts,
-        cachedAvailableProducts && cachedAvailableProducts.length > 0
-          ? cachedAvailableProducts
-          : availableProducts
-      ),
-    [availableProducts, cachedAvailableProducts, localProducts]
+      initialized
+        ? mergeProductOptions(localProducts, activeAvailableProducts)
+        : mergeProductOptions([], activeAvailableProducts),
+    [activeAvailableProducts, initialized, localProducts]
   )
-  const initialized = localProducts.length > 0
   const [expanded, setExpanded] = useState(!initialized)
   const [quantities, setQuantities] = useState<QuantityValues>({})
   const [hasDraftChanges, setHasDraftChanges] = useState(false)

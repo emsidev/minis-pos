@@ -11,10 +11,17 @@ import { getRequestOrigin } from "@/lib/server-utils"
 import { createAdminSupabaseClient } from "@/lib/supabase-admin"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 
-export type EmployeeInviteInput = {
+export type EmployeeProfileInput = {
   name: string
   email: string
   role: EmployeeRole
+}
+
+export type EmployeeInviteInput = EmployeeProfileInput
+
+export type EmployeeUpdateInput = EmployeeProfileInput & {
+  id: string
+  isActive: boolean
 }
 
 export type EmployeeAdminActionResult = {
@@ -35,7 +42,7 @@ function revalidateEmployeeAdminRoutes() {
   revalidatePath("/admin/booths")
 }
 
-function validateInviteInput(input: EmployeeInviteInput) {
+function validateEmployeeProfileInput(input: EmployeeProfileInput) {
   const name = input.name.trim()
   const email = normalizeEmployeeEmail(input.email)
   const role = input.role
@@ -131,6 +138,12 @@ async function sendEmployeeInviteEmail(input: {
       redirectTo,
     })
 
+  if (!recoveryError) {
+    return {
+      message: "Password setup email sent.",
+    }
+  }
+
   const { data: generatedLink, error: generateError } =
     await adminSupabase.auth.admin.generateLink({
       type: "recovery",
@@ -139,18 +152,15 @@ async function sendEmployeeInviteEmail(input: {
     })
 
   if (generateError) {
-    throw new Error(generateError.message)
+    throw new Error(recoveryError.message)
   }
 
   inviteLink = generatedLink.properties.action_link
 
-  if (recoveryError) {
-    throw new Error(recoveryError.message)
-  }
-
   return {
     inviteLink,
-    message: "Password setup email sent.",
+    message:
+      "Password setup email could not be sent. Share the manual setup link.",
   }
 }
 
@@ -186,12 +196,35 @@ async function findAuthUserByEmail(email: string) {
   return null
 }
 
+async function findEmployeeAuthUser(
+  employee: AdminEmployeeRecord,
+  nextEmail: string
+) {
+  if (employee.user_id) {
+    return { id: employee.user_id }
+  }
+
+  const currentEmail = normalizeEmployeeEmail(employee.email ?? "")
+  if (currentEmail) {
+    const currentMatch = await findAuthUserByEmail(currentEmail)
+    if (currentMatch) {
+      return currentMatch
+    }
+  }
+
+  if (nextEmail !== currentEmail) {
+    return findAuthUserByEmail(nextEmail)
+  }
+
+  return null
+}
+
 export async function inviteEmployee(
   input: EmployeeInviteInput
 ): Promise<EmployeeAdminActionResult> {
   await requireEmployeeRole("admin")
 
-  const parsed = validateInviteInput(input)
+  const parsed = validateEmployeeProfileInput(input)
   if ("error" in parsed) {
     return { ok: false, error: parsed.error }
   }
@@ -221,7 +254,7 @@ export async function inviteEmployee(
           role,
         })
         .eq("id", existingEmployee.id)
-        .select("id")
+        .select("*")
         .single()
     : await supabase
         .from("employees")
@@ -232,7 +265,7 @@ export async function inviteEmployee(
           role,
           user_id: null,
         })
-        .select("id")
+        .select("*")
         .single()
 
   if (employeeRow.error) {
@@ -370,5 +403,101 @@ export async function updateEmployeeStatus(
   return {
     ok: true,
     message: isActive ? "Employee activated." : "Employee deactivated.",
+  }
+}
+
+export async function updateEmployeeDetails(
+  input: EmployeeUpdateInput
+): Promise<EmployeeAdminActionResult> {
+  await requireEmployeeRole("admin")
+
+  if (!input.id) {
+    return { ok: false, error: "Employee record is missing." }
+  }
+
+  const parsed = validateEmployeeProfileInput(input)
+  if ("error" in parsed) {
+    return { ok: false, error: parsed.error }
+  }
+
+  const supabase = createServerSupabaseClient()
+  const { data: currentEmployee, error: lookupError } = await supabase
+    .from("employees")
+    .select("*")
+    .eq("id", input.id)
+    .maybeSingle()
+
+  if (lookupError) {
+    return { ok: false, error: lookupError.message }
+  }
+
+  if (!currentEmployee) {
+    return { ok: false, error: "Employee record was not found." }
+  }
+
+  const { data: emailConflict, error: emailConflictError } = await supabase
+    .from("employees")
+    .select("id")
+    .ilike("email", parsed.email)
+    .neq("id", input.id)
+    .limit(1)
+    .maybeSingle()
+
+  if (emailConflictError) {
+    return { ok: false, error: emailConflictError.message }
+  }
+
+  if (emailConflict) {
+    return {
+      ok: false,
+      error: "Another employee already uses that email address.",
+    }
+  }
+
+  try {
+    const authUser = await findEmployeeAuthUser(currentEmployee, parsed.email)
+    if (authUser) {
+      const adminSupabase = createAdminSupabaseClient()
+      const { error: authError } =
+        await adminSupabase.auth.admin.updateUserById(authUser.id, {
+          email: parsed.email,
+          user_metadata: { name: parsed.name },
+        })
+
+      if (authError) {
+        return { ok: false, error: authError.message }
+      }
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to update the employee sign-in details.",
+    }
+  }
+
+  const { data: updatedEmployee, error: updateError } = await supabase
+    .from("employees")
+    .update({
+      email: parsed.email,
+      is_active: input.isActive,
+      name: parsed.name,
+      role: parsed.role,
+    })
+    .eq("id", input.id)
+    .select("*")
+    .single()
+
+  if (updateError) {
+    return { ok: false, error: updateError.message }
+  }
+
+  revalidateEmployeeAdminRoutes()
+  return {
+    ok: true,
+    message: "Employee updated.",
+    employee: updatedEmployee as AdminEmployeeRecord,
   }
 }

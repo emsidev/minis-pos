@@ -138,6 +138,15 @@ export function ShiftPageClient({
         {
           event: "*",
           schema: "public",
+          table: "products",
+        },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
           table: "booth_schedule_products",
           filter: `schedule_id=eq.${initialData.schedule.id}`,
         },
@@ -231,13 +240,31 @@ export function ShiftPageClient({
       schedule.end_time
     )
   const operatesPos = schedule.operator_employee_id === employeeId
-  const canTakeOver =
-    employeeRole !== "admin" && isAssigned && active && !operatesPos
+  const assignedEmployeeNames = schedule.booth_schedule_assignments
+    .map((assignment) => {
+      const employee = (
+        assignment as {
+          employees?: { name?: string | null } | null
+        }
+      ).employees
+
+      return typeof employee?.name === "string" ? employee.name : null
+    })
+    .filter((name): name is string => Boolean(name))
+  const operator = (
+    schedule as {
+      operator?: { name?: string | null } | null
+    }
+  ).operator
+  const operatorName = typeof operator?.name === "string" ? operator.name : null
+  const canTakeOver = isAssigned && active && !operatesPos
   const canCloseShift =
     operatesPos &&
     schedule.status === "scheduled" &&
     schedule.date === getBusinessDate() &&
     hasBusinessShiftStarted(schedule.date, schedule.start_time)
+  const canEditReceipts =
+    schedule.status === "scheduled" && (employeeRole === "admin" || operatesPos)
 
   const handleTakeover = async () => {
     if (!window.navigator.onLine) {
@@ -266,9 +293,13 @@ export function ShiftPageClient({
         products={displayData.products}
         sales={displayData.sales}
         isFuture={isFutureShift(schedule)}
+        assignedEmployeeNames={assignedEmployeeNames}
+        operatorName={operatorName}
         availableProducts={availableProducts}
         inventoryEmployeeId={employeeId}
         canManageInventory={employeeRole !== "admin" && operatesPos && active}
+        preferCachedInventoryData={preferCachedData}
+        canEditReceipts={canEditReceipts}
         canTakeOver={canTakeOver}
         takeoverPending={takeoverPending}
         onTakeOver={() => setConfirmTakeover(true)}

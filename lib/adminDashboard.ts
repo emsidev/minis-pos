@@ -24,6 +24,7 @@ type SelectedSaleRow = Pick<
   | "employee_id"
   | "payment_method"
   | "receipt_photo_path"
+  | "schedule_id"
   | "status"
   | "total_amount"
   | "created_at"
@@ -32,6 +33,10 @@ type SelectedSaleRow = Pick<
   employees: Pick<
     Database["public"]["Tables"]["employees"]["Row"],
     "name"
+  > | null
+  booth_schedules: Pick<
+    Database["public"]["Tables"]["booth_schedules"]["Row"],
+    "status"
   > | null
 }
 
@@ -97,6 +102,8 @@ export type DashboardRecentTransaction = {
   paymentMethod: PaymentMethod
   totalAmount: number
   hasReceipt: boolean
+  receiptPhotoPath: string | null
+  canEditReceipt: boolean
   status: string
 }
 
@@ -338,7 +345,9 @@ function parseRecentTransactions(
     return null
   }
 
-  return value.flatMap((entry) => {
+  const transactions: DashboardRecentTransaction[] = []
+
+  for (const entry of value) {
     if (
       !isRecord(entry) ||
       typeof entry.id !== "string" ||
@@ -346,24 +355,37 @@ function parseRecentTransactions(
       typeof entry.boothName !== "string" ||
       typeof entry.employeeName !== "string" ||
       typeof entry.paymentMethod !== "string" ||
+      typeof entry.canEditReceipt !== "boolean" ||
       typeof entry.status !== "string"
     ) {
-      return []
+      return null
     }
 
-    return [
-      {
-        id: entry.id,
-        createdAt: entry.createdAt,
-        boothName: entry.boothName,
-        employeeName: entry.employeeName,
-        paymentMethod: entry.paymentMethod as PaymentMethod,
-        totalAmount: Number(entry.totalAmount ?? 0),
-        hasReceipt: Boolean(entry.hasReceipt),
-        status: entry.status,
-      },
-    ]
-  })
+    if (
+      entry.receiptPhotoPath !== null &&
+      typeof entry.receiptPhotoPath !== "string"
+    ) {
+      return null
+    }
+
+    transactions.push({
+      id: entry.id,
+      createdAt: entry.createdAt,
+      boothName: entry.boothName,
+      employeeName: entry.employeeName,
+      paymentMethod: entry.paymentMethod as PaymentMethod,
+      totalAmount: Number(entry.totalAmount ?? 0),
+      hasReceipt: Boolean(entry.hasReceipt),
+      receiptPhotoPath:
+        typeof entry.receiptPhotoPath === "string"
+          ? entry.receiptPhotoPath
+          : null,
+      canEditReceipt: entry.canEditReceipt,
+      status: entry.status,
+    })
+  }
+
+  return transactions
 }
 
 function normalizeDashboardRpcPayload(value: Json): DashboardRpcPayload | null {
@@ -501,6 +523,11 @@ function buildRecentTransactions(sales: SelectedSaleRow[]) {
       paymentMethod: sale.payment_method,
       totalAmount: toNumber(sale.total_amount),
       hasReceipt: Boolean(sale.receipt_photo_path),
+      receiptPhotoPath: sale.receipt_photo_path,
+      canEditReceipt:
+        sale.payment_method !== "cash" &&
+        Boolean(sale.receipt_photo_path) &&
+        sale.booth_schedules?.status === "scheduled",
       status: sale.status,
     }))
     .sort((left, right) => {
@@ -553,7 +580,7 @@ export async function getAdminDashboardData(requestedDate?: string) {
       supabase
         .from("sales")
         .select(
-          "id, booth_id, employee_id, payment_method, receipt_photo_path, status, total_amount, created_at, booths(name), employees(name)"
+          "id, booth_id, employee_id, payment_method, receipt_photo_path, schedule_id, status, total_amount, created_at, booths(name), employees(name), booth_schedules(status)"
         )
         .gte("created_at", startIso)
         .lt("created_at", endIso),

@@ -417,6 +417,7 @@ begin
       sale.id,
       sale.booth_id,
       sale.employee_id,
+      sale.schedule_id,
       sale.payment_method,
       sale.receipt_photo_path,
       sale.status,
@@ -529,10 +530,20 @@ begin
       sale.payment_method,
       sale.total_amount,
       sale.receipt_photo_path is not null as has_receipt,
+      sale.receipt_photo_path,
+      coalesce(
+        (
+          sale.payment_method <> 'cash'
+          and sale.receipt_photo_path is not null
+          and schedule.status = 'scheduled'
+        ),
+        false
+      ) as can_edit_receipt,
       sale.status
     from filtered_sales as sale
     left join public.booths as booth on booth.id = sale.booth_id
     left join public.employees as employee on employee.id = sale.employee_id
+    left join public.booth_schedules as schedule on schedule.id = sale.schedule_id
     order by sale.created_at desc, sale.id desc
   )
   select jsonb_build_object(
@@ -603,6 +614,8 @@ begin
           'paymentMethod', payment_method,
           'totalAmount', total_amount,
           'hasReceipt', has_receipt,
+          'receiptPhotoPath', receipt_photo_path,
+          'canEditReceipt', can_edit_receipt,
           'status', status
         )
         order by created_at desc, id desc
@@ -651,6 +664,7 @@ declare
   v_now timestamptz := now();
   v_requested_employee_ids uuid[] := coalesce(p_employee_ids, array[]::uuid[]);
   v_started boolean := false;
+  v_requested_core_fields_changed boolean := false;
 begin
   if p_start_time >= p_end_time then
     raise exception using message = 'INVALID_SHIFT_TIME';
@@ -691,7 +705,7 @@ begin
         and p_start_time <= timezone('Asia/Manila', now())::time
       )
     ) then
-    raise exception using message = 'SHIFT_EDIT_WINDOW_CLOSED';
+    raise exception using message = 'PAST_SHIFT_START_TIME';
   end if;
 
   if p_schedule_id is not null then
@@ -715,14 +729,23 @@ begin
         and v_schedule.start_time <= p_current_time
       );
 
-    if v_started
-      and (
-        v_schedule.booth_id is distinct from p_booth_id
-        or v_schedule.date is distinct from p_date
-        or v_schedule.start_time is distinct from p_start_time
-        or v_schedule.end_time is distinct from p_end_time
-      ) then
+    v_requested_core_fields_changed :=
+      v_schedule.booth_id is distinct from p_booth_id
+      or v_schedule.date is distinct from p_date
+      or v_schedule.start_time is distinct from p_start_time
+      or v_schedule.end_time is distinct from p_end_time;
+
+    if v_started and v_requested_core_fields_changed then
       raise exception using message = 'LIVE_SHIFT_CORE_FIELDS_LOCKED';
+    elsif not v_started
+      and (
+        p_date < p_current_date
+        or (
+          p_date = p_current_date
+          and p_start_time <= p_current_time
+        )
+      ) then
+      raise exception using message = 'PAST_SHIFT_START_TIME';
     end if;
   end if;
 
@@ -899,7 +922,7 @@ begin
   while v_date <= p_end_date loop
     if v_date < p_current_date
       or (v_date = p_current_date and p_start_time <= p_current_time) then
-      raise exception using message = 'SHIFT_EDIT_WINDOW_CLOSED';
+      raise exception using message = 'PAST_SHIFT_START_TIME';
     end if;
     v_date := v_date + 1;
   end loop;
@@ -1161,7 +1184,7 @@ begin
             sale.schedule_id,
             sale.total_amount,
             sale.payment_method,
-            null::text as receipt_photo_path,
+            sale.receipt_photo_path,
             sale.status,
             sale.created_at,
             case

@@ -234,6 +234,9 @@ type ParsedScheduleRowInput = {
 
 type EmployeeScheduleConflictRow = {
   employee_id: string
+  employees: {
+    name: string
+  } | null
   booth_schedules: {
     id: string
     date: string
@@ -249,6 +252,12 @@ type ScheduleConflictLookupInput = {
   startTime: string
   endTime: string
   ignoreScheduleId?: string
+}
+
+type ScheduleConflictSummary = {
+  employeeId: string
+  employeeName: string
+  dates: string[]
 }
 
 const ymdPattern = /^\d{4}-\d{2}-\d{2}$/
@@ -404,28 +413,51 @@ function revalidateBoothRoutes(boothIds?: string | string[]) {
   revalidatePath("/shift")
 }
 
-async function getScheduleConflictDates(
+function joinLabels(labels: string[]) {
+  if (labels.length <= 1) {
+    return labels[0] ?? ""
+  }
+
+  if (labels.length === 2) {
+    return `${labels[0]} and ${labels[1]}`
+  }
+
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`
+}
+
+function summarizeConflictDates(dates: string[]) {
+  if (dates.length <= 3) {
+    return joinLabels(dates)
+  }
+
+  return `${dates.slice(0, 3).join(", ")}, and ${dates.length - 3} more`
+}
+
+async function getScheduleConflicts(
   supabase: ReturnType<typeof createServerSupabaseClient>,
   input: ScheduleConflictLookupInput
-): Promise<{ dates: string[]; error?: string }> {
+): Promise<{ conflicts: ScheduleConflictSummary[]; error?: string }> {
   if (input.employeeIds.length === 0 || input.targetDates.length === 0) {
-    return { dates: [] as string[] }
+    return { conflicts: [] }
   }
 
   const { data, error } = await supabase
     .from("booth_schedule_assignments")
     .select(
-      "employee_id, booth_schedules!inner(id, date, start_time, end_time, status)"
+      "employee_id, employees(name), booth_schedules!inner(id, date, start_time, end_time, status)"
     )
     .in("employee_id", input.employeeIds)
     .in("booth_schedules.date", input.targetDates)
     .eq("booth_schedules.status", "scheduled")
 
   if (error) {
-    return { dates: [], error: getActionErrorMessage(error.message) }
+    return { conflicts: [], error: getActionErrorMessage(error.message) }
   }
 
-  const conflictDates = new Set<string>()
+  const conflictMap = new Map<
+    string,
+    { employeeName: string; dates: Set<string> }
+  >()
 
   for (const row of (data ?? []) as EmployeeScheduleConflictRow[]) {
     const schedule = row.booth_schedules
@@ -441,20 +473,47 @@ async function getScheduleConflictDates(
       schedule.start_time < input.endTime &&
       schedule.end_time > input.startTime
     ) {
-      conflictDates.add(schedule.date)
+      const existingConflict = conflictMap.get(row.employee_id) ?? {
+        employeeName: row.employees?.name?.trim() || "Unknown employee",
+        dates: new Set<string>(),
+      }
+      existingConflict.dates.add(schedule.date)
+      conflictMap.set(row.employee_id, existingConflict)
     }
   }
 
-  return { dates: Array.from(conflictDates).sort() }
+  return {
+    conflicts: Array.from(conflictMap.entries())
+      .map(([employeeId, conflict]) => ({
+        employeeId,
+        employeeName: conflict.employeeName,
+        dates: Array.from(conflict.dates).sort(),
+      }))
+      .sort((left, right) =>
+        left.employeeName.localeCompare(right.employeeName)
+      ),
+  }
 }
 
-function buildScheduleConflictMessage(conflictDates: string[]) {
-  const conflictLabel =
-    conflictDates.length <= 4
-      ? conflictDates.join(", ")
-      : `${conflictDates.slice(0, 4).join(", ")}, and ${conflictDates.length - 4} more`
+function buildScheduleConflictMessage(conflicts: ScheduleConflictSummary[]) {
+  if (conflicts.length === 1) {
+    const conflict = conflicts[0]
+    return `${conflict.employeeName} already has an overlapping shift on ${summarizeConflictDates(conflict.dates)}.`
+  }
 
-  return `An assigned employee already has an overlapping shift on: ${conflictLabel}.`
+  const conflictLabel = conflicts
+    .slice(0, 3)
+    .map(
+      (conflict) =>
+        `${conflict.employeeName} (${summarizeConflictDates(conflict.dates)})`
+    )
+    .join("; ")
+
+  const remainingEmployees = conflicts.length - 3
+
+  return remainingEmployees > 0
+    ? `These assigned employees already have overlapping shifts: ${conflictLabel}; and ${remainingEmployees} more employee${remainingEmployees === 1 ? "" : "s"}.`
+    : `These assigned employees already have overlapping shifts: ${conflictLabel}.`
 }
 
 async function persistScheduleRow(
@@ -508,8 +567,11 @@ function getActionErrorMessage(message: string) {
   ) {
     return "An assigned employee already has an overlapping shift on that date."
   }
-  if (message.includes("SHIFT_EDIT_WINDOW_CLOSED")) {
-    return "Started shifts can no longer be edited. You can cancel the shift if needed."
+  if (
+    message.includes("PAST_SHIFT_START_TIME") ||
+    message.includes("SHIFT_EDIT_WINDOW_CLOSED")
+  ) {
+    return "This shift cannot start at that time because the selected start time has already passed."
   }
   if (message.includes("SCHEDULE_CANCELLED")) {
     return "Only scheduled shifts can be edited or cancelled."
@@ -721,7 +783,7 @@ export async function saveBulkScheduleRows(
       continue
     }
 
-    const conflicts = await getScheduleConflictDates(supabase, {
+    const conflicts = await getScheduleConflicts(supabase, {
       employeeIds: parsed.value.employeeIds,
       targetDates: [parsed.value.date],
       startTime: parsed.value.startTime,
@@ -738,11 +800,11 @@ export async function saveBulkScheduleRows(
       continue
     }
 
-    if (conflicts.dates.length > 0) {
+    if (conflicts.conflicts.length > 0) {
       results.push({
         rowKey: row.rowKey,
         ok: false,
-        error: buildScheduleConflictMessage(conflicts.dates),
+        error: buildScheduleConflictMessage(conflicts.conflicts),
       })
       continue
     }
@@ -789,7 +851,7 @@ export async function saveBoothSchedule(
       ? [value.date]
       : enumerateDateRange(value.startDate, value.endDate)
 
-  const conflicts = await getScheduleConflictDates(supabase, {
+  const conflicts = await getScheduleConflicts(supabase, {
     employeeIds: value.employeeIds,
     targetDates,
     startTime: value.startTime,
@@ -801,10 +863,10 @@ export async function saveBoothSchedule(
     return { ok: false, error: conflicts.error }
   }
 
-  if (conflicts.dates.length > 0) {
+  if (conflicts.conflicts.length > 0) {
     return {
       ok: false,
-      error: buildScheduleConflictMessage(conflicts.dates),
+      error: buildScheduleConflictMessage(conflicts.conflicts),
     }
   }
 

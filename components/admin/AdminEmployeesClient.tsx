@@ -6,6 +6,7 @@ import {
   Ellipsis,
   Loader2,
   Mail,
+  Pencil,
   Shield,
   UserCheck,
   UserRound,
@@ -18,6 +19,7 @@ import {
   updateEmployeeRole,
   updateEmployeeStatus,
 } from "@/app/actions/adminEmployees"
+import { EmployeeEditSheet } from "@/components/admin/EmployeeEditSheet"
 import { EmployeeInviteSheet } from "@/components/admin/EmployeeInviteSheet"
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
@@ -59,6 +61,8 @@ export function AdminEmployeesClient({
 }: AdminEmployeesClientProps) {
   const [displayEmployees, setDisplayEmployees] = useState(employees)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [editingEmployee, setEditingEmployee] =
+    useState<AdminEmployeeRecord | null>(null)
   const [pendingEmployeeId, setPendingEmployeeId] = useState<string | null>(
     null
   )
@@ -135,7 +139,7 @@ export function AdminEmployeesClient({
       if (result.inviteLink) {
         try {
           await navigator.clipboard.writeText(result.inviteLink)
-          toast.success(`${result.message} Backup link copied.`)
+          toast.success(`${result.message} Manual link copied.`)
           return
         } catch {
           // Fall back to the server-action message if clipboard access fails.
@@ -238,6 +242,13 @@ export function AdminEmployeesClient({
                   <span className="sr-only">Open employee actions</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    disabled={pending}
+                    onClick={() => setEditingEmployee(employee)}
+                  >
+                    <Pencil data-icon="inline-start" />
+                    Edit User
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     disabled={pending || !canResendInvite}
                     onClick={() => handleResendInvite(employee)}
@@ -365,6 +376,24 @@ export function AdminEmployeesClient({
               employee,
               ...current.filter((entry) => entry.id !== employee.id),
             ])
+          )
+        }}
+      />
+      <EmployeeEditSheet
+        employee={editingEmployee}
+        open={Boolean(editingEmployee)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingEmployee(null)
+          }
+        }}
+        onSaved={(employee) => {
+          setDisplayEmployees((current) =>
+            sortEmployees(
+              current.map((entry) =>
+                entry.id === employee.id ? employee : entry
+              )
+            )
           )
         }}
       />

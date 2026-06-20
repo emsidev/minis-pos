@@ -48,6 +48,7 @@ type CounterClientProps = {
   employeeId: string
   scheduleId?: string
   preferCachedWorkspace?: boolean
+  preferCachedInventoryData?: boolean
   canSell?: boolean
   showShiftInventoryEditor?: boolean
   saleBlockedMessage?: string
@@ -64,6 +65,7 @@ function CounterWorkspace({
   employeeId,
   scheduleId: initialScheduleId,
   preferCachedWorkspace = false,
+  preferCachedInventoryData = false,
   canSell = Boolean(initialScheduleId && initialBoothId),
   showShiftInventoryEditor = Boolean(initialSchedule),
   saleBlockedMessage,
@@ -200,6 +202,15 @@ function CounterWorkspace({
         {
           event: "*",
           schema: "public",
+          table: "products",
+        },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
           table: "booth_schedule_products",
           filter: `schedule_id=eq.${initialScheduleId}`,
         },
@@ -266,6 +277,7 @@ function CounterWorkspace({
           inventoryProducts={displayProducts as Product[]}
           availableProducts={availableProducts}
           employeeId={employeeId}
+          preferCachedData={preferCachedInventoryData}
         />
       </div>
     )
@@ -327,6 +339,7 @@ function CounterWorkspace({
                 availableProducts={availableProducts}
                 employeeId={employeeId}
                 compact
+                preferCachedData={preferCachedInventoryData}
               />
             ) : null}
 

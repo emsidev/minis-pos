@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { ChevronDown, ChevronRight, Receipt } from "lucide-react"
 import { toast } from "sonner"
+import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
 import {
   Table,
   TableBody,
@@ -16,13 +17,15 @@ import { cn, formatCurrency } from "@/lib/utils"
 import type { SaleItemWithProduct, SaleWithJoins } from "@/lib/shifts"
 import { getSaleItems } from "@/app/actions/shifts"
 import { cacheServerSaleItems, getCachedSaleItems } from "@/lib/offlineData"
+import { replaceLocalSaleReceiptPhoto } from "@/lib/sync"
 
 type SaleRowProps = {
   sale: SaleWithJoins
   allowOfflineCache: boolean
+  canEditReceipts: boolean
 }
 
-function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
+function SaleRow({ sale, allowOfflineCache, canEditReceipts }: SaleRowProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [items, setItems] = useState<SaleItemWithProduct[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -65,6 +68,18 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
       return
     }
     setIsExpanded(!isExpanded)
+  }
+
+  const handleReplaceLocalReceipt = async (receiptPhotoDataUrl: string) => {
+    try {
+      await replaceLocalSaleReceiptPhoto(sale.id, receiptPhotoDataUrl)
+    } catch (error) {
+      throw new Error(
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "Unable to update this receipt photo."
+      )
+    }
   }
 
   return (
@@ -113,13 +128,37 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
             {sale.payment_method}
           </Badge>
         </TableCell>
+        <TableCell>
+          <ReceiptPhotoPreview
+            saleId={sale.id}
+            paymentMethod={sale.payment_method}
+            receiptPhotoPath={sale.receipt_photo_path}
+            receiptPhotoLocal={sale.receipt_photo_local ?? null}
+            syncState={sale.sync_state ?? null}
+            canEditReceipt={canEditReceipts}
+            createdAt={sale.created_at}
+            boothName={sale.booths?.name ?? undefined}
+            employeeName={sale.employees?.name ?? undefined}
+            amount={Number(sale.total_amount)}
+            onReplaceLocalReceipt={
+              sale.sync_state && sale.sync_state !== "synced"
+                ? handleReplaceLocalReceipt
+                : undefined
+            }
+            fallback={
+              <span className="text-muted-foreground text-xs">
+                {sale.payment_method === "cash" ? "Cash sale" : "Missing"}
+              </span>
+            }
+          />
+        </TableCell>
         <TableCell className="text-foreground text-right font-bold">
           {formatCurrency(Number(sale.total_amount))}
         </TableCell>
       </TableRow>
       {isExpanded && (
         <TableRow className="bg-surface-container-low/30 hover:bg-surface-container-low/30">
-          <TableCell colSpan={4} className="p-0">
+          <TableCell colSpan={5} className="p-0">
             <div className="space-y-3 px-14 py-4">
               <h4 className="text-muted-foreground text-[0.62rem] font-bold tracking-[0.2em] uppercase">
                 Sale Items
@@ -177,11 +216,13 @@ function SaleRow({ sale, allowOfflineCache }: SaleRowProps) {
 type SalesTableProps = {
   sales: SaleWithJoins[]
   allowOfflineCache?: boolean
+  canEditReceipts?: boolean
 }
 
 export function SalesTable({
   sales,
   allowOfflineCache = true,
+  canEditReceipts = false,
 }: SalesTableProps) {
   if (sales.length === 0) {
     return (
@@ -209,6 +250,9 @@ export function SalesTable({
             <TableHead className="text-[0.62rem] tracking-[0.2em] uppercase">
               Payment
             </TableHead>
+            <TableHead className="text-[0.62rem] tracking-[0.2em] uppercase">
+              Receipt
+            </TableHead>
             <TableHead className="text-right text-[0.62rem] tracking-[0.2em] uppercase">
               Amount
             </TableHead>
@@ -220,6 +264,7 @@ export function SalesTable({
               key={sale.id}
               sale={sale}
               allowOfflineCache={allowOfflineCache}
+              canEditReceipts={canEditReceipts}
             />
           ))}
         </TableBody>

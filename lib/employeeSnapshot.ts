@@ -57,7 +57,6 @@ export function parseEmployeeSnapshot(
   rawCookieValue: string | undefined
 ): EmployeeSnapshot | null {
   const signingKey = getSnapshotSigningKey()
-  console.log("parseEmployeeSnapshot", { rawCookieValue, signingKey })
   if (!rawCookieValue || !signingKey) {
     return null
   }

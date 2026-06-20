@@ -1,5 +1,9 @@
 import { requireEmployeeRole } from "@/lib/auth"
-import type { Database, PaymentMethod } from "@/lib/database.types"
+import type {
+  Database,
+  PaymentMethod,
+  ScheduleStatus,
+} from "@/lib/database.types"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { getBusinessDate } from "@/lib/utils"
 
@@ -25,7 +29,7 @@ type SalesRow = Pick<
   > | null
   booth_schedules: Pick<
     Database["public"]["Tables"]["booth_schedules"]["Row"],
-    "date" | "start_time" | "end_time"
+    "date" | "end_time" | "start_time" | "status"
   > | null
 }
 
@@ -47,6 +51,7 @@ export type AdminSalesLedgerRow = {
   paymentMethod: PaymentMethod
   receiptPhotoPath: string | null
   hasReceipt: boolean
+  canEditReceipt: boolean
   status: string
   totalAmount: number
 }
@@ -136,7 +141,7 @@ function getBusinessDayBounds({ startDate, endDate }: AdminSalesDateRange) {
 function formatShiftLabel(
   schedule: Pick<
     Database["public"]["Tables"]["booth_schedules"]["Row"],
-    "date" | "start_time" | "end_time"
+    "date" | "end_time" | "start_time"
   > | null
 ) {
   if (!schedule) {
@@ -144,6 +149,18 @@ function formatShiftLabel(
   }
 
   return `${schedule.date} / ${schedule.start_time.slice(0, 5)} - ${schedule.end_time.slice(0, 5)}`
+}
+
+function canEditReceipt(
+  paymentMethod: PaymentMethod,
+  receiptPhotoPath: string | null,
+  scheduleStatus: ScheduleStatus | undefined
+) {
+  return (
+    paymentMethod !== "cash" &&
+    Boolean(receiptPhotoPath) &&
+    scheduleStatus === "scheduled"
+  )
 }
 
 export async function getAdminSalesLedger(
@@ -160,7 +177,7 @@ export async function getAdminSalesLedger(
   let query = supabase
     .from("sales")
     .select(
-      "id, booth_id, employee_id, schedule_id, payment_method, receipt_photo_path, status, total_amount, created_at, booths(id, name), employees(id, name), booth_schedules(date, start_time, end_time)"
+      "id, booth_id, employee_id, schedule_id, payment_method, receipt_photo_path, status, total_amount, created_at, booths(id, name), employees(id, name), booth_schedules(date, start_time, end_time, status)"
     )
     .gte("created_at", startIso)
     .lt("created_at", endIso)
@@ -194,6 +211,11 @@ export async function getAdminSalesLedger(
     paymentMethod: sale.payment_method,
     receiptPhotoPath: sale.receipt_photo_path,
     hasReceipt: Boolean(sale.receipt_photo_path),
+    canEditReceipt: canEditReceipt(
+      sale.payment_method,
+      sale.receipt_photo_path,
+      sale.booth_schedules?.status
+    ),
     status: sale.status,
     totalAmount: Number(sale.total_amount),
   }))

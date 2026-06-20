@@ -23,6 +23,7 @@ type ShiftDetailSheetProps = {
   loadError?: string | null
   assignedEmployeeNames?: string[]
   operatorName?: string | null
+  canEditReceipts?: boolean
   readOnly?: boolean
   canJoin?: boolean
   joinPending?: boolean
@@ -51,6 +52,7 @@ export function ShiftDetailSheet({
   loadError = null,
   assignedEmployeeNames = [],
   operatorName = null,
+  canEditReceipts = false,
   readOnly = false,
   canJoin = false,
   joinPending = false,
@@ -100,6 +102,7 @@ export function ShiftDetailSheet({
               className="min-h-full p-0 pt-14"
               assignedEmployeeNames={assignedEmployeeNames}
               operatorName={operatorName}
+              canEditReceipts={canEditReceipts}
               readOnly={readOnly}
               canJoin={canJoin}
               joinPending={joinPending}

@@ -178,6 +178,16 @@ export function AdminBoothDetailClient({
     selectedSchedule?.booth_schedule_assignments.some(
       (assignment) => assignment.employee_id === currentEmployeeId
     ) ?? false
+  const selectedScheduleIsActive =
+    selectedSchedule?.status === "scheduled" &&
+    isCurrentBusinessShift(
+      selectedSchedule.date,
+      selectedSchedule.start_time,
+      selectedSchedule.end_time
+    )
+  const canOverrideSelectedSchedule =
+    Boolean(selectedScheduleIsActive) &&
+    (selectedSchedule?.booth_schedule_products.length ?? 0) > 0
   const canJoinSelectedSchedule =
     selectedSchedule !== null &&
     selectedSchedule.status === "scheduled" &&
@@ -228,7 +238,7 @@ export function AdminBoothDetailClient({
   }
 
   const openOverrideFromDetails = () => {
-    if (!selectedSchedule) {
+    if (!selectedSchedule || !canOverrideSelectedSchedule) {
       return
     }
 
@@ -672,6 +682,7 @@ export function AdminBoothDetailClient({
             .filter(Boolean) ?? []
         }
         operatorName={selectedSchedule?.operator?.name ?? null}
+        canEditReceipts={selectedSchedule?.status === "scheduled"}
         canJoin={canJoinSelectedSchedule}
         joinPending={joiningSchedule}
         onJoin={
@@ -711,8 +722,14 @@ export function AdminBoothDetailClient({
             ? openCancelFromDetails
             : undefined
         }
-        onOverride={openOverrideFromDetails}
-        onReopen={openReopenFromDetails}
+        onOverride={
+          canOverrideSelectedSchedule ? openOverrideFromDetails : undefined
+        }
+        onReopen={
+          selectedSchedule?.status === "closed"
+            ? openReopenFromDetails
+            : undefined
+        }
       />
       {selectedSchedule ? (
         <ShiftCloseoutSheet

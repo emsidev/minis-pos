@@ -9,15 +9,24 @@ export type BoothScheduleAssignment =
   Database["public"]["Tables"]["booth_schedule_assignments"]["Row"]
 export type BoothScheduleOperatorPeriod =
   Database["public"]["Tables"]["booth_schedule_operator_periods"]["Row"]
+export type ShiftEmployeeSummary = Pick<
+  Database["public"]["Tables"]["employees"]["Row"],
+  "id" | "name" | "email"
+>
+export type BoothScheduleAssignmentWithEmployee = BoothScheduleAssignment & {
+  employees?: ShiftEmployeeSummary | null
+}
 export type Product = Database["public"]["Tables"]["products"]["Row"] & {
   stock?: number
   quantity?: number
 }
+export type SaleReceiptSyncState = "pending" | "syncing" | "synced" | "failed"
 export type ShiftCloseout =
   Database["public"]["Tables"]["shift_closeouts"]["Row"]
 export type SharedBoothSchedule = BoothSchedule & {
   booths: Booth
-  booth_schedule_assignments: BoothScheduleAssignment[]
+  operator?: ShiftEmployeeSummary | null
+  booth_schedule_assignments: BoothScheduleAssignmentWithEmployee[]
   booth_schedule_operator_periods: BoothScheduleOperatorPeriod[]
   shift_closeouts?: ShiftCloseout[]
 }
@@ -51,7 +60,7 @@ export async function getActiveBoothSchedule(employeeId: string) {
   const { data, error } = await supabase
     .from("booth_schedules")
     .select(
-      "*, booths(*), booth_schedule_assignments!inner(*), booth_schedule_operator_periods(*), shift_closeouts(*)"
+      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments!inner(*, employees(id, name, email)), booth_schedule_operator_periods(*), shift_closeouts(*)"
     )
     .eq("booth_schedule_assignments.employee_id", employeeId)
     .eq("status", "scheduled")
@@ -78,7 +87,7 @@ export async function getActiveOperatorBoothSchedule(employeeId: string) {
   const { data, error } = await supabase
     .from("booth_schedules")
     .select(
-      "*, booths(*), booth_schedule_assignments(*), booth_schedule_operator_periods(*), shift_closeouts(*)"
+      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments(*, employees(id, name, email)), booth_schedule_operator_periods(*), shift_closeouts(*)"
     )
     .eq("operator_employee_id", employeeId)
     .eq("status", "scheduled")
@@ -97,6 +106,8 @@ export async function getActiveOperatorBoothSchedule(employeeId: string) {
 export type SaleWithJoins = Database["public"]["Tables"]["sales"]["Row"] & {
   employees: { name: string } | null
   booths: { name: string } | null
+  receipt_photo_local?: string | null
+  sync_state?: SaleReceiptSyncState | null
 }
 
 export type SaleItemWithProduct =
@@ -190,7 +201,7 @@ export async function getEmployeeSchedules(employeeId: string) {
   const { data, error } = await supabase
     .from("booth_schedules")
     .select(
-      "*, booths(*), booth_schedule_assignments!inner(*), booth_schedule_operator_periods(*), shift_closeouts(*)"
+      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments!inner(*, employees(id, name, email)), booth_schedule_operator_periods(*), shift_closeouts(*)"
     )
     .eq("booth_schedule_assignments.employee_id", employeeId)
     .order("date", { ascending: false })
@@ -223,8 +234,11 @@ function parseSharedBoothSchedule(value: unknown): SharedBoothSchedule | null {
   return {
     ...(value as unknown as BoothSchedule),
     booths: value.booths as Booth,
+    operator: isJsonRecord(value.operator)
+      ? (value.operator as ShiftEmployeeSummary)
+      : null,
     booth_schedule_assignments: Array.isArray(value.booth_schedule_assignments)
-      ? (value.booth_schedule_assignments as BoothScheduleAssignment[])
+      ? (value.booth_schedule_assignments as BoothScheduleAssignmentWithEmployee[])
       : [],
     booth_schedule_operator_periods: Array.isArray(
       value.booth_schedule_operator_periods
@@ -366,7 +380,7 @@ export async function getEmployeeSalesHistoryForDate(
   const { data: schedules, error: schedulesError } = await supabase
     .from("booth_schedules")
     .select(
-      "*, booths(*), booth_schedule_assignments!inner(*), booth_schedule_operator_periods(*), shift_closeouts(*)"
+      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments!inner(*, employees(id, name, email)), booth_schedule_operator_periods(*), shift_closeouts(*)"
     )
     .eq("booth_schedule_assignments.employee_id", employeeId)
     .eq("date", date)
@@ -415,7 +429,7 @@ export async function getBoothScheduleById(scheduleId: string) {
   const { data, error } = await supabase
     .from("booth_schedules")
     .select(
-      "*, booths(*), booth_schedule_assignments(*), booth_schedule_operator_periods(*), shift_closeouts(*)"
+      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments(*, employees(id, name, email)), booth_schedule_operator_periods(*), shift_closeouts(*)"
     )
     .eq("id", scheduleId)
     .maybeSingle()

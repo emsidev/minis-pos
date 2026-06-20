@@ -43,6 +43,8 @@ type ShiftDetailViewProps = {
   availableProducts?: Product[]
   inventoryEmployeeId?: string
   canManageInventory?: boolean
+  preferCachedInventoryData?: boolean
+  canEditReceipts?: boolean
   readOnly?: boolean
   canJoin?: boolean
   joinPending?: boolean
@@ -153,6 +155,8 @@ export function ShiftDetailView({
   availableProducts = [],
   inventoryEmployeeId,
   canManageInventory = false,
+  preferCachedInventoryData = false,
+  canEditReceipts = false,
   readOnly = false,
   canJoin = false,
   joinPending = false,
@@ -270,6 +274,12 @@ export function ShiftDetailView({
                 <p className="font-medium text-emerald-900">
                   This shift has been closed and locked from Counter access.
                 </p>
+                {onReopen ? (
+                  <p className="mt-1 text-xs sm:text-sm">
+                    Reopen this shift first if you need to add a missed sale or
+                    correct stock.
+                  </p>
+                ) : null}
                 {latestCloseout ? (
                   <p className="mt-1 text-xs sm:text-sm">
                     Closed {formatShiftTimestamp(latestCloseout.closed_at)} /
@@ -418,6 +428,7 @@ export function ShiftDetailView({
               availableProducts={availableProducts}
               employeeId={inventoryEmployeeId}
               compact
+              preferCachedData={preferCachedInventoryData}
             />
           </section>
         ) : null}
@@ -555,6 +566,7 @@ export function ShiftDetailView({
             <SalesTable
               sales={sales}
               allowOfflineCache={allowOfflineSaleCache ?? !readOnly}
+              canEditReceipts={canEditReceipts}
             />
           )}
         </section>

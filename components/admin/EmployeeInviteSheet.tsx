@@ -1,22 +1,17 @@
 "use client"
 
 import { useEffect, useState, type FormEvent } from "react"
-import { Copy, Loader2, Mail, Shield, UserRound } from "lucide-react"
+import { Copy, Loader2, Mail } from "lucide-react"
 import { toast } from "sonner"
 
 import {
   inviteEmployee,
   type EmployeeInviteInput,
 } from "@/app/actions/adminEmployees"
+import { EmployeeProfileFields } from "@/components/admin/EmployeeProfileFields"
 import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
-import type { EmployeeRole } from "@/lib/database.types"
 import { Button } from "@/components/ui/button"
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   Sheet,
@@ -24,7 +19,6 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { cn } from "@/lib/utils"
 
 type EmployeeInviteSheetProps = {
   open: boolean
@@ -37,33 +31,6 @@ const blankForm: EmployeeInviteInput = {
   name: "",
   email: "",
   role: "employee",
-}
-
-function RoleButton({
-  active,
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  active: boolean
-  icon: typeof UserRound
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <Button
-      type="button"
-      variant={active ? "default" : "outline"}
-      className={cn(
-        "justify-start",
-        !active && "text-muted-foreground hover:text-foreground"
-      )}
-      onClick={onClick}
-    >
-      <Icon data-icon="inline-start" />
-      {label}
-    </Button>
-  )
 }
 
 export function EmployeeInviteSheet({
@@ -85,10 +52,6 @@ export function EmployeeInviteSheet({
 
   const setValue = (field: keyof EmployeeInviteInput, value: string) => {
     setForm((current) => ({ ...current, [field]: value }))
-  }
-
-  const setRole = (role: EmployeeRole) => {
-    setForm((current) => ({ ...current, role }))
   }
 
   const copyInviteLink = async (link: string) => {
@@ -147,73 +110,41 @@ export function EmployeeInviteSheet({
             className="flex flex-col gap-6 p-6"
             onSubmit={handleSubmit}
           >
-            <FieldGroup>
+            <EmployeeProfileFields
+              name={form.name}
+              email={form.email}
+              role={form.role}
+              disabled={pending}
+              emailDescription={
+                magicLinkEnabled
+                  ? "The employee will receive a sign-in link."
+                  : "The employee will receive a password setup email."
+              }
+              onNameChange={(value) => setValue("name", value)}
+              onEmailChange={(value) => setValue("email", value)}
+              onRoleChange={(value) =>
+                setForm((current) => ({ ...current, role: value }))
+              }
+            />
+            {inviteLink ? (
               <Field>
-                <FieldLabel htmlFor="invite-name">Employee name</FieldLabel>
-                <Input
-                  id="invite-name"
-                  required
-                  value={form.name}
-                  onChange={(event) => setValue("name", event.target.value)}
-                  placeholder="Ana Santos"
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="invite-email">Email address</FieldLabel>
-                <Input
-                  id="invite-email"
-                  required
-                  type="email"
-                  value={form.email}
-                  onChange={(event) => setValue("email", event.target.value)}
-                  placeholder="ana@minis-pastries.com"
-                />
+                <FieldLabel htmlFor="invite-link">Manual setup link</FieldLabel>
+                <div className="flex gap-2">
+                  <Input id="invite-link" readOnly value={inviteLink} />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => copyInviteLink(inviteLink)}
+                  >
+                    <Copy data-icon="inline-start" />
+                    Copy
+                  </Button>
+                </div>
                 <FieldDescription>
-                  {magicLinkEnabled
-                    ? "The employee will receive a sign-in link."
-                    : "The employee will receive a password setup email and a backup setup link will be prepared here."}
+                  Share this only if email delivery fails.
                 </FieldDescription>
               </Field>
-              <Field>
-                <FieldLabel>Role</FieldLabel>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <RoleButton
-                    active={form.role === "employee"}
-                    icon={UserRound}
-                    label="Employee"
-                    onClick={() => setRole("employee")}
-                  />
-                  <RoleButton
-                    active={form.role === "admin"}
-                    icon={Shield}
-                    label="Admin"
-                    onClick={() => setRole("admin")}
-                  />
-                </div>
-              </Field>
-              {inviteLink ? (
-                <Field>
-                  <FieldLabel htmlFor="invite-link">
-                    Backup access link
-                  </FieldLabel>
-                  <div className="flex gap-2">
-                    <Input id="invite-link" readOnly value={inviteLink} />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => copyInviteLink(inviteLink)}
-                    >
-                      <Copy data-icon="inline-start" />
-                      Copy
-                    </Button>
-                  </div>
-                  <FieldDescription>
-                    Keep this as a fallback if the employee does not receive the
-                    email immediately.
-                  </FieldDescription>
-                </Field>
-              ) : null}
-            </FieldGroup>
+            ) : null}
           </form>
         </div>
         <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">

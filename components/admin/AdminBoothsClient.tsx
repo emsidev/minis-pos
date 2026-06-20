@@ -23,6 +23,7 @@ import {
 import { AdminScheduleCalendar } from "@/components/admin/AdminScheduleCalendar"
 import { BoothFormSheet } from "@/components/admin/BoothFormSheet"
 import { ScheduleFormSheet } from "@/components/admin/ScheduleFormSheet"
+import { ShiftReopenSheet } from "@/components/admin/ShiftReopenSheet"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { ShiftCloseoutSheet } from "@/components/shifts/ShiftCloseoutSheet"
 import { ShiftDetailSheet } from "@/components/shifts/ShiftDetailSheet"
@@ -81,6 +82,8 @@ export function AdminBoothsClient({
   )
   const [joiningSchedule, setJoiningSchedule] = useState(false)
   const [cancellingSchedule, setCancellingSchedule] =
+    useState<AdminSchedule | null>(null)
+  const [reopeningSchedule, setReopeningSchedule] =
     useState<AdminSchedule | null>(null)
   const [editingBooth, setEditingBooth] = useState<Booth | null>(null)
   const [deactivatingBooth, setDeactivatingBooth] = useState<Booth | null>(null)
@@ -251,6 +254,15 @@ export function AdminBoothsClient({
         : current
     )
     router.refresh()
+  }
+
+  const openReopenFromDetails = () => {
+    if (!selectedSchedule || selectedSchedule.status !== "closed") {
+      return
+    }
+
+    setScheduleDetailOpen(false)
+    setReopeningSchedule(selectedSchedule)
   }
 
   return (
@@ -443,6 +455,7 @@ export function AdminBoothsClient({
             .filter(Boolean) ?? []
         }
         operatorName={selectedSchedule?.operator?.name ?? null}
+        canEditReceipts={selectedSchedule?.status === "scheduled"}
         canJoin={canJoinSelectedSchedule}
         joinPending={joiningSchedule}
         onJoin={
@@ -490,7 +503,11 @@ export function AdminBoothsClient({
             : undefined
         }
         onOverride={undefined}
-        onReopen={undefined}
+        onReopen={
+          selectedSchedule?.status === "closed"
+            ? openReopenFromDetails
+            : undefined
+        }
       />
       {selectedSchedule ? (
         <ShiftCloseoutSheet
@@ -500,6 +517,24 @@ export function AdminBoothsClient({
           products={selectedDetail?.products ?? []}
           sales={selectedDetail?.sales ?? []}
           onSaved={handleCloseoutSaved}
+        />
+      ) : null}
+      {reopeningSchedule ? (
+        <ShiftReopenSheet
+          open={Boolean(reopeningSchedule)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setReopeningSchedule(null)
+            }
+          }}
+          boothId={reopeningSchedule.booth_id}
+          boothName={reopeningSchedule.booths.name}
+          scheduleId={reopeningSchedule.id}
+          shiftLabel={`${reopeningSchedule.date} / ${reopeningSchedule.start_time.slice(0, 5)} - ${reopeningSchedule.end_time.slice(0, 5)}`}
+          onSaved={() => {
+            setReopeningSchedule(null)
+            router.refresh()
+          }}
         />
       ) : null}
       <ConfirmDialog
