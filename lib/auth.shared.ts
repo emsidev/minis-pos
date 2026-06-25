@@ -1,7 +1,9 @@
 import { User } from "@supabase/supabase-js"
 import { Database, EmployeeRole } from "./database.types"
+import type { EmployeeApprovalFields } from "./employeeApproval"
 
-export type EmployeeRecord = Database["public"]["Tables"]["employees"]["Row"]
+export type EmployeeRecord = Database["public"]["Tables"]["employees"]["Row"] &
+  EmployeeApprovalFields
 
 export type SessionProfileSource =
   | "live"
