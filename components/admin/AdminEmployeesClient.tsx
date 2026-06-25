@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   Ellipsis,
+  KeyRound,
   Loader2,
   Mail,
   Pencil,
   Shield,
+  ShieldCheck,
   UserCheck,
   UserRound,
   UserX,
@@ -15,6 +17,7 @@ import {
 import { toast } from "sonner"
 
 import {
+  approveEmployee,
   resendEmployeeInvite,
   type EmployeeInviteInput,
   type EmployeeUpdateInput,
@@ -24,6 +27,7 @@ import {
 import { buildOptimisticEmployeeRecord } from "@/lib/adminOptimistic"
 import { EmployeeEditSheet } from "@/components/admin/EmployeeEditSheet"
 import { EmployeeInviteSheet } from "@/components/admin/EmployeeInviteSheet"
+import { EmployeePasswordSheet } from "@/components/admin/EmployeePasswordSheet"
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
 import { Badge } from "@/components/ui/badge"
@@ -42,6 +46,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
+import { isEmployeePendingApproval } from "@/lib/employeeApproval"
 
 type AdminEmployeesClientProps = {
   employees: AdminEmployeeRecord[]
@@ -49,6 +54,13 @@ type AdminEmployeesClientProps = {
 
 function sortEmployees(rows: AdminEmployeeRecord[]) {
   return rows.slice().sort((left, right) => {
+    const leftPending = isEmployeePendingApproval(left)
+    const rightPending = isEmployeePendingApproval(right)
+
+    if (leftPending !== rightPending) {
+      return leftPending ? -1 : 1
+    }
+
     if ((left.is_active ?? true) !== (right.is_active ?? true)) {
       return left.is_active === false ? 1 : -1
     }
@@ -61,6 +73,8 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
   const [displayEmployees, setDisplayEmployees] = useState(employees)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [editingEmployee, setEditingEmployee] =
+    useState<AdminEmployeeRecord | null>(null)
+  const [passwordEmployee, setPasswordEmployee] =
     useState<AdminEmployeeRecord | null>(null)
   const [pendingEmployeeId, setPendingEmployeeId] = useState<string | null>(
     null
@@ -134,6 +148,48 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
     [displayEmployees, editingEmployee]
   )
 
+  const handleApproveEmployee = useCallback(
+    async (employeeId: string) => {
+      const previousEmployees = displayEmployees
+      setPendingEmployeeId(employeeId)
+      setDisplayEmployees((current) =>
+        sortEmployees(
+          current.map((employee) =>
+            employee.id === employeeId
+              ? {
+                  ...employee,
+                  approval_status: "approved",
+                  is_active: true,
+                }
+              : employee
+          )
+        )
+      )
+
+      const result = await approveEmployee(employeeId)
+      setPendingEmployeeId(null)
+
+      if (!result.ok) {
+        setDisplayEmployees(previousEmployees)
+        toast.error(result.error ?? "Unable to approve this employee.")
+        return
+      }
+
+      if (result.employee) {
+        setDisplayEmployees((current) =>
+          sortEmployees(
+            current.map((employee) =>
+              employee.id === result.employee?.id ? result.employee : employee
+            )
+          )
+        )
+      }
+
+      toast.success(result.message)
+    },
+    [displayEmployees]
+  )
+
   const handleRoleChange = useCallback(
     async (employeeId: string, nextRole: "employee" | "admin") => {
       const previousEmployees = displayEmployees
@@ -168,7 +224,13 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
         sortEmployees(
           current.map((employee) =>
             employee.id === employeeId
-              ? { ...employee, is_active: nextStatus }
+              ? {
+                  ...employee,
+                  approval_status: nextStatus
+                    ? "approved"
+                    : employee.approval_status,
+                  is_active: nextStatus,
+                }
               : employee
           )
         )
@@ -214,7 +276,7 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
     []
   )
 
-  const columns = useMemo<ColumnDef<AdminEmployeeRecord>[]>(
+  const columns = useMemo<ColumnDef<AdminEmployeeRecord>[]>
     () => [
       {
         accessorKey: "name",
@@ -260,29 +322,51 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
       },
       {
         id: "status",
-        accessorFn: (row) => (row.is_active === false ? "inactive" : "active"),
+        accessorFn: (row) =>
+          isEmployeePendingApproval(row)
+            ? "pending approval"
+            : row.is_active === false
+              ? "inactive"
+              : "active",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Status" />
         ),
-        cell: ({ row }) => (
-          <Badge
-            variant={row.original.is_active === false ? "outline" : "default"}
-          >
-            {row.original.is_active === false ? "Inactive" : "Active"}
-          </Badge>
-        ),
+        cell: ({ row }) => {
+          if (isEmployeePendingApproval(row.original)) {
+            return <Badge variant="outline">Pending approval</Badge>
+          }
+
+          return (
+            <Badge
+              variant={row.original.is_active === false ? "outline" : "default"}
+            >
+              {row.original.is_active === false ? "Inactive" : "Active"}
+            </Badge>
+          )
+        },
       },
       {
         id: "access",
-        accessorFn: (row) => (row.user_id ? "ready" : "pending"),
+        accessorFn: (row) =>
+          isEmployeePendingApproval(row)
+            ? "waiting approval"
+            : row.user_id
+              ? "ready"
+              : "pending",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Access" />
         ),
-        cell: ({ row }) => (
-          <Badge variant={row.original.user_id ? "secondary" : "outline"}>
-            {row.original.user_id ? "Ready to sign in" : "Pending login"}
-          </Badge>
-        ),
+        cell: ({ row }) => {
+          if (isEmployeePendingApproval(row.original)) {
+            return <Badge variant="outline">Waiting approval</Badge>
+          }
+
+          return (
+            <Badge variant={row.original.user_id ? "secondary" : "outline"}>
+              {row.original.user_id ? "Ready to sign in" : "Pending login"}
+            </Badge>
+          )
+        },
       },
       {
         id: "actions",
@@ -293,7 +377,8 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
           const pending = pendingEmployeeId === employee.id
           const isAdmin = employee.role === "admin"
           const isActive = employee.is_active !== false
-          const canResendInvite = isActive && !employee.user_id
+          const pendingApproval = isEmployeePendingApproval(employee)
+          const canResendInvite = !pendingApproval && isActive && !employee.user_id
 
           return (
             <div className="flex justify-end">
@@ -312,6 +397,29 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
                     <Pencil data-icon="inline-start" />
                     Edit User
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={pending}
+                    onClick={() => setPasswordEmployee(employee)}
+                  >
+                    <KeyRound data-icon="inline-start" />
+                    Set Password
+                  </DropdownMenuItem>
+                  {pendingApproval ? (
+                    <DropdownMenuItem
+                      disabled={pending}
+                      onClick={() => handleApproveEmployee(employee.id)}
+                    >
+                      {pending ? (
+                        <Loader2
+                          data-icon="inline-start"
+                          className="animate-spin"
+                        />
+                      ) : (
+                        <ShieldCheck data-icon="inline-start" />
+                      )}
+                      Approve Account
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem
                     disabled={pending || !canResendInvite}
                     onClick={() => handleResendInvite(employee)}
@@ -355,7 +463,7 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
                     Make Employee
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    disabled={pending}
+                    disabled={pending || pendingApproval}
                     onClick={() => handleStatusChange(employee.id, !isActive)}
                   >
                     {pending ? (
@@ -378,6 +486,7 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
       },
     ],
     [
+      handleApproveEmployee,
       handleResendInvite,
       handleRoleChange,
       handleStatusChange,
@@ -404,7 +513,7 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
         <CardHeader>
           <CardTitle>Team Directory</CardTitle>
           <CardDescription>
-            Search by employee name, email, or role.
+            Search by employee name, email, role, status, or approval state.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -417,7 +526,11 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
                 row.name,
                 row.email,
                 row.role,
-                row.is_active === false ? "inactive" : "active",
+                isEmployeePendingApproval(row)
+                  ? "pending approval for approval approve"
+                  : row.is_active === false
+                    ? "inactive"
+                    : "active",
                 row.user_id ? "ready to sign in" : "pending login",
               ].join(" ")
             }
@@ -453,6 +566,24 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
           }
         }}
         onOptimisticSave={handleOptimisticEdit}
+        onSaved={(employee) => {
+          setDisplayEmployees((current) =>
+            sortEmployees(
+              current.map((entry) =>
+                entry.id === employee.id ? employee : entry
+              )
+            )
+          )
+        }}
+      />
+      <EmployeePasswordSheet
+        employee={passwordEmployee}
+        open={Boolean(passwordEmployee)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPasswordEmployee(null)
+          }
+        }}
         onSaved={(employee) => {
           setDisplayEmployees((current) =>
             sortEmployees(
