@@ -92,7 +92,6 @@ function CounterWorkspace({
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { items, syncProductStock, total } = useCart()
 
-  // Prime the current server payload into Dexie. Network warm-up is owned by AppShell.
   useEffect(() => {
     const sync = async () => {
       try {
@@ -108,18 +107,10 @@ function CounterWorkspace({
         console.error("Sync failed:", error)
       }
     }
-    sync()
-  }, [
-    availableProducts,
-    canSell,
-    employeeId,
-    initialProducts,
-    initialPromos,
-    initialSchedule,
-    showShiftInventoryEditor,
-  ])
 
-  // 2. Reactive Data from Dexie
+    void sync()
+  }, [availableProducts, initialProducts, initialPromos, initialSchedule, showShiftInventoryEditor])
+
   const cachedWorkspace = useLiveQuery<CachedCounterWorkspace | null>(
     () =>
       preferCachedWorkspace
@@ -156,18 +147,18 @@ function CounterWorkspace({
     scheduleId: initialScheduleId,
   }
   const displayWorkspace = cachedWorkspace ?? serverWorkspace
+  const cachedProducts = cachedShiftDetails?.products ?? []
+  const hasCachedShift = Boolean(cachedShiftDetails?.schedule)
   const shouldUseOptimisticInventory =
     typeof window !== "undefined" &&
     window.navigator.onLine &&
     !preferCachedWorkspace &&
     Boolean(initialScheduleId) &&
-    Boolean(cachedShiftDetails?.schedule) &&
-    (hasInFlightScheduleOps || holdOptimisticInventory)
+    hasCachedShift &&
+    (cachedProducts.length > 0 || hasInFlightScheduleOps || holdOptimisticInventory)
   const displayProducts = (
-    shouldUseOptimisticInventory &&
-    cachedShiftDetails?.products &&
-    cachedShiftDetails.products.length > 0
-      ? cachedShiftDetails.products
+    shouldUseOptimisticInventory && cachedProducts.length > 0
+      ? cachedProducts
       : displayWorkspace.products
   ) as SellableProduct[]
   const displaySchedule =
@@ -195,21 +186,8 @@ function CounterWorkspace({
     syncProductStock(displayProducts)
   }, [displayProducts, syncProductStock])
 
-  const handleInventorySavePhaseChange = async (
-    phase: "started" | "queued" | "reconciled"
-  ) => {
-    if (phase === "started") {
-      setHoldOptimisticInventory(true)
-      return
-    }
-
-    if (
-      phase !== "reconciled" ||
-      !initialScheduleId ||
-      typeof window === "undefined" ||
-      !window.navigator.onLine
-    ) {
-      setHoldOptimisticInventory(false)
+  const refreshActiveWorkspace = async () => {
+    if (!initialScheduleId || typeof window === "undefined" || !window.navigator.onLine) {
       return
     }
 
@@ -217,16 +195,27 @@ function CounterWorkspace({
       await refreshActiveShiftWorkspace(employeeId)
       router.refresh()
     } catch (error) {
-      console.warn("Counter inventory reconciliation failed:", error)
-    } finally {
+      console.warn("Active Counter refresh failed:", error)
+    }
+  }
+
+  const handleInventorySavePhaseChange = async (
+    phase: "started" | "queued" | "reconciled"
+  ) => {
+    if (phase === "started" || phase === "queued") {
+      setHoldOptimisticInventory(true)
+      return
+    }
+
+    if (phase === "reconciled") {
+      await refreshActiveWorkspace()
       setHoldOptimisticInventory(false)
     }
   }
 
   const categories = useMemo(() => {
-    const products = displayProducts
     const categorySet = new Set(
-      products.map((product) => product.category || "Artisanal")
+      displayProducts.map((product) => product.category || "Artisanal")
     )
     return ["All", ...Array.from(categorySet)]
   }, [displayProducts])
@@ -249,8 +238,7 @@ function CounterWorkspace({
 
   const inventoryReady = displayProducts.length > 0
   const orderSidebarBoothId = canSell ? displayBoothId : undefined
-  const orderSidebarScheduleId =
-    canSell && inventoryReady ? displayScheduleId : undefined
+  const orderSidebarScheduleId = canSell && inventoryReady ? displayScheduleId : undefined
   const orderSidebarSchedule = canSell ? displaySchedule : undefined
   const shiftStarted = displaySchedule
     ? getBusinessShiftState(displaySchedule, {
@@ -262,7 +250,7 @@ function CounterWorkspace({
     : false
 
   useEffect(() => {
-    if (!initialScheduleId || !window.navigator.onLine) {
+    if (!initialScheduleId || typeof window === "undefined" || !window.navigator.onLine) {
       return
     }
 
@@ -274,13 +262,7 @@ function CounterWorkspace({
 
       refreshTimerRef.current = setTimeout(() => {
         refreshTimerRef.current = null
-        refreshActiveShiftWorkspace(employeeId)
-          .then(() => {
-            router.refresh()
-          })
-          .catch((error) => {
-            console.warn("Active Counter refresh failed:", error)
-          })
+        void refreshActiveWorkspace()
       }, 300)
     }
 
@@ -288,98 +270,52 @@ function CounterWorkspace({
       .channel(`counter-live-${employeeId}-${initialScheduleId}`)
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "sales",
-          filter: `schedule_id=eq.${initialScheduleId}`,
-        },
+        { event: "*", schema: "public", table: "sales", filter: `schedule_id=eq.${initialScheduleId}` },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "products",
-        },
+        { event: "*", schema: "public", table: "products" },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "promos",
-        },
+        { event: "*", schema: "public", table: "promos" },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "promo_products",
-        },
+        { event: "*", schema: "public", table: "promo_products" },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "booth_schedule_products",
-          filter: `schedule_id=eq.${initialScheduleId}`,
-        },
+        { event: "*", schema: "public", table: "booth_schedule_products", filter: `schedule_id=eq.${initialScheduleId}` },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "inventory_events",
-          filter: `schedule_id=eq.${initialScheduleId}`,
-        },
+        { event: "*", schema: "public", table: "inventory_events", filter: `schedule_id=eq.${initialScheduleId}` },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "booth_schedules",
-          filter: `id=eq.${initialScheduleId}`,
-        },
+        { event: "*", schema: "public", table: "booth_schedules", filter: `id=eq.${initialScheduleId}` },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "booth_schedule_assignments",
-          filter: `schedule_id=eq.${initialScheduleId}`,
-        },
+        { event: "*", schema: "public", table: "booth_schedule_assignments", filter: `schedule_id=eq.${initialScheduleId}` },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "booth_schedule_assignments",
-        },
+        { event: "DELETE", schema: "public", table: "booth_schedule_assignments" },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "booth_schedule_operator_periods",
-          filter: `schedule_id=eq.${initialScheduleId}`,
-        },
+        { event: "*", schema: "public", table: "booth_schedule_operator_periods", filter: `schedule_id=eq.${initialScheduleId}` },
         scheduleRefresh
       )
       .subscribe()
@@ -441,23 +377,17 @@ function CounterWorkspace({
                     <div className="bg-primary/10 text-primary flex h-10 w-10 items-center justify-center rounded-full">
                       <Store className="h-4 w-4" />
                     </div>
-                    <div>
-                      <p className="text-foreground text-sm font-medium">
-                        {productCountLabel}
-                      </p>
-                    </div>
+                    <p className="text-foreground text-sm font-medium">
+                      {productCountLabel}
+                    </p>
                   </div>
                   <div className="app-panel-muted flex items-center gap-3 px-4 py-3">
                     <div className="bg-secondary/10 text-secondary flex h-10 w-10 items-center justify-center rounded-full">
                       <ShoppingBag className="h-4 w-4" />
                     </div>
-                    <div>
-                      <p className="text-foreground text-sm font-medium">
-                        {items.length === 0
-                          ? "Cart empty"
-                          : `${items.length} in cart`}
-                      </p>
-                    </div>
+                    <p className="text-foreground text-sm font-medium">
+                      {items.length === 0 ? "Cart empty" : `${items.length} in cart`}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -522,6 +452,7 @@ function CounterWorkspace({
               shiftStarted={shiftStarted}
               mode="docked"
               saleBlockedMessage={saleBlockedMessage}
+              onOptimisticMutationChange={setHoldOptimisticInventory}
             />
           </aside>
         </div>
@@ -573,6 +504,7 @@ function CounterWorkspace({
             shiftStarted={shiftStarted}
             mode="sheet"
             onChargeComplete={() => setMobileOrderOpen(false)}
+            onOptimisticMutationChange={setHoldOptimisticInventory}
             saleBlockedMessage={saleBlockedMessage}
           />
         </SheetContent>
