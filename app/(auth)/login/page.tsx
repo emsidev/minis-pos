@@ -12,8 +12,9 @@ import { SignOutButton } from "@/components/shared/SignOutButton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getCurrentSessionContext } from "@/lib/auth.server"
+
 import { getHomeRouteForRole } from "@/lib/auth.shared"
+import { getCurrentSessionContext } from "@/lib/auth.server"
 import { formatAuthMessage, readQueryValue } from "@/lib/authMessages"
 import { isEmployeePendingApproval } from "@/lib/employeeApproval"
 import { isSupabaseConfigured, publicEnv } from "@/lib/env"
@@ -50,8 +51,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const pendingApproval = isEmployeePendingApproval(sessionContext?.employee)
   const inactiveAccount = Boolean(
     sessionContext?.employee &&
-      !pendingApproval &&
-      !sessionContext.employee.is_active
+    !pendingApproval &&
+    !sessionContext.employee.is_active
   )
 
   return (

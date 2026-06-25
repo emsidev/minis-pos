@@ -499,10 +499,6 @@ export function ScheduleCalendar({
           </div>
         </header>
 
-        {isMonthPending && !usingFallbackCalendar ? (
-          <LoadingBanner label="Loading calendar..." />
-        ) : null}
-
         {usingFallbackCalendar ? (
           <div className="border-border text-muted-foreground rounded-[var(--radius)] border px-4 py-3 text-sm">
             {preferCachedData || !isOnline

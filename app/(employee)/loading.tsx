@@ -1,5 +1,5 @@
-import { CounterSkeleton } from "@/components/shared/LoadingSkeletons"
+import { EmployeeHomeRouteSkeleton } from "@/components/shared/LoadingSkeletons"
 
 export default function EmployeeHomeLoading() {
-  return <CounterSkeleton />
+  return <EmployeeHomeRouteSkeleton />
 }
