@@ -91,6 +91,8 @@ Statuses: `[ ]` not started | `[~]` in progress | `[x]` complete | `[!]` blocked
 - [x] Invite by email (password setup flow)
 - [x] Edit role and status
 - [x] Deactivate employee
+- [x] Admin approval queue for unknown Google sign-ins
+- [x] Admin-set employee password flow
 
 ## Milestone 8 - Admin Dashboard & Products
 
