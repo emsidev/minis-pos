@@ -6,7 +6,7 @@ import type { CounterPromo } from "@/lib/promos"
 export type AdminProductRecord = Database["public"]["Tables"]["products"]["Row"]
 
 export async function getAdminProducts() {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("products")
     .select("*")

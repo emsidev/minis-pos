@@ -158,194 +158,68 @@ export function ShiftApprovalCard({
   return (
     <div
       className={cn(
-        "border-border/60 bg-card text-muted-foreground rounded-[var(--radius)] border px-3 py-3 text-sm",
-        isPending && "border-amber-500/30 bg-amber-500/5",
+        "bg-card rounded-[var(--radius)] border p-3 text-sm",
+        isPending && "border-amber-500/40 bg-amber-500/5",
         className
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-foreground font-medium">
             {isReopenRequest
-              ? "Reopen shift request"
+              ? "Reopen shift"
               : isCashDeduction
-                ? "Cash deduction request"
+                ? "Cash deduction"
                 : isPromoRequest
-                  ? "Promo request"
+                  ? "Promo approval"
                   : isSaleDelete
-                    ? "Delete sale request"
-                    : "Edit sale request"}{" "}
-            {!isReopenRequest && !isCashDeduction && !isPromoRequest && saleId
-              ? `#${saleId.slice(0, 8)}`
-              : ""}
+                    ? "Delete sale"
+                    : "Edit sale"}
           </p>
-          <p className="mt-1 text-xs">
+
+          <p className="text-muted-foreground mt-1 text-xs">
             Requested by {approval.requested_by?.name ?? "Employee"} on{" "}
             {formatShiftTimestamp(approval.created_at)}
           </p>
         </div>
-        <Badge
-          variant={isPending ? "secondary" : "outline"}
-          className={cn(
-            "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold tracking-wider uppercase",
-            isPending && "border-amber-500/25 bg-amber-500/10 text-amber-800"
-          )}
-        >
-          {isPending ? "For approval" : approval.status}
+
+        <Badge variant={isPending ? "secondary" : "outline"}>
+          {isPending ? "Pending" : approval.status}
         </Badge>
       </div>
 
-      {isReopenRequest ? (
-        <div className="bg-background/70 mt-3 rounded-[calc(var(--radius)-0.2rem)] border border-amber-500/20 px-3 py-2">
-          <p className="text-foreground text-sm font-medium">
-            Reopen this closed shift so missed sales or stock corrections can be
-            entered again.
+      <div className="bg-background/70 mt-3 rounded-md px-3 py-2">
+        {isReopenRequest ? (
+          <p>Reopen this closed shift.</p>
+        ) : isCashDeduction ? (
+          <p>
+            Deduct <strong>{formatCurrency(cashDeductionAmount)}</strong> from
+            expected cash.
           </p>
-        </div>
-      ) : isCashDeduction ? (
-        <div className="bg-background/70 mt-3 rounded-[calc(var(--radius)-0.2rem)] border border-amber-500/20 px-3 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-foreground text-sm font-medium">
-                Requested expense deduction
-              </p>
-              <p className="text-muted-foreground mt-1 text-xs">
-                Approved deductions reduce expected drawer cash at closeout.
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 text-amber-800">
-              <Wallet className="h-4 w-4" />
-              <span className="text-sm font-semibold">
-                {formatCurrency(cashDeductionAmount)}
-              </span>
-            </div>
-          </div>
-        </div>
-      ) : isPromoRequest ? (
-        <>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="bg-background/80 rounded-[calc(var(--radius)-0.2rem)] px-3 py-2">
-              <p className="text-muted-foreground text-[0.62rem] font-semibold tracking-[0.18em] uppercase">
-                Promo
-              </p>
-              <p className="text-foreground mt-1 font-semibold">
-                {promoName ?? "Promo"}
-              </p>
-            </div>
-            <div className="bg-background/80 rounded-[calc(var(--radius)-0.2rem)] px-3 py-2">
-              <p className="text-muted-foreground text-[0.62rem] font-semibold tracking-[0.18em] uppercase">
-                Requested
-              </p>
-              <p className="text-foreground mt-1 font-semibold">
-                {formatCurrency(newTotal)}
-              </p>
-            </div>
-            <div className="bg-background/80 rounded-[calc(var(--radius)-0.2rem)] px-3 py-2">
-              <p className="text-muted-foreground text-[0.62rem] font-semibold tracking-[0.18em] uppercase">
-                Discount
-              </p>
-              <p className="text-destructive mt-1 font-semibold">
-                {formatSignedCurrency(revenueDelta)}
-              </p>
-            </div>
-          </div>
+        ) : isPromoRequest ? (
+          <p>
+            Apply <strong>{promoName ?? "promo"}</strong>. New total:{" "}
+            <strong>{formatCurrency(newTotal)}</strong>
+          </p>
+        ) : isSaleDelete ? (
+          <p>
+            Delete sale <strong>#{saleId?.slice(0, 8)}</strong>. Revenue change:{" "}
+            <strong>{formatSignedCurrency(revenueDelta)}</strong>
+          </p>
+        ) : (
+          <p>
+            Change sale from <strong>{formatCurrency(previousTotal)}</strong> to{" "}
+            <strong>{formatCurrency(newTotal)}</strong>.
+          </p>
+        )}
+      </div>
 
-          {requestedItems.length > 0 ? (
-            <div className="bg-background/70 mt-3 rounded-[calc(var(--radius)-0.2rem)] border border-amber-500/20 px-3 py-2">
-              <p className="text-foreground text-xs font-semibold tracking-[0.16em] uppercase">
-                Cart items
-              </p>
-              <div className="mt-2 space-y-1.5">
-                {requestedItems.map((item) => (
-                  <div
-                    key={item.productId}
-                    className="flex items-center justify-between gap-3 text-sm"
-                  >
-                    <span className="text-foreground min-w-0">
-                      {item.quantity}x{" "}
-                      {getProductName(products, item.productId)}
-                    </span>
-                    <span className="shrink-0">
-                      {formatCurrency(item.quantity * item.unitPrice)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
+      {reason ? (
+        <p className="text-muted-foreground mt-2 text-xs">Reason: {reason}</p>
+      ) : null}
 
-          <p className="mt-3 text-xs">Payment: {formatPayment(nextPayment)}</p>
-        </>
-      ) : (
-        <>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="bg-background/80 rounded-[calc(var(--radius)-0.2rem)] px-3 py-2">
-              <p className="text-muted-foreground text-[0.62rem] font-semibold tracking-[0.18em] uppercase">
-                Current
-              </p>
-              <p className="text-foreground mt-1 font-semibold">
-                {formatCurrency(previousTotal)}
-              </p>
-            </div>
-            <div className="bg-background/80 rounded-[calc(var(--radius)-0.2rem)] px-3 py-2">
-              <p className="text-muted-foreground text-[0.62rem] font-semibold tracking-[0.18em] uppercase">
-                Requested
-              </p>
-              <p className="text-foreground mt-1 font-semibold">
-                {isSaleDelete ? "Delete sale" : formatCurrency(newTotal)}
-              </p>
-            </div>
-            <div className="bg-background/80 rounded-[calc(var(--radius)-0.2rem)] px-3 py-2">
-              <p className="text-muted-foreground text-[0.62rem] font-semibold tracking-[0.18em] uppercase">
-                Revenue change
-              </p>
-              <p
-                className={cn(
-                  "mt-1 font-semibold",
-                  revenueDelta < 0 ? "text-destructive" : "text-emerald-600"
-                )}
-              >
-                {formatSignedCurrency(revenueDelta)}
-              </p>
-            </div>
-          </div>
-
-          {requestedItems.length > 0 ? (
-            <div className="bg-background/70 mt-3 rounded-[calc(var(--radius)-0.2rem)] border border-amber-500/20 px-3 py-2">
-              <p className="text-foreground text-xs font-semibold tracking-[0.16em] uppercase">
-                Requested sale items
-              </p>
-              <div className="mt-2 space-y-1.5">
-                {requestedItems.map((item) => (
-                  <div
-                    key={item.productId}
-                    className="flex items-center justify-between gap-3 text-sm"
-                  >
-                    <span className="text-foreground min-w-0">
-                      {item.quantity}x{" "}
-                      {getProductName(products, item.productId)}
-                    </span>
-                    <span className="shrink-0">
-                      {formatCurrency(item.quantity * item.unitPrice)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {!isSaleDelete ? (
-            <p className="mt-3 text-xs">
-              Payment: {formatPayment(previousPayment)} to{" "}
-              {formatPayment(nextPayment)}
-            </p>
-          ) : null}
-        </>
-      )}
-
-      {reason ? <p className="mt-1 text-xs">Reason: {reason}</p> : null}
       {approval.status !== "pending" && approval.resolved_at ? (
-        <p className="mt-1 text-xs">
+        <p className="text-muted-foreground mt-2 text-xs">
           {approval.status === "approved" ? "Approved" : "Rejected"} by{" "}
           {approval.resolved_by?.name ?? "Admin"} on{" "}
           {formatShiftTimestamp(approval.resolved_at)}
@@ -353,7 +227,7 @@ export function ShiftApprovalCard({
       ) : null}
 
       {canResolve ? (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 flex gap-2">
           <Button
             type="button"
             size="sm"
@@ -363,6 +237,7 @@ export function ShiftApprovalCard({
             <Check data-icon="inline-start" />
             Approve
           </Button>
+
           <Button
             type="button"
             size="sm"

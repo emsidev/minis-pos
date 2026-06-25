@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     return response
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error: exchangeError } =
     await supabase.auth.exchangeCodeForSession(code)
 

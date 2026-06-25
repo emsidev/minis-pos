@@ -1,5 +1,5 @@
 import { AdminBulkScheduleClient } from "@/components/admin/AdminBulkScheduleClient"
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import { getActiveEmployeeOptions, getAdminBooths } from "@/lib/adminBooths"
 
 export default async function AdminBulkBoothsPage() {

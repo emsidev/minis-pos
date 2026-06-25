@@ -5,7 +5,7 @@ export type AdminEmployeeRecord =
   Database["public"]["Tables"]["employees"]["Row"]
 
 export async function getAdminEmployees() {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("employees")
     .select("*")
@@ -17,10 +17,6 @@ export async function getAdminEmployees() {
   }
 
   return data as AdminEmployeeRecord[]
-}
-
-export function normalizeEmployeeEmail(email: string) {
-  return email.trim().toLowerCase()
 }
 
 export function isEmployeeRole(value: string): value is EmployeeRole {

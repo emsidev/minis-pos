@@ -35,7 +35,7 @@ export default async function ResetPasswordPage({
   let recoveryEmail: string | null = null
 
   if (supabaseReady && hasRecoveryMarker) {
-    const supabase = createServerSupabaseClient()
+    const supabase = await createServerSupabaseClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()

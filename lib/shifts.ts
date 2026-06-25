@@ -63,7 +63,7 @@ type ActiveScheduleCandidate = SharedBoothSchedule & {
  * Fetches the active shared booth schedule visible to an assigned employee.
  */
 export async function getActiveBoothSchedule(employeeId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const currentDate = getBusinessDate()
   const currentTime = getBusinessTime()
 
@@ -100,7 +100,7 @@ export async function getActiveBoothSchedule(employeeId: string) {
  * Fetches the active shift only when this employee currently operates POS.
  */
 export async function getActiveOperatorBoothSchedule(employeeId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const currentDate = getBusinessDate()
   const currentTime = getBusinessTime()
 
@@ -168,7 +168,7 @@ export type TodayShiftListItem = SharedBoothSchedule & {
  * Fetches products assigned to a specific booth schedule.
  */
 export async function getBoothScheduleProducts(scheduleId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data, error } = await supabase
     .from("booth_schedule_products")
@@ -196,7 +196,7 @@ export async function getBoothScheduleProducts(scheduleId: string) {
  * Fetches all available products (for admins or general use).
  */
 export async function getAllAvailableProducts() {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data, error } = await supabase
     .from("products")
@@ -215,7 +215,7 @@ export async function getAllAvailableProducts() {
  * Fetches sales for a specific booth schedule.
  */
 export async function getBoothScheduleSales(scheduleId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data, error } = await supabase
     .from("sales")
@@ -235,7 +235,7 @@ export async function getBoothScheduleSales(scheduleId: string) {
  * Fetches all booth schedules for a specific employee.
  */
 export async function getEmployeeSchedules(employeeId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data, error } = await supabase
     .from("booth_schedules")
@@ -257,7 +257,7 @@ export async function getEmployeeSchedulesForDate(
   employeeId: string,
   date: string
 ) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data, error } = await supabase
     .from("booth_schedules")
@@ -347,7 +347,7 @@ export async function getEmployeeScheduleBrowser(
   startDate: string,
   endDate: string
 ) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.rpc("get_employee_schedule_browser", {
     p_start_date: startDate,
     p_end_date: endDate,
@@ -400,7 +400,7 @@ export async function getEmployeeScheduleBrowser(
 }
 
 export async function getEmployeeBrowsableShiftDetails(scheduleId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.rpc("get_employee_schedule_detail", {
     p_schedule_id: scheduleId,
   })
@@ -422,7 +422,7 @@ export async function getEmployeeBrowsableShiftDetails(scheduleId: string) {
 }
 
 export async function getEmployeeBrowsableSaleItems(saleId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.rpc(
     "get_employee_schedule_sale_items",
     {
@@ -444,7 +444,7 @@ export async function getEmployeeSalesHistoryForDate(
   employeeId: string,
   date: string
 ) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data: schedules, error: schedulesError } = await supabase
     .from("booth_schedules")
@@ -494,7 +494,7 @@ export async function getEmployeeSalesHistoryForDate(
  * Fetches a specific booth schedule by ID.
  */
 export async function getBoothScheduleById(scheduleId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data, error } = await supabase
     .from("booth_schedules")
@@ -515,7 +515,7 @@ export async function getBoothScheduleById(scheduleId: string) {
  * Fetches items for a specific sale.
  */
 export async function getSaleItems(saleId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data, error } = await supabase
     .from("sale_items")
@@ -538,7 +538,7 @@ export async function getSaleItemsForSales(
     return [] as SaleItemWithProduct[]
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("sale_items")
     .select("*, products(*)")

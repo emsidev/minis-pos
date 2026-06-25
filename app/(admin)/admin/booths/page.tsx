@@ -1,5 +1,5 @@
 import { AdminBoothsClient } from "@/components/admin/AdminBoothsClient"
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import {
   getActiveEmployeeOptions,
   getAdminBooths,

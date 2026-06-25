@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import type { Json, PaymentMethod } from "@/lib/database.types"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import {
@@ -176,7 +176,7 @@ export async function joinSchedule(
     return { ok: false, error: "Shift record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase.rpc("join_booth_schedule", {
     p_schedule_id: scheduleId,
   })
@@ -217,7 +217,7 @@ export async function claimShiftOperator(
     return { ok: false, error: "Shift record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase.rpc("claim_shift_operator", {
     p_schedule_id: scheduleId,
   })
@@ -247,7 +247,7 @@ export async function requestShiftReopenApproval(
     return { ok: false, error: "Shift record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.rpc("request_shift_action_approval", {
     p_schedule_id: scheduleId,
     p_action_type: "reopen_shift",
@@ -296,7 +296,7 @@ export async function requestShiftCashDeduction(
     return { ok: false, error: "Add a reason for the cash deduction." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.rpc("request_shift_cash_deduction", {
     p_schedule_id: input.scheduleId,
     p_amount: input.amount,
@@ -375,7 +375,7 @@ export async function submitSaleChange(
     }))
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.rpc("submit_sale_change", {
     p_sale_id: input.saleId,
     p_action_type: input.actionType,
@@ -486,7 +486,7 @@ export async function resolveShiftApproval(
     return { ok: false, error: "Approval record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: approval } = await supabase
     .from("shift_action_approvals")
     .select("action_type")
@@ -541,7 +541,7 @@ export async function rejectShiftApproval(
     return { ok: false, error: "Approval record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: approval } = await supabase
     .from("shift_action_approvals")
     .select("action_type")

@@ -32,7 +32,7 @@ async function loadPromos(query: {
   activeOnly?: boolean
   businessDate?: string
 }) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   let request = supabase
     .from("promos")
     .select("*, promo_products(product_id, role, products(name))")
@@ -73,7 +73,7 @@ export async function getActiveCounterPromos(): Promise<CounterPromo[]> {
 }
 
 export async function getPromoById(promoId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("promos")
     .select("*, promo_products(product_id, role, products(name))")

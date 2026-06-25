@@ -1,5 +1,5 @@
 import type { Database } from "@/lib/database.types"
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 
 export type ShiftApprovalEmployee = Pick<
@@ -166,7 +166,7 @@ export async function getShiftApprovalHistory(scheduleId: string) {
     return []
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("shift_action_approvals")
     .select(
@@ -185,7 +185,7 @@ export async function getShiftApprovalHistory(scheduleId: string) {
 export async function getAdminPendingShiftApprovals(): Promise<PendingShiftApprovalData> {
   await requireEmployeeRole("admin")
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("shift_action_approvals")
     .select(

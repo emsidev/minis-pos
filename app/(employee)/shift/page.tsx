@@ -1,4 +1,4 @@
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import {
   getActiveBoothSchedule,
   getBoothScheduleProducts,

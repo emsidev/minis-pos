@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { deleteReceiptPhoto } from "@/app/actions/receipts"
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import {
   type BulkScheduleEditableRow,
   type BulkScheduleLoadFilters,
@@ -617,7 +617,7 @@ export async function createBooth(
     return { ok: false, error: parsed.error }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("booths")
     .insert(parsed.value)
@@ -646,7 +646,7 @@ export async function updateBooth(
     return { ok: false, error: parsed.error }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("booths")
     .update(parsed.value)
@@ -667,7 +667,7 @@ export async function deactivateBooth(
 ): Promise<AdminActionResult> {
   await requireEmployeeRole("admin")
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.rpc(
     "deactivate_booth_and_cancel_future_schedules",
     {
@@ -701,7 +701,7 @@ export async function reactivateBooth(
     return { ok: false, error: "Booth record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("booths")
     .update({ is_active: true })
@@ -751,7 +751,7 @@ export async function saveBulkScheduleRows(
     return []
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const results: BulkScheduleSaveResult[] = []
   const touchedBoothIds = new Set<string>()
 
@@ -828,7 +828,7 @@ export async function saveBoothSchedule(
     return { ok: false, error: parsed.error }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const targetDates =
     value.mode === "edit"
       ? [value.date]
@@ -919,7 +919,7 @@ export async function overrideShiftInventory(
     resulting_stock: line.resultingStock,
   })) as Json
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase.rpc("record_admin_inventory_override", {
     p_event_id: crypto.randomUUID(),
     p_schedule_id: input.scheduleId,
@@ -941,7 +941,7 @@ export async function cancelBoothSchedule(
 ): Promise<AdminActionResult> {
   await requireEmployeeRole("admin")
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase.rpc("cancel_booth_schedule", {
     p_schedule_id: scheduleId,
     p_current_date: getBusinessDate(),
@@ -969,7 +969,7 @@ export async function deleteBoothScheduleCascade(
     return { ok: false, error: "Shift record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: saleRows, error: saleError } = await supabase
     .from("sales")
     .select("receipt_photo_path")
@@ -1011,7 +1011,7 @@ export async function deleteBoothCascade(
     return { ok: false, error: "Booth record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: saleRows, error: saleError } = await supabase
     .from("sales")
     .select("receipt_photo_path")

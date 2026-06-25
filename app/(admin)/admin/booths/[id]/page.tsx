@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 
 import { AdminBoothDetailClient } from "@/components/admin/AdminBoothDetailClient"
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import {
   getActiveEmployeeOptions,
   getAdminBoothById,

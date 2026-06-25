@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { deleteReceiptPhoto } from "@/app/actions/receipts"
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import {
   getAdminSalesLedger,
   normalizeAdminSalesView,
@@ -40,7 +40,7 @@ export async function deleteSalePermanently(
     return { ok: false, error: "Sale record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: sale, error: saleError } = await supabase
     .from("sales")
     .select("id, receipt_photo_path, status")

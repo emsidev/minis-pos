@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache"
 
-import { requireEmployeeRole } from "@/lib/auth"
-import { isEmployeeRole, normalizeEmployeeEmail } from "@/lib/adminEmployees"
+import { requireEmployeeRole } from "@/lib/auth.server"
+import { isEmployeeRole } from "@/lib/adminEmployees"
 import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
 import type { EmployeeRole } from "@/lib/database.types"
 import { getRequestOrigin } from "@/lib/server-utils"
@@ -193,7 +193,7 @@ export async function inviteEmployee(
   }
 
   const { name, email, role } = parsed
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
 
   const { data: existingEmployee, error: employeeLookupError } = await supabase
     .from("employees")
@@ -266,7 +266,7 @@ export async function resendEmployeeInvite(
     return { ok: false, error: "Employee record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: employee, error } = await supabase
     .from("employees")
     .select("*")
@@ -329,7 +329,7 @@ export async function updateEmployeeRole(
     return { ok: false, error: "Select a valid role." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase
     .from("employees")
     .update({ role })
@@ -353,7 +353,7 @@ export async function updateEmployeeStatus(
     return { ok: false, error: "Employee record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase
     .from("employees")
     .update({ is_active: isActive })
@@ -384,7 +384,7 @@ export async function updateEmployeeDetails(
     return { ok: false, error: parsed.error }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data: currentEmployee, error: lookupError } = await supabase
     .from("employees")
     .select("*")

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import type { Json } from "@/lib/database.types"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 
@@ -119,7 +119,7 @@ export async function closeShift(
     resulting_stock: line.resultingStock,
   })) as Json
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase.rpc("close_shift", {
     p_schedule_id: input.scheduleId,
     p_counted_cash_sales: input.countedCashSales,
@@ -147,7 +147,7 @@ export async function reopenShift(
     return { ok: false, error: "Add a reason before reopening this shift." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase.rpc("reopen_shift", {
     p_schedule_id: input.scheduleId,
     p_reason: input.reason.trim(),

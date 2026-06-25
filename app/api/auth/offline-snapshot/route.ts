@@ -93,7 +93,7 @@ export async function POST() {
     return failureResponse("snapshot-disabled", 503)
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   let userId: string
 
   try {

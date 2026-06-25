@@ -1,4 +1,4 @@
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import { getEmployeeScheduleBrowser } from "@/lib/shifts"
 import { ScheduleCalendar } from "@/components/shifts/ScheduleCalendar"
 import type { ScheduleBrowserItem } from "@/lib/shifts"

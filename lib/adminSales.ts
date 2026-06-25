@@ -1,4 +1,4 @@
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import type {
   Database,
   PaymentMethod,
@@ -189,7 +189,7 @@ export async function getAdminSalesLedger(
   const range = normalizeAdminSalesDateRange(startDate, endDate)
   const { startIso, endIso } = getBusinessDayBounds(range)
   const cursor = decodeCursor(cursorValue)
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   let query = supabase
     .from("sales")
     .select(

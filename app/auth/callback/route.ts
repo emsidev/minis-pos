@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
-import { ensureEmployeeProfile, getHomeRouteForRole } from "@/lib/auth"
+import { getHomeRouteForRole } from "@/lib/auth.shared"
+import { ensureEmployeeProfile } from "@/lib/auth.server"
 import {
   clearEmployeeSnapshotCookie,
   writeEmployeeSnapshotCookie,
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
     return response
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error: exchangeError } =
     await supabase.auth.exchangeCodeForSession(code)
 

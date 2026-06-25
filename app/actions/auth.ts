@@ -3,7 +3,8 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
-import { ensureEmployeeProfile, getHomeRouteForRole } from "@/lib/auth"
+import { getHomeRouteForRole } from "@/lib/auth.shared"
+import { ensureEmployeeProfile } from "@/lib/auth.server"
 import {
   clearEmployeeSnapshotCookie,
   writeEmployeeSnapshotCookie,
@@ -37,7 +38,7 @@ export async function signInWithGoogleAction() {
 
   clearPasswordRecoveryCookie(cookieStore)
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
@@ -80,7 +81,7 @@ export async function signInWithPasswordAction(formData: FormData) {
     )
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
     error: signInError,
@@ -133,7 +134,7 @@ export async function requestPasswordResetAction(formData: FormData) {
 
   clearPasswordRecoveryCookie(cookieStore)
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${origin}/auth/recovery`,
   })
@@ -189,7 +190,7 @@ export async function updatePasswordAction(formData: FormData) {
     )
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
     error: userError,
@@ -227,7 +228,7 @@ export async function signOutAction() {
   const cookieStore = await cookies()
 
   if (isSupabaseConfigured) {
-    const supabase = createServerSupabaseClient()
+    const supabase = await createServerSupabaseClient()
 
     await supabase.auth.signOut()
   }

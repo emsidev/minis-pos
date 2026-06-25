@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import type { AdminProductRecord } from "@/lib/adminProducts"
 import { getPromoById } from "@/lib/promoData"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
@@ -280,7 +280,7 @@ export async function saveProduct(
     return { ok: false, error: parsed.error }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const response = input.id
     ? await supabase
         .from("products")
@@ -312,7 +312,7 @@ export async function toggleProductAvailability(
     return { ok: false, error: "Product record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase
     .from("products")
     .update({ is_available: isAvailable })
@@ -339,7 +339,7 @@ export async function savePromo(
     return { ok: false, error: parsed.error }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const promoResponse = input.id
     ? await supabase
         .from("promos")
@@ -407,7 +407,7 @@ export async function togglePromoActive(
     return { ok: false, error: "Promo record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { error } = await supabase
     .from("promos")
     .update({ is_active: isActive })

@@ -1,6 +1,6 @@
 "use server"
 
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import type { PaymentMethod } from "@/lib/database.types"
 import { getPromoById } from "@/lib/promoData"
 import {
@@ -103,7 +103,7 @@ function normalizeCheckoutItems(items: CheckoutItemInput[]) {
 }
 
 async function loadProducts(productIds: string[]) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("products")
     .select("id, name, price")
@@ -236,7 +236,7 @@ async function validatePromoApproval(input: {
   employeeId: string
   snapshot: NonNullable<PreparedCheckout["promoSnapshot"]>
 }) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const [
     { data: approval, error: approvalError },
     { data: salePromo, error: salePromoError },
@@ -351,7 +351,7 @@ export async function finalizePosSale(
       })
     }
 
-    const supabase = createServerSupabaseClient()
+    const supabase = await createServerSupabaseClient()
     const { error } = await supabase.rpc("finalize_pos_sale", {
       p_sale_id: input.saleId,
       p_booth_id: input.boothId,
@@ -424,7 +424,7 @@ export async function requestPromoApproval(
       }
     }
 
-    const supabase = createServerSupabaseClient()
+    const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase.rpc(
       "request_shift_action_approval",
       {
@@ -458,7 +458,7 @@ export async function getPromoApprovalStatus(
     return { ok: false, error: "Approval record is missing." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("shift_action_approvals")
     .select("id, status")

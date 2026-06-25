@@ -552,7 +552,7 @@ export async function getAdminDashboardData(requestedDate?: string) {
   const { startIso, endIso } = getBusinessDayRange(selectedDate)
   const trendStartIso = `${addBusinessDays(selectedDate, -6)}T00:00:00+08:00`
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const dashboardResult = await supabase.rpc("get_admin_dashboard", {
     p_date: selectedDate,
   })

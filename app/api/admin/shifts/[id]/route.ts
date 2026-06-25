@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
-import { getCurrentSessionContext, normalizeEmployeeRole } from "@/lib/auth"
+import { getCurrentSessionContext } from "@/lib/auth.server"
+import { normalizeEmployeeRole } from "@/lib/auth.shared"
 import { getAdminShiftDetailData } from "@/lib/adminBooths"
 
 type RouteContext = {

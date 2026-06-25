@@ -139,7 +139,7 @@ export type BulkScheduleSaveResult = {
 }
 
 export async function getAdminBooths() {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("booths")
     .select("*")
@@ -153,7 +153,7 @@ export async function getAdminBooths() {
 }
 
 export async function getAdminBoothById(boothId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("booths")
     .select("*")
@@ -168,7 +168,7 @@ export async function getAdminBoothById(boothId: string) {
 }
 
 export async function getAdminSchedules(boothId?: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   let query = supabase
     .from("booth_schedules")
     .select(
@@ -199,7 +199,7 @@ export async function getAdminScheduleCalendarItems(
   endDate: string,
   boothId?: string
 ) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   let query = supabase
     .from("booth_schedules")
     .select(
@@ -224,7 +224,7 @@ export async function getAdminScheduleCalendarItems(
 }
 
 export async function getAdminScheduleById(scheduleId: string) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("booth_schedules")
     .select(
@@ -312,7 +312,7 @@ export async function getBulkEditableScheduleRows(
   endDate: string,
   boothIds: string[] = []
 ) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   let query = supabase
     .from("booth_schedules")
     .select(
@@ -349,7 +349,7 @@ export async function getBulkEditableScheduleRows(
 }
 
 export async function getActiveEmployeeOptions() {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("employees")
     .select("id, name, email")
@@ -364,7 +364,7 @@ export async function getActiveEmployeeOptions() {
 }
 
 export async function getAvailableProductOptions() {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("products")
     .select("*")

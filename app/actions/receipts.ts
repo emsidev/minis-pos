@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 import type { Database } from "@/lib/database.types"
 import { createAdminSupabaseClient } from "@/lib/supabase-admin"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
@@ -98,7 +98,7 @@ export async function getReceiptSignedUrl(
     return { ok: false, error: "Receipt photo is not available." }
   }
 
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.storage
     .from("receipts")
     .createSignedUrl(receiptPath, RECEIPT_URL_LIFETIME_SECONDS)

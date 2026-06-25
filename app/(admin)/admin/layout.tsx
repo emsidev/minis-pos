@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 
 import { AppShell } from "@/components/shared/AppShell"
-import { requireEmployeeRole } from "@/lib/auth"
+import { requireEmployeeRole } from "@/lib/auth.server"
 
 export default async function AdminLayout({
   children,

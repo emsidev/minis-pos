@@ -31,7 +31,7 @@ export default async function ForgotPasswordPage({
   let sessionEmail: string | null = null
 
   if (supabaseReady) {
-    const supabase = createServerSupabaseClient()
+    const supabase = await createServerSupabaseClient()
     const {
       data: { session },
     } = await supabase.auth.getSession()
