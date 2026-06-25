@@ -3,9 +3,15 @@
 import { revalidatePath } from "next/cache"
 
 import { requireEmployeeRole } from "@/lib/auth.server"
+import { normalizeEmployeeEmail } from "@/lib/auth.shared"
 import { isEmployeeRole } from "@/lib/adminEmployees"
 import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
 import type { EmployeeRole } from "@/lib/database.types"
+import {
+  getEmployeeApprovalStatus,
+  isEmployeePendingApproval,
+  type EmployeeApprovalStatus,
+} from "@/lib/employeeApproval"
 import { getRequestOrigin } from "@/lib/server-utils"
 import { createAdminSupabaseClient } from "@/lib/supabase-admin"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
@@ -23,6 +29,12 @@ export type EmployeeUpdateInput = EmployeeProfileInput & {
   isActive: boolean
 }
 
+export type EmployeePasswordInput = {
+  employeeId: string
+  password: string
+  confirmPassword: string
+}
+
 export type EmployeeAdminActionResult = {
   ok: boolean
   message?: string
@@ -34,6 +46,15 @@ export type EmployeeAdminActionResult = {
 type EmployeeInviteDelivery = {
   inviteLink?: string
   message: string
+}
+
+type EmployeeAccessPatch = {
+  approval_status?: EmployeeApprovalStatus
+  email?: string
+  is_active?: boolean
+  name?: string
+  role?: EmployeeRole
+  user_id?: string | null
 }
 
 function revalidateEmployeeAdminRoutes() {
@@ -63,6 +84,30 @@ function validateEmployeeProfileInput(input: EmployeeProfileInput) {
     email,
     role,
   }
+}
+
+function validateEmployeePasswordInput(input: EmployeePasswordInput) {
+  const employeeId = input.employeeId.trim()
+  const password = input.password
+  const confirmPassword = input.confirmPassword
+
+  if (!employeeId) {
+    return { error: "Employee record is missing." }
+  }
+
+  if (!password) {
+    return { error: "Enter the new employee password." }
+  }
+
+  if (password.length < 6) {
+    return { error: "Password must be at least 6 characters." }
+  }
+
+  if (password !== confirmPassword) {
+    return { error: "Passwords do not match." }
+  }
+
+  return { employeeId, password }
 }
 
 async function sendEmployeeInviteEmail(input: {
@@ -207,27 +252,29 @@ export async function inviteEmployee(
     return { ok: false, error: employeeLookupError.message }
   }
 
+  const approvedEmployeePatch: EmployeeAccessPatch = {
+    approval_status: "approved",
+    email,
+    is_active: true,
+    name,
+    role,
+  }
+
+  const approvedEmployeeInsert = {
+    ...approvedEmployeePatch,
+    user_id: null,
+  }
+
   const employeeRow = existingEmployee
     ? await supabase
         .from("employees")
-        .update({
-          email,
-          is_active: true,
-          name,
-          role,
-        })
+        .update(approvedEmployeePatch)
         .eq("id", existingEmployee.id)
         .select("*")
         .single()
     : await supabase
         .from("employees")
-        .insert({
-          email,
-          is_active: true,
-          name,
-          role,
-          user_id: null,
-        })
+        .insert(approvedEmployeeInsert)
         .select("*")
         .single()
 
@@ -281,6 +328,13 @@ export async function resendEmployeeInvite(
     return { ok: false, error: "Employee record was not found." }
   }
 
+  if (isEmployeePendingApproval(employee)) {
+    return {
+      ok: false,
+      error: "Approve the employee before resending the invite email.",
+    }
+  }
+
   if (employee.is_active === false) {
     return {
       ok: false,
@@ -311,6 +365,142 @@ export async function resendEmployeeInvite(
         inviteError instanceof Error
           ? inviteError.message
           : "Unable to resend the invite email.",
+    }
+  }
+}
+
+export async function approveEmployee(
+  employeeId: string
+): Promise<EmployeeAdminActionResult> {
+  await requireEmployeeRole("admin")
+
+  if (!employeeId) {
+    return { ok: false, error: "Employee record is missing." }
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const approvalPatch: EmployeeAccessPatch = {
+    approval_status: "approved",
+    is_active: true,
+  }
+
+  const { data: employee, error } = await supabase
+    .from("employees")
+    .update(approvalPatch)
+    .eq("id", employeeId)
+    .select("*")
+    .single()
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+
+  revalidateEmployeeAdminRoutes()
+  return {
+    ok: true,
+    message: "Employee account approved.",
+    employee: employee as AdminEmployeeRecord,
+  }
+}
+
+export async function updateEmployeePassword(
+  input: EmployeePasswordInput
+): Promise<EmployeeAdminActionResult> {
+  await requireEmployeeRole("admin")
+
+  const parsed = validateEmployeePasswordInput(input)
+  if ("error" in parsed) {
+    return { ok: false, error: parsed.error }
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const { data: employee, error: lookupError } = await supabase
+    .from("employees")
+    .select("*")
+    .eq("id", parsed.employeeId)
+    .maybeSingle()
+
+  if (lookupError) {
+    return { ok: false, error: lookupError.message }
+  }
+
+  if (!employee) {
+    return { ok: false, error: "Employee record was not found." }
+  }
+
+  const email = normalizeEmployeeEmail(employee.email ?? "")
+  if (!email || !email.includes("@")) {
+    return { ok: false, error: "Employee email address is invalid." }
+  }
+
+  try {
+    const adminSupabase = createAdminSupabaseClient()
+    const authUser = await findEmployeeAuthUser(
+      employee as AdminEmployeeRecord,
+      email
+    )
+    let authUserId = authUser?.id ?? null
+
+    if (authUserId) {
+      const { error: updateAuthError } =
+        await adminSupabase.auth.admin.updateUserById(authUserId, {
+          email,
+          password: parsed.password,
+          user_metadata: { name: employee.name },
+        })
+
+      if (updateAuthError) {
+        return { ok: false, error: updateAuthError.message }
+      }
+    } else {
+      const { data: createdAuthUser, error: createAuthError } =
+        await adminSupabase.auth.admin.createUser({
+          email,
+          password: parsed.password,
+          email_confirm: true,
+          user_metadata: { name: employee.name },
+        })
+
+      if (createAuthError) {
+        return { ok: false, error: createAuthError.message }
+      }
+
+      authUserId = createdAuthUser.user?.id ?? null
+    }
+
+    if (!authUserId) {
+      return { ok: false, error: "Unable to resolve the employee auth user." }
+    }
+
+    const authLinkPatch: EmployeeAccessPatch = {
+      email,
+      user_id: authUserId,
+    }
+
+    const { data: updatedEmployee, error: updateError } = await supabase
+      .from("employees")
+      .update(authLinkPatch)
+      .eq("id", parsed.employeeId)
+      .select("*")
+      .single()
+
+    if (updateError) {
+      return { ok: false, error: updateError.message }
+    }
+
+    revalidateEmployeeAdminRoutes()
+    return {
+      ok: true,
+      message: "Employee password updated.",
+      employee: updatedEmployee as AdminEmployeeRecord,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to update the employee password.",
     }
   }
 }
@@ -353,10 +543,14 @@ export async function updateEmployeeStatus(
     return { ok: false, error: "Employee record is missing." }
   }
 
+  const statusPatch: EmployeeAccessPatch = isActive
+    ? { approval_status: "approved", is_active: true }
+    : { is_active: false }
+
   const supabase = await createServerSupabaseClient()
   const { error } = await supabase
     .from("employees")
-    .update({ is_active: isActive })
+    .update(statusPatch)
     .eq("id", employeeId)
 
   if (error) {
@@ -419,7 +613,10 @@ export async function updateEmployeeDetails(
   }
 
   try {
-    const authUser = await findEmployeeAuthUser(currentEmployee, parsed.email)
+    const authUser = await findEmployeeAuthUser(
+      currentEmployee as AdminEmployeeRecord,
+      parsed.email
+    )
     if (authUser) {
       const adminSupabase = createAdminSupabaseClient()
       const { error: authError } =
@@ -442,14 +639,20 @@ export async function updateEmployeeDetails(
     }
   }
 
+  const nextApprovalStatus = input.isActive
+    ? "approved"
+    : getEmployeeApprovalStatus(currentEmployee)
+  const employeePatch: EmployeeAccessPatch = {
+    approval_status: nextApprovalStatus,
+    email: parsed.email,
+    is_active: input.isActive,
+    name: parsed.name,
+    role: parsed.role,
+  }
+
   const { data: updatedEmployee, error: updateError } = await supabase
     .from("employees")
-    .update({
-      email: parsed.email,
-      is_active: input.isActive,
-      name: parsed.name,
-      role: parsed.role,
-    })
+    .update(employeePatch)
     .eq("id", input.id)
     .select("*")
     .single()
