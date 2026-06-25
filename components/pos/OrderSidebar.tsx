@@ -59,6 +59,7 @@ type OrderSidebarProps = {
   shiftStarted?: boolean
   mode?: "docked" | "sheet"
   onChargeComplete?: () => void
+  onOptimisticMutationChange?: (active: boolean) => void
   saleBlockedMessage?: string
 }
 
@@ -66,6 +67,12 @@ type PromoApprovalState = {
   approvalId: string | null
   status: "pending" | "approved" | "rejected" | null
   snapshotKey: string | null
+}
+
+type SplitPaymentLine = {
+  id: string
+  paymentMethod: PaymentMethod
+  amount: string
 }
 
 const paymentOptions: Array<{
@@ -84,10 +91,8 @@ const paymentOptions: Array<{
 function buildBasePricingResult(
   items: Array<{ id: string; quantity: number; price: number }>
 ): PromoPricingResult {
-  const subtotal = Number(
-    items
-      .reduce((total, item) => total + item.price * item.quantity, 0)
-      .toFixed(2)
+  const subtotal = roundCurrency(
+    items.reduce((total, item) => total + item.price * item.quantity, 0)
   )
 
   return {
@@ -99,11 +104,20 @@ function buildBasePricingResult(
     pricedItems: items.map((item) => ({
       productId: item.id,
       quantity: item.quantity,
-      unitPrice: Number(item.price.toFixed(2)),
-      baseUnitPrice: Number(item.price.toFixed(2)),
+      unitPrice: roundCurrency(item.price),
+      baseUnitPrice: roundCurrency(item.price),
       discountAmount: 0,
     })),
   }
+}
+
+function roundCurrency(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+function parseAmount(value: string) {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? roundCurrency(parsed) : 0
 }
 
 function getApprovalBannerText(status: PromoApprovalState["status"]) {
@@ -139,6 +153,17 @@ function getCriteriaSummary(promo: CounterPromo) {
   return parts.length > 0 ? parts.join(" • ") : "No extra criteria"
 }
 
+function makeSplitLine(
+  paymentMethod: PaymentMethod = "cash",
+  amount = ""
+): SplitPaymentLine {
+  return {
+    id: crypto.randomUUID(),
+    paymentMethod,
+    amount,
+  }
+}
+
 export function OrderSidebar({
   boothId,
   employeeId,
@@ -149,6 +174,7 @@ export function OrderSidebar({
   shiftStarted,
   mode = "docked",
   onChargeComplete,
+  onOptimisticMutationChange,
   saleBlockedMessage,
 }: OrderSidebarProps) {
   const router = useRouter()
@@ -164,6 +190,11 @@ export function OrderSidebar({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
   const [cashReceived, setCashReceived] = useState("")
   const [receiptPhoto, setReceiptPhoto] = useState<string | null>(null)
+  const [isSplitPayment, setIsSplitPayment] = useState(false)
+  const [splitPayments, setSplitPayments] = useState<SplitPaymentLine[]>(() => [
+    makeSplitLine("cash"),
+    makeSplitLine("gcash"),
+  ])
   const [isCharging, setIsCharging] = useState(false)
   const [isPreparingReceiptPhoto, setIsPreparingReceiptPhoto] = useState(false)
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false)
@@ -178,9 +209,7 @@ export function OrderSidebar({
   })
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
+    if (typeof window === "undefined") return
 
     const syncOnline = () => setIsOnline(window.navigator.onLine)
     syncOnline()
@@ -192,6 +221,9 @@ export function OrderSidebar({
     }
   }, [])
 
+  const activePaymentMethod: PaymentMethod = isSplitPayment
+    ? "other"
+    : paymentMethod
   const availablePromos = promos
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name))
@@ -211,9 +243,9 @@ export function OrderSidebar({
         unitPrice: item.price,
       })),
       businessDate: schedule?.date ?? new Date().toISOString().slice(0, 10),
-      paymentMethod,
+      paymentMethod: activePaymentMethod,
     })
-  }, [items, paymentMethod, schedule?.date, selectedPromo])
+  }, [activePaymentMethod, items, schedule?.date, selectedPromo])
   const promoSnapshot =
     selectedPromo && promoPricing.eligible
       ? buildPromoApprovalSnapshot({
@@ -224,7 +256,7 @@ export function OrderSidebar({
             quantity: item.quantity,
             unitPrice: item.price,
           })),
-          paymentMethod,
+          paymentMethod: activePaymentMethod,
           pricing: promoPricing,
         })
       : null
@@ -241,38 +273,12 @@ export function OrderSidebar({
   }, [selectedPromo, selectedPromoId, setSelectedPromoId])
 
   useEffect(() => {
-    if (!promoNeedsApproval) {
-      setPromoApproval({
-        approvalId: null,
-        status: null,
-        snapshotKey: null,
-      })
-      return
-    }
-
-    if (!promoSnapshotKey || !promoPricing.eligible) {
-      setPromoApproval((current) =>
-        current.approvalId || current.status
-          ? {
-              approvalId: null,
-              status: null,
-              snapshotKey: null,
-            }
-          : current
-      )
-      return
-    }
-
     setPromoApproval((current) =>
-      current.snapshotKey && current.snapshotKey !== promoSnapshotKey
-        ? {
-            approvalId: null,
-            status: null,
-            snapshotKey: null,
-          }
+      current.approvalId || current.status
+        ? { approvalId: null, status: null, snapshotKey: null }
         : current
     )
-  }, [promoNeedsApproval, promoPricing.eligible, promoSnapshotKey])
+  }, [activePaymentMethod, items, selectedPromoId])
 
   useEffect(() => {
     if (
@@ -287,18 +293,11 @@ export function OrderSidebar({
       const result = await getPromoApprovalStatus(promoApproval.approvalId!)
       const nextStatus = result.status
 
-      if (!result.ok || !nextStatus) {
-        return
-      }
+      if (!result.ok || !nextStatus) return
 
       setPromoApproval((current) => {
-        if (current.approvalId !== result.approvalId) {
-          return current
-        }
-
-        if (current.status === nextStatus) {
-          return current
-        }
+        if (current.approvalId !== result.approvalId) return current
+        if (current.status === nextStatus) return current
 
         if (nextStatus === "approved") {
           toast.success("Promo approved. You can charge the sale now.")
@@ -306,17 +305,13 @@ export function OrderSidebar({
           toast.error("Promo request was rejected.")
         }
 
-        return {
-          ...current,
-          status: nextStatus,
-        }
+        return { ...current, status: nextStatus }
       })
     }, 5000)
 
     return () => window.clearInterval(interval)
   }, [isOnline, promoApproval.approvalId, promoApproval.status])
 
-  const isCash = paymentMethod === "cash"
   const activeShiftWindow =
     !schedule ||
     isCurrentBusinessShift(
@@ -332,8 +327,29 @@ export function OrderSidebar({
     (shiftStarted === false
       ? "Start the shift before recording sales."
       : "Active shift required to complete sales.")
-  const cashAmount = Number.parseFloat(cashReceived) || 0
   const effectiveTotal = promoPricing.total
+  const splitAllocations = useMemo(
+    () =>
+      splitPayments
+        .map((line) => ({
+          paymentMethod: line.paymentMethod,
+          amount: parseAmount(line.amount),
+        }))
+        .filter((line) => line.amount > 0),
+    [splitPayments]
+  )
+  const splitTotal = roundCurrency(
+    splitAllocations.reduce((total, payment) => total + payment.amount, 0)
+  )
+  const splitBalance = roundCurrency(effectiveTotal - splitTotal)
+  const splitHasNonCash = splitAllocations.some(
+    (payment) => payment.paymentMethod !== "cash"
+  )
+  const splitIsBalanced = Math.abs(splitBalance) < 0.005
+  const splitHasEnoughLines = splitAllocations.length >= 2
+  const isCash = paymentMethod === "cash"
+  const cashAmount = parseAmount(cashReceived)
+  const checkoutNeedsReceipt = isSplitPayment ? splitHasNonCash : !isCash
   const promoEligible = !selectedPromo || promoPricing.eligible
   const approvalSatisfied =
     !promoNeedsApproval || promoApproval.status === "approved"
@@ -344,9 +360,41 @@ export function OrderSidebar({
     approvalSatisfied &&
     !isCharging &&
     !isPreparingReceiptPhoto &&
-    ((isCash && cashAmount >= effectiveTotal) ||
-      (!isCash && Boolean(receiptPhoto)))
+    (isSplitPayment
+      ? splitHasEnoughLines && splitIsBalanced && (!splitHasNonCash || receiptPhoto)
+      : (isCash && cashAmount >= effectiveTotal) || (!isCash && receiptPhoto))
   const changeDue = Math.max(0, cashAmount - effectiveTotal)
+
+  const updateSplitPayment = (
+    id: string,
+    field: keyof Omit<SplitPaymentLine, "id">,
+    value: string
+  ) => {
+    setSplitPayments((current) =>
+      current.map((line) =>
+        line.id === id ? { ...line, [field]: value } : line
+      )
+    )
+  }
+
+  const addSplitPayment = () => {
+    setSplitPayments((current) => [...current, makeSplitLine("cash")])
+  }
+
+  const removeSplitPayment = (id: string) => {
+    setSplitPayments((current) =>
+      current.length <= 2 ? current : current.filter((line) => line.id !== id)
+    )
+  }
+
+  const resetCheckoutState = () => {
+    setReceiptPhoto(null)
+    setCashReceived("")
+    setPaymentMethod("cash")
+    setIsSplitPayment(false)
+    setSplitPayments([makeSplitLine("cash"), makeSplitLine("gcash")])
+    setPromoApproval({ approvalId: null, status: null, snapshotKey: null })
+  }
 
   const handleCharge = async () => {
     if (
@@ -375,11 +423,10 @@ export function OrderSidebar({
       return
     }
 
-    if (!canCharge || !boothId || !scheduleId) {
-      return
-    }
+    if (!canCharge || !boothId || !scheduleId) return
 
     setIsCharging(true)
+    onOptimisticMutationChange?.(true)
 
     try {
       const saleId = crypto.randomUUID()
@@ -389,7 +436,7 @@ export function OrderSidebar({
         employeeId,
         scheduleId,
         totalAmount: effectiveTotal,
-        paymentMethod,
+        paymentMethod: activePaymentMethod,
         promoId: selectedPromo?.id ?? null,
         promoName: selectedPromo?.name ?? null,
         promoType: selectedPromo?.promoType ?? null,
@@ -405,7 +452,18 @@ export function OrderSidebar({
           basePrice: item.baseUnitPrice,
           discountAmount: item.discountAmount,
         })),
-        receiptPhotoLocal: receiptPhoto ?? undefined,
+        receiptPhotoLocal: checkoutNeedsReceipt ? (receiptPhoto ?? undefined) : undefined,
+        paymentBreakdown: isSplitPayment
+          ? splitAllocations.map((payment) => ({
+              paymentMethod: payment.paymentMethod,
+              amount: payment.amount,
+            }))
+          : [
+              {
+                paymentMethod,
+                amount: effectiveTotal,
+              },
+            ],
       }
 
       if (isOnline) {
@@ -415,14 +473,7 @@ export function OrderSidebar({
       }
 
       clearCart()
-      setReceiptPhoto(null)
-      setCashReceived("")
-      setPaymentMethod("cash")
-      setPromoApproval({
-        approvalId: null,
-        status: null,
-        snapshotKey: null,
-      })
+      resetCheckoutState()
       toast.success("Sale recorded!")
       onChargeComplete?.()
 
@@ -442,16 +493,13 @@ export function OrderSidebar({
       )
     } finally {
       setIsCharging(false)
+      onOptimisticMutationChange?.(false)
     }
   }
 
   const handleClearCart = () => {
     clearCart()
-    setPromoApproval({
-      approvalId: null,
-      status: null,
-      snapshotKey: null,
-    })
+    resetCheckoutState()
     toast.info("Cart cleared")
   }
 
@@ -459,9 +507,7 @@ export function OrderSidebar({
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = event.target.files?.[0]
-    if (!file) {
-      return
-    }
+    if (!file) return
 
     try {
       setIsPreparingReceiptPhoto(true)
@@ -480,9 +526,7 @@ export function OrderSidebar({
   }
 
   const handleRequestApproval = async () => {
-    if (!scheduleId || !selectedPromo || !promoNeedsApproval) {
-      return
-    }
+    if (!scheduleId || !selectedPromo || !promoNeedsApproval) return
 
     if (!promoPricing.eligible) {
       toast.error(promoPricing.reason)
@@ -498,7 +542,7 @@ export function OrderSidebar({
 
     const result = await requestPromoApproval({
       scheduleId,
-      paymentMethod,
+      paymentMethod: activePaymentMethod,
       promoId: selectedPromo.id,
       items: items.map((item) => ({
         productId: item.id,
@@ -632,11 +676,7 @@ export function OrderSidebar({
                     No promo
                   </SelectItem>
                   {availablePromos.map((promo) => (
-                    <SelectItem
-                      key={promo.id}
-                      value={promo.id}
-                      label={promo.name}
-                    >
+                    <SelectItem key={promo.id} value={promo.id} label={promo.name}>
                       <span className="flex flex-col items-start">
                         <span>{promo.name}</span>
                         <span className="text-muted-foreground text-xs">
@@ -684,11 +724,6 @@ export function OrderSidebar({
                       <div className="bg-muted/50 rounded-xl px-3 py-2 text-xs font-medium">
                         {getApprovalBannerText(promoApproval.status)}
                       </div>
-                      {!isOnline ? (
-                        <div className="bg-warning/8 text-warning-foreground rounded-xl px-3 py-2 text-xs font-medium">
-                          Approval requests need a live connection.
-                        </div>
-                      ) : null}
                       <Button
                         type="button"
                         variant="outline"
@@ -703,10 +738,7 @@ export function OrderSidebar({
                         onClick={() => void handleRequestApproval()}
                       >
                         {isRequestingApproval ? (
-                          <Loader2
-                            data-icon="inline-start"
-                            className="animate-spin"
-                          />
+                          <Loader2 data-icon="inline-start" className="animate-spin" />
                         ) : null}
                         {promoApproval.status === "approved"
                           ? "Approved"
@@ -759,32 +791,135 @@ export function OrderSidebar({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5">
-          {paymentOptions.map((option) => {
-            const Icon = option.icon
-            const selected = paymentMethod === option.value
-            return (
-              <Button
-                key={option.value}
-                type="button"
-                variant={selected ? "default" : "ghost"}
-                className={cn(
-                  "flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[10px] font-bold tracking-wider uppercase transition-all",
-                  selected
-                    ? "shadow-primary/20 bg-primary text-primary-foreground shadow-md"
-                    : "bg-muted/50 hover:bg-primary/5 text-muted-foreground hover:text-primary"
-                )}
-                disabled={isCharging}
-                onClick={() => setPaymentMethod(option.value)}
-              >
-                <Icon className="h-4 w-4" />
-                {option.label}
-              </Button>
-            )
-          })}
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant={!isSplitPayment ? "default" : "outline"}
+            className="rounded-xl"
+            disabled={isCharging}
+            onClick={() => setIsSplitPayment(false)}
+          >
+            Single payment
+          </Button>
+          <Button
+            type="button"
+            variant={isSplitPayment ? "default" : "outline"}
+            className="rounded-xl"
+            disabled={isCharging}
+            onClick={() => setIsSplitPayment(true)}
+          >
+            Split payment
+          </Button>
         </div>
 
-        {isCash ? (
+        {!isSplitPayment ? (
+          <div className="grid grid-cols-3 gap-1.5">
+            {paymentOptions.map((option) => {
+              const Icon = option.icon
+              const selected = paymentMethod === option.value
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  variant={selected ? "default" : "ghost"}
+                  className={cn(
+                    "flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[10px] font-bold tracking-wider uppercase transition-all",
+                    selected
+                      ? "shadow-primary/20 bg-primary text-primary-foreground shadow-md"
+                      : "bg-muted/50 hover:bg-primary/5 text-muted-foreground hover:text-primary"
+                  )}
+                  disabled={isCharging}
+                  onClick={() => setPaymentMethod(option.value)}
+                >
+                  <Icon className="h-4 w-4" />
+                  {option.label}
+                </Button>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="space-y-2 rounded-2xl border px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-foreground text-sm font-semibold">
+                Split allocations
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={isCharging}
+                onClick={addSplitPayment}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add
+              </Button>
+            </div>
+            {splitPayments.map((line) => (
+              <div key={line.id} className="grid grid-cols-[1fr_8rem_auto] gap-2">
+                <Select
+                  value={line.paymentMethod}
+                  onValueChange={(value) =>
+                    updateSplitPayment(
+                      line.id,
+                      "paymentMethod",
+                      value as PaymentMethod
+                    )
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentOptions.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={option.value}
+                        label={option.label}
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="Amount"
+                  value={line.amount}
+                  disabled={isCharging}
+                  onChange={(event) =>
+                    updateSplitPayment(line.id, "amount", event.target.value)
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-xl"
+                  disabled={isCharging || splitPayments.length <= 2}
+                  onClick={() => removeSplitPayment(line.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <div
+              className={cn(
+                "flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold",
+                splitIsBalanced
+                  ? "bg-success/8 text-success"
+                  : "bg-muted/50 text-muted-foreground"
+              )}
+            >
+              <span>{splitIsBalanced ? "Balanced" : "Remaining"}</span>
+              <span>{formatCurrency(Math.abs(splitBalance))}</span>
+            </div>
+          </div>
+        )}
+
+        {!isSplitPayment && isCash ? (
           <div className="space-y-2">
             <div className="relative">
               <Input
@@ -819,7 +954,7 @@ export function OrderSidebar({
               </div>
             ) : null}
           </div>
-        ) : (
+        ) : checkoutNeedsReceipt ? (
           <div>
             <label
               htmlFor={receiptInputId}
@@ -868,7 +1003,7 @@ export function OrderSidebar({
               onChange={(event) => void handlePhotoUpload(event)}
             />
           </div>
-        )}
+        ) : null}
 
         <div className="flex gap-2">
           <Button
