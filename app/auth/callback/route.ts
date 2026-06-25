@@ -6,6 +6,7 @@ import {
   clearEmployeeSnapshotCookie,
   writeEmployeeSnapshotCookie,
 } from "@/lib/employeeSnapshot"
+import { isEmployeePendingApproval } from "@/lib/employeeApproval"
 import { isSupabaseConfigured } from "@/lib/env"
 import { clearPasswordRecoveryCookie } from "@/lib/passwordRecovery"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
@@ -61,6 +62,17 @@ export async function GET(request: Request) {
   }
 
   const employee = await ensureEmployeeProfile(supabase, user)
+
+  if (isEmployeePendingApproval(employee)) {
+    await supabase.auth.signOut()
+
+    const response = NextResponse.redirect(
+      buildLoginUrl(origin, { error: "approval-pending" })
+    )
+    clearEmployeeSnapshotCookie(response.cookies)
+    clearPasswordRecoveryCookie(response.cookies)
+    return response
+  }
 
   if (!employee.is_active) {
     await supabase.auth.signOut()
