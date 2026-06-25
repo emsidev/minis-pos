@@ -21,6 +21,7 @@ import { SupabaseClient, User } from "@supabase/supabase-js"
 import { isSupabaseAdminConfigured } from "./env"
 import { createAdminSupabaseClient } from "./supabase-admin"
 import { deriveNameFromEmail } from "./utils"
+import { isEmployeePendingApproval } from "./employeeApproval"
 
 export const getCurrentSessionContext = cache(
   async (): Promise<SessionContext | null> => {
@@ -114,6 +115,10 @@ export async function requireEmployeeRole(
 
   if (!sessionContext.employee) {
     redirect("/login?error=profile-missing")
+  }
+
+  if (isEmployeePendingApproval(sessionContext.employee)) {
+    redirect("/login?error=approval-pending")
   }
 
   if (!sessionContext.employee.is_active) {
@@ -214,13 +219,15 @@ export async function ensureEmployeeProfile(
   }
 
   if (invitedEmployee) {
+    const claimedEmployeeUpdate = {
+      user_id: user.id,
+      email,
+      name: invitedEmployee.name?.trim() || fallbackName,
+    }
+
     const { data: claimedEmployee, error: claimError } = await employeeClient
       .from("employees")
-      .update({
-        user_id: user.id,
-        email,
-        name: invitedEmployee.name?.trim() || fallbackName,
-      })
+      .update(claimedEmployeeUpdate)
       .eq("id", invitedEmployee.id)
       .is("user_id", null)
       .select("*")
@@ -235,14 +242,18 @@ export async function ensureEmployeeProfile(
     }
   }
 
+  const pendingEmployeeInsert = {
+    email,
+    name: fallbackName,
+    role: "employee" as const,
+    user_id: user.id,
+    is_active: false,
+    approval_status: "pending" as const,
+  }
+
   const { data: createdEmployee, error: insertError } = await employeeClient
     .from("employees")
-    .insert({
-      email,
-      name: fallbackName,
-      role: "employee",
-      user_id: user.id,
-    })
+    .insert(pendingEmployeeInsert)
     .select("*")
     .single()
 
