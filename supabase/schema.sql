@@ -274,7 +274,7 @@ for each row
 execute function public.set_initial_stock();
 
 create table if not exists public.inventory_events (
-  id uuid primary key,
+  id uuid primary key default gen_random_uuid(),
   schedule_id uuid references public.booth_schedules(id) on delete cascade not null,
   actor_employee_id uuid references public.employees(id) not null,
   event_type text not null,
@@ -286,6 +286,9 @@ create table if not exists public.inventory_events (
   constraint inventory_events_override_reason_check
     check (event_type <> 'admin_override' or nullif(btrim(reason), '') is not null)
 );
+
+alter table public.inventory_events
+  alter column id set default gen_random_uuid();
 
 create index if not exists inventory_events_schedule_time_idx
   on public.inventory_events (schedule_id, occurred_at);
