@@ -252,16 +252,20 @@ export async function inviteEmployee(
     return { ok: false, error: employeeLookupError.message }
   }
 
-  const approvedEmployeePatch: EmployeeAccessPatch = {
-    approval_status: "approved",
+  const approvedEmployeePatch = {
+    approval_status: "approved" as const,
     email,
     is_active: true,
     name,
     role,
-  }
+  } satisfies EmployeeAccessPatch
 
   const approvedEmployeeInsert = {
-    ...approvedEmployeePatch,
+    approval_status: "approved" as const,
+    email,
+    is_active: true,
+    name,
+    role,
     user_id: null,
   }
 
@@ -379,10 +383,10 @@ export async function approveEmployee(
   }
 
   const supabase = await createServerSupabaseClient()
-  const approvalPatch: EmployeeAccessPatch = {
-    approval_status: "approved",
+  const approvalPatch = {
+    approval_status: "approved" as const,
     is_active: true,
-  }
+  } satisfies EmployeeAccessPatch
 
   const { data: employee, error } = await supabase
     .from("employees")
@@ -472,10 +476,10 @@ export async function updateEmployeePassword(
       return { ok: false, error: "Unable to resolve the employee auth user." }
     }
 
-    const authLinkPatch: EmployeeAccessPatch = {
+    const authLinkPatch = {
       email,
       user_id: authUserId,
-    }
+    } satisfies EmployeeAccessPatch
 
     const { data: updatedEmployee, error: updateError } = await supabase
       .from("employees")
@@ -543,9 +547,9 @@ export async function updateEmployeeStatus(
     return { ok: false, error: "Employee record is missing." }
   }
 
-  const statusPatch: EmployeeAccessPatch = isActive
-    ? { approval_status: "approved", is_active: true }
-    : { is_active: false }
+  const statusPatch = isActive
+    ? ({ approval_status: "approved" as const, is_active: true } satisfies EmployeeAccessPatch)
+    : ({ is_active: false } satisfies EmployeeAccessPatch)
 
   const supabase = await createServerSupabaseClient()
   const { error } = await supabase
@@ -639,16 +643,16 @@ export async function updateEmployeeDetails(
     }
   }
 
-  const nextApprovalStatus = input.isActive
+  const nextApprovalStatus: EmployeeApprovalStatus = input.isActive
     ? "approved"
     : getEmployeeApprovalStatus(currentEmployee)
-  const employeePatch: EmployeeAccessPatch = {
+  const employeePatch = {
     approval_status: nextApprovalStatus,
     email: parsed.email,
     is_active: input.isActive,
     name: parsed.name,
     role: parsed.role,
-  }
+  } satisfies EmployeeAccessPatch
 
   const { data: updatedEmployee, error: updateError } = await supabase
     .from("employees")
