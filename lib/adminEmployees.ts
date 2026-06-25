@@ -1,14 +1,16 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import type { Database, EmployeeRole } from "@/lib/database.types"
+import type { EmployeeApprovalFields } from "@/lib/employeeApproval"
 
 export type AdminEmployeeRecord =
-  Database["public"]["Tables"]["employees"]["Row"]
+  Database["public"]["Tables"]["employees"]["Row"] & EmployeeApprovalFields
 
 export async function getAdminEmployees() {
   const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from("employees")
     .select("*")
+    .order("approval_status", { ascending: false })
     .order("is_active", { ascending: false })
     .order("name")
 
