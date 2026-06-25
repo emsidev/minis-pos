@@ -14,9 +14,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getCurrentSessionContext, getHomeRouteForRole } from "@/lib/auth"
 import { formatAuthMessage, readQueryValue } from "@/lib/authMessages"
+import { isEmployeePendingApproval } from "@/lib/employeeApproval"
 import { isSupabaseConfigured, publicEnv } from "@/lib/env"
 
-type LoginPageProps = {
+ type LoginPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
@@ -28,6 +29,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       "Add your Supabase URL and anon key to .env.local before signing in.",
     inactive:
       "Your employee account is inactive. Ask an admin to reactivate it.",
+    "approval-pending":
+      "Your account is waiting for admin approval. Please try again after an admin approves it.",
     "profile-missing": "Your employee profile has not been created yet.",
   })
   const passwordReset =
@@ -35,13 +38,19 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const supabaseReady = isSupabaseConfigured
   const sessionContext = supabaseReady ? await getCurrentSessionContext() : null
 
-  if (sessionContext?.employee?.is_active) {
+  if (
+    sessionContext?.employee?.is_active &&
+    !isEmployeePendingApproval(sessionContext.employee)
+  ) {
     redirect(getHomeRouteForRole(sessionContext.employee.role))
   }
 
   const profileMissing = Boolean(sessionContext && !sessionContext.employee)
+  const pendingApproval = isEmployeePendingApproval(sessionContext?.employee)
   const inactiveAccount = Boolean(
-    sessionContext?.employee && !sessionContext.employee.is_active
+    sessionContext?.employee &&
+      !pendingApproval &&
+      !sessionContext.employee.is_active
   )
 
   return (
@@ -82,15 +91,21 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 </div>
               ) : null}
 
-              {inactiveAccount || profileMissing ? (
+              {inactiveAccount || profileMissing || pendingApproval ? (
                 <div className="bg-muted/50 flex flex-col gap-4 rounded-[calc(var(--radius)-0.1rem)] p-6 text-center">
                   <h3 className="text-xl font-semibold">
-                    {inactiveAccount ? "Account Inactive" : "Profile Missing"}
+                    {pendingApproval
+                      ? "Pending Admin Approval"
+                      : inactiveAccount
+                        ? "Account Inactive"
+                        : "Profile Missing"}
                   </h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">
-                    {inactiveAccount
-                      ? "Your employee record is disabled. Contact an admin to restore access."
-                      : "Auth session active, but employee profile not found. Contact an admin."}
+                    {pendingApproval
+                      ? "Your employee record has been created and is waiting for an admin to approve it."
+                      : inactiveAccount
+                        ? "Your employee record is disabled. Contact an admin to restore access."
+                        : "Auth session active, but employee profile not found. Contact an admin."}
                   </p>
                   <SignOutButton className="mt-2" buttonClassName="w-full" />
                 </div>
