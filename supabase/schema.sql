@@ -11,7 +11,6 @@ create table if not exists public.booths (
   is_active boolean default true,
   created_at timestamptz default now()
 );
-
 create table if not exists public.employees (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id),
@@ -19,7 +18,10 @@ create table if not exists public.employees (
   email text not null,
   role text default 'employee',
   is_active boolean default true,
-  created_at timestamptz default now()
+  approval_status text not null default 'approved',
+  created_at timestamptz default now(),
+  constraint employees_approval_status_check
+    check (approval_status in ('pending', 'approved'))
 );
 
 create unique index if not exists employees_user_id_unique_idx
@@ -28,6 +30,25 @@ create unique index if not exists employees_user_id_unique_idx
 
 create index if not exists employees_email_lower_idx
   on public.employees (lower(email));
+
+
+alter table public.employees
+  add column if not exists approval_status text not null default 'approved';
+
+update public.employees
+set approval_status = 'approved'
+where approval_status is null;
+
+alter table public.employees
+  drop constraint if exists employees_approval_status_check;
+
+alter table public.employees
+  add constraint employees_approval_status_check
+    check (approval_status in ('pending', 'approved'));
+
+
+    create index if not exists employees_approval_status_idx
+      on public.employees (approval_status, is_active);
 
 create table if not exists public.booth_schedules (
   id uuid primary key default gen_random_uuid(),
@@ -385,6 +406,24 @@ create index if not exists sales_promo_id_idx
   on public.sales (promo_id)
   where promo_id is not null;
 
+  create table if not exists public.sale_payments (
+    id uuid primary key default gen_random_uuid(),
+    sale_id uuid references public.sales(id) on delete cascade not null,
+    payment_method text not null,
+    amount numeric(10,2) not null,
+    created_at timestamptz not null default now(),
+    constraint sale_payments_payment_method_check
+      check (payment_method in ('cash', 'gcash', 'maya', 'maribank', 'unionbank', 'other')),
+    constraint sale_payments_amount_positive
+      check (amount > 0)
+  );
+
+  create index if not exists sale_payments_sale_id_idx
+    on public.sale_payments (sale_id);
+
+  create index if not exists sale_payments_method_idx
+    on public.sale_payments (payment_method);
+
 create table if not exists public.shift_closeouts (
   id uuid primary key default gen_random_uuid(),
   schedule_id uuid references public.booth_schedules(id) on delete cascade not null,
@@ -642,6 +681,30 @@ begin
       and sale.created_at < v_end
       and sale.status = 'completed'
   ),
+  filtered_sale_payments as materialized (
+    select
+      sale.id as sale_id,
+      sale.booth_id,
+      payment.payment_method,
+      payment.amount
+    from filtered_sales as sale
+    join public.sale_payments as payment
+      on payment.sale_id = sale.id
+
+    union all
+
+    select
+      sale.id as sale_id,
+      sale.booth_id,
+      sale.payment_method,
+      sale.total_amount as amount
+    from filtered_sales as sale
+    where not exists (
+      select 1
+      from public.sale_payments as payment
+      where payment.sale_id = sale.id
+    )
+  ),
   filtered_schedules as materialized (
     select booth_id, status
     from public.booth_schedules
@@ -667,13 +730,28 @@ begin
   ),
   booth_sales as (
     select
-      booth_id,
-      coalesce(sum(total_amount), 0)::numeric as total_revenue,
-      count(*)::bigint as sale_count,
-      coalesce(sum(total_amount) filter (where payment_method = 'cash'), 0)::numeric as cash_revenue,
-      coalesce(sum(total_amount) filter (where payment_method <> 'cash'), 0)::numeric as non_cash_revenue
-    from filtered_sales
-    group by booth_id
+      sale_totals.booth_id,
+      sale_totals.total_revenue,
+      sale_totals.sale_count,
+      coalesce(payment_totals.cash_revenue, 0) as cash_revenue,
+      coalesce(payment_totals.non_cash_revenue, 0) as non_cash_revenue
+    from (
+      select
+        booth_id,
+        coalesce(sum(total_amount), 0)::numeric as total_revenue,
+        count(*)::bigint as sale_count
+      from filtered_sales
+      group by booth_id
+    ) as sale_totals
+    left join (
+      select
+        booth_id,
+        coalesce(sum(amount) filter (where payment_method = 'cash'), 0)::numeric as cash_revenue,
+        coalesce(sum(amount) filter (where payment_method <> 'cash'), 0)::numeric as non_cash_revenue
+      from filtered_sale_payments
+      group by booth_id
+    ) as payment_totals
+      on payment_totals.booth_id = sale_totals.booth_id
   ),
   booth_schedules as (
     select
@@ -706,10 +784,11 @@ begin
   payment_rows as (
     select
       methods.method,
-      count(sales.payment_method)::bigint as count,
-      coalesce(sum(sales.total_amount), 0)::numeric as total
+      count(payment.payment_method)::bigint as count,
+      coalesce(sum(payment.amount), 0)::numeric as total
     from payment_methods as methods
-    left join filtered_sales as sales on sales.payment_method = methods.method
+    left join filtered_sale_payments as payment
+      on payment.payment_method = methods.method
     group by methods.method
   ),
   trend_days as (
@@ -766,8 +845,17 @@ begin
     'summary', jsonb_build_object(
       'totalRevenue', coalesce((select sum(total_amount) from filtered_sales), 0),
       'saleCount', (select count(*) from filtered_sales),
-      'cashRevenue', coalesce((select sum(total_amount) from filtered_sales where payment_method = 'cash'), 0),
-      'nonCashRevenue', coalesce((select sum(total_amount) from filtered_sales where payment_method <> 'cash'), 0),
+      'cashRevenue', coalesce((
+        select sum(amount)
+        from filtered_sale_payments
+        where payment_method = 'cash'
+      ), 0),
+
+      'nonCashRevenue', coalesce((
+        select sum(amount)
+        from filtered_sale_payments
+        where payment_method <> 'cash'
+      ), 0),
       'openShiftCount', (select count(*) from filtered_schedules where status = 'scheduled'),
       'closedShiftCount', (select count(*) from filtered_schedules where status = 'closed'),
       'cancelledShiftCount', (select count(*) from filtered_schedules where status = 'cancelled')
@@ -2212,12 +2300,30 @@ begin
     raise exception using message = 'CLOSEOUT_LINES_MISMATCH';
   end if;
 
-  select coalesce(sum(total_amount), 0)::numeric(10,2)
+  select coalesce(sum(cash_rows.amount), 0)::numeric(10,2)
   into v_system_cash_sales
-  from public.sales
-  where schedule_id = p_schedule_id
-    and payment_method = 'cash'
-    and status = 'completed';
+  from (
+    select payment.amount
+    from public.sales as sale
+    join public.sale_payments as payment
+      on payment.sale_id = sale.id
+    where sale.schedule_id = p_schedule_id
+      and sale.status = 'completed'
+      and payment.payment_method = 'cash'
+
+    union all
+
+    select sale.total_amount as amount
+    from public.sales as sale
+    where sale.schedule_id = p_schedule_id
+      and sale.status = 'completed'
+      and sale.payment_method = 'cash'
+      and not exists (
+        select 1
+        from public.sale_payments as payment
+        where payment.sale_id = sale.id
+      )
+  ) as cash_rows;
 
   if exists (
     select 1
@@ -2708,6 +2814,20 @@ begin
   end if;
 
   v_reason := nullif(btrim(coalesce(p_payload ->> 'reason', '')), '');
+
+  delete from public.sale_payments
+  where sale_id = p_sale_id;
+
+  insert into public.sale_payments (
+    sale_id,
+    payment_method,
+    amount
+  )
+  values (
+    p_sale_id,
+    v_payment_method,
+    v_total_amount::numeric(10,2)
+  );
 
   if p_action_type = 'edit_sale' then
     if p_payload -> 'items' is null
@@ -3544,6 +3664,30 @@ drop function if exists public.finalize_pos_sale(
   text,
   text,
   timestamptz,
+  jsonb,
+  uuid,
+  text,
+  text,
+  numeric,
+  uuid,
+  jsonb
+);
+
+drop function if exists public.finalize_pos_sale(
+  uuid,
+  uuid,
+  uuid,
+  numeric,
+  text,
+  text,
+  timestamptz,
+  jsonb,
+  uuid,
+  text,
+  text,
+  numeric,
+  uuid,
+  jsonb,
   jsonb
 );
 
@@ -3561,7 +3705,8 @@ create or replace function public.finalize_pos_sale(
   p_promo_type text default null,
   p_promo_discount_total numeric default 0,
   p_promo_approval_id uuid default null,
-  p_promo_snapshot jsonb default null
+  p_promo_snapshot jsonb default null,
+  p_payments jsonb default null
 )
 returns uuid
 language plpgsql
@@ -3569,6 +3714,9 @@ security definer
 set search_path = public
 as $$
 declare
+v_payments jsonb;
+v_payment_total numeric(10,2);
+v_has_non_cash_payment boolean := false;
   v_employee_id uuid;
   v_existing_employee_id uuid;
   v_is_admin boolean := false;
@@ -3619,7 +3767,54 @@ begin
     and p_receipt_photo_path not like (v_employee_id::text || '/%') then
     raise exception using message = 'INVALID_RECEIPT_PHOTO_PATH';
   end if;
+  v_payments := coalesce(
+    p_payments,
+    jsonb_build_array(
+      jsonb_build_object(
+        'payment_method', p_payment_method,
+        'amount', p_total_amount::numeric(10,2)
+      )
+    )
+  );
 
+  if v_payments is null
+    or jsonb_typeof(v_payments) <> 'array'
+    or jsonb_array_length(v_payments) = 0 then
+    raise exception using message = 'SALE_PAYMENTS_REQUIRED';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_to_recordset(v_payments)
+      as payment(payment_method text, amount numeric)
+    where payment.payment_method is null
+      or payment.payment_method not in ('cash', 'gcash', 'maya', 'maribank', 'unionbank', 'other')
+      or payment.amount is null
+      or payment.amount <= 0
+  ) then
+    raise exception using message = 'INVALID_SALE_PAYMENTS';
+  end if;
+
+  select coalesce(sum(payment.amount), 0)::numeric(10,2)
+  into v_payment_total
+  from jsonb_to_recordset(v_payments)
+    as payment(payment_method text, amount numeric);
+
+  if v_payment_total <> p_total_amount::numeric(10,2) then
+    raise exception using message = 'SALE_PAYMENT_TOTAL_MISMATCH';
+  end if;
+
+  select exists (
+    select 1
+    from jsonb_to_recordset(v_payments)
+      as payment(payment_method text, amount numeric)
+    where payment.payment_method <> 'cash'
+  )
+  into v_has_non_cash_payment;
+
+  if v_has_non_cash_payment and p_receipt_photo_path is null then
+    raise exception using message = 'RECEIPT_PHOTO_REQUIRED';
+  end if;
   if p_payment_method <> 'cash' and p_receipt_photo_path is null then
     raise exception using message = 'RECEIPT_PHOTO_REQUIRED';
   end if;
@@ -3894,6 +4089,18 @@ begin
     coalesce(p_created_at, now())
   );
 
+  insert into public.sale_payments (
+    sale_id,
+    payment_method,
+    amount
+  )
+  select
+    p_sale_id,
+    payment.payment_method,
+    payment.amount::numeric(10,2)
+  from jsonb_to_recordset(v_payments)
+    as payment(payment_method text, amount numeric);
+
   if p_promo_id is not null then
     insert into public.sale_promos (
       sale_id,
@@ -3979,6 +4186,7 @@ revoke execute on function public.delete_booth_schedule_cascade(uuid) from publi
 revoke execute on function public.deactivate_booth_and_cancel_future_schedules(uuid, date, time) from public;
 revoke execute on function public.delete_booth_cascade(uuid) from public;
 revoke execute on function public.finalize_pos_sale(uuid, uuid, uuid, numeric, text, text, timestamptz, jsonb, uuid, text, text, numeric, uuid, jsonb) from public;
+revoke execute on function public.finalize_pos_sale(uuid, uuid, uuid, numeric, text, text, timestamptz, jsonb, uuid, text, text, numeric, uuid, jsonb, jsonb) from public;
 revoke execute on function public.record_shift_inventory_event(uuid, uuid, text, text, timestamptz, jsonb) from public;
 revoke execute on function public.record_admin_inventory_override(uuid, uuid, text, jsonb) from public;
 revoke execute on function public.apply_sale_change_from_payload(uuid, text, jsonb, uuid) from public;
@@ -4000,7 +4208,7 @@ grant execute on function public.cancel_booth_schedule(uuid, date, time) to auth
 grant execute on function public.delete_booth_schedule_cascade(uuid) to authenticated;
 grant execute on function public.deactivate_booth_and_cancel_future_schedules(uuid, date, time) to authenticated;
 grant execute on function public.delete_booth_cascade(uuid) to authenticated;
-grant execute on function public.finalize_pos_sale(uuid, uuid, uuid, numeric, text, text, timestamptz, jsonb, uuid, text, text, numeric, uuid, jsonb) to authenticated;
+grant execute on function public.finalize_pos_sale(uuid, uuid, uuid, numeric, text, text, timestamptz, jsonb, uuid, text, text, numeric, uuid, jsonb, jsonb) to authenticated;
 grant execute on function public.record_shift_inventory_event(uuid, uuid, text, text, timestamptz, jsonb) to authenticated;
 grant execute on function public.record_admin_inventory_override(uuid, uuid, text, jsonb) to authenticated;
 grant execute on function public.reopen_shift(uuid, text) to authenticated;
@@ -4026,6 +4234,28 @@ alter table public.sale_items enable row level security;
 alter table public.sale_promos enable row level security;
 alter table public.shift_closeouts enable row level security;
 alter table public.shift_action_approvals enable row level security;
+alter table public.sale_payments enable row level security;
+
+drop policy if exists "admins read sale payments" on public.sale_payments;
+create policy "admins read sale payments"
+on public.sale_payments
+for select
+to authenticated
+using ((select public.current_employee_is_admin()));
+
+drop policy if exists "employees read assigned sale payments" on public.sale_payments;
+create policy "employees read assigned sale payments"
+on public.sale_payments
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.sales as sale
+    where sale.id = sale_payments.sale_id
+      and public.current_employee_is_assigned(sale.schedule_id)
+  )
+);
 
 drop policy if exists "admins manage booths" on public.booths;
 create policy "admins manage booths"
