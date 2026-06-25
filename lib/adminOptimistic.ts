@@ -6,6 +6,7 @@ import type {
 import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
 import type { AdminProductRecord } from "@/lib/adminProducts"
 import type { EmployeeRole } from "@/lib/database.types"
+import type { EmployeeApprovalStatus } from "@/lib/employeeApproval"
 import type { Booth } from "@/lib/shifts"
 
 export type ProductDraftInput = {
@@ -23,6 +24,7 @@ export type EmployeeDraftInput = {
   email: string
   role: EmployeeRole
   isActive?: boolean
+  approvalStatus?: EmployeeApprovalStatus
 }
 
 export type BoothDraftInput = {
@@ -143,6 +145,8 @@ export function buildOptimisticEmployeeRecord(
     role: input.role,
     is_active: input.isActive ?? currentEmployee?.is_active ?? true,
     user_id: currentEmployee?.user_id ?? null,
+    approval_status:
+      input.approvalStatus ?? currentEmployee?.approval_status ?? "approved",
   }
 }
 
