@@ -32,6 +32,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DateRangePicker,
   type DateRangePickerValue,
@@ -60,6 +61,8 @@ import { cn, formatCurrency, getBusinessDate } from "@/lib/utils"
 type AdminSalesClientProps = {
   data: AdminSalesLedgerData
 }
+
+type BulkDeleteMode = "soft" | "permanent"
 
 const paymentLabels: Record<PaymentMethod, string> = {
   cash: "Cash",
@@ -127,6 +130,9 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
   const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | "all">(
     "all"
   )
+  const [selectedSaleIds, setSelectedSaleIds] = useState<string[]>([])
+  const [bulkDeletingMode, setBulkDeletingMode] =
+    useState<BulkDeleteMode | null>(null)
   const [softDeletingSale, setSoftDeletingSale] =
     useState<AdminSalesLedgerRow | null>(null)
   const [permanentlyDeletingSale, setPermanentlyDeletingSale] =
@@ -141,6 +147,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       startDate: data.startDate,
       endDate: data.endDate,
     })
+    setSelectedSaleIds([])
   }, [data.endDate, data.nextCursor, data.rows, data.startDate])
 
   useEffect(() => {
@@ -201,6 +208,28 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       }),
     [boothFilter, employeeFilter, paymentFilter, rows]
   )
+
+  const filteredSaleIds = useMemo(
+    () => new Set(filteredRows.map((row) => row.id)),
+    [filteredRows]
+  )
+  const selectedSaleIdSet = useMemo(
+    () => new Set(selectedSaleIds),
+    [selectedSaleIds]
+  )
+  const selectedSales = useMemo(
+    () => filteredRows.filter((row) => selectedSaleIdSet.has(row.id)),
+    [filteredRows, selectedSaleIdSet]
+  )
+  const selectedCount = selectedSales.length
+  const allFilteredRowsSelected =
+    filteredRows.length > 0 && selectedCount === filteredRows.length
+
+  useEffect(() => {
+    setSelectedSaleIds((current) =>
+      current.filter((saleId) => filteredSaleIds.has(saleId))
+    )
+  }, [filteredSaleIds])
 
   const handleLoadMore = async () => {
     if (!nextCursor || isLoadingMore) {
@@ -268,6 +297,23 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
     })
   }
 
+  const handleToggleAllSales = useCallback(
+    (checked: boolean) => {
+      setSelectedSaleIds(checked ? filteredRows.map((row) => row.id) : [])
+    },
+    [filteredRows]
+  )
+
+  const handleToggleSale = useCallback((saleId: string, checked: boolean) => {
+    setSelectedSaleIds((current) => {
+      if (checked) {
+        return current.includes(saleId) ? current : [...current, saleId]
+      }
+
+      return current.filter((entry) => entry !== saleId)
+    })
+  }, [])
+
   const handleCopySaleId = useCallback(async (saleId: string) => {
     try {
       await navigator.clipboard.writeText(saleId)
@@ -296,6 +342,9 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
     setRows((current) =>
       current.filter((row) => row.id !== softDeletingSale.id)
     )
+    setSelectedSaleIds((current) =>
+      current.filter((saleId) => saleId !== softDeletingSale.id)
+    )
     toast.success(result.message ?? "Sale moved to trash.")
     router.refresh()
   }
@@ -314,8 +363,79 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
     setRows((current) =>
       current.filter((row) => row.id !== permanentlyDeletingSale.id)
     )
+    setSelectedSaleIds((current) =>
+      current.filter((saleId) => saleId !== permanentlyDeletingSale.id)
+    )
     toast.success(result.message ?? "Sale deleted permanently.")
     router.refresh()
+  }
+
+  const handleBulkDeleteSelectedSales = async () => {
+    if (!bulkDeletingMode || selectedSales.length === 0) {
+      toast.error("Select at least one sale first.")
+      return
+    }
+
+    const results = await Promise.all(
+      selectedSales.map(async (sale) => {
+        try {
+          const result =
+            bulkDeletingMode === "permanent"
+              ? await deleteSalePermanently(sale.id)
+              : await submitSaleChange({
+                  saleId: sale.id,
+                  actionType: "delete_sale",
+                  saleUpdatedAt: sale.updatedAt,
+                })
+
+          return {
+            saleId: sale.id,
+            ok: result.ok,
+            error: result.ok ? null : (result.error ?? "Unable to delete sale."),
+          }
+        } catch (error) {
+          console.error("Unable to delete selected sale:", error)
+          return {
+            saleId: sale.id,
+            ok: false,
+            error: "Unable to delete sale.",
+          }
+        }
+      })
+    )
+
+    const successfulSaleIds = new Set(
+      results.filter((result) => result.ok).map((result) => result.saleId)
+    )
+    const successCount = successfulSaleIds.size
+    const failureCount = results.length - successCount
+
+    if (successCount > 0) {
+      setRows((current) =>
+        current.filter((row) => !successfulSaleIds.has(row.id))
+      )
+      setSelectedSaleIds((current) =>
+        current.filter((saleId) => !successfulSaleIds.has(saleId))
+      )
+    }
+
+    if (failureCount > 0) {
+      toast.error(
+        successCount > 0
+          ? `${successCount} selected sale${successCount === 1 ? "" : "s"} deleted, but ${failureCount} failed.`
+          : `Unable to delete ${failureCount} selected sale${failureCount === 1 ? "" : "s"}.`
+      )
+    } else {
+      toast.success(
+        bulkDeletingMode === "permanent"
+          ? `Deleted ${successCount} selected sale${successCount === 1 ? "" : "s"} permanently.`
+          : `Moved ${successCount} selected sale${successCount === 1 ? "" : "s"} to trash.`
+      )
+    }
+
+    if (successCount > 0) {
+      router.refresh()
+    }
   }
 
   const getSalesSearchText = useCallback((row: AdminSalesLedgerRow) => {
@@ -332,6 +452,29 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
 
   const columns = useMemo<ColumnDef<AdminSalesLedgerRow>[]>(
     () => [
+      {
+        id: "select",
+        enableHiding: false,
+        enableSorting: false,
+        header: () => (
+          <Checkbox
+            checked={allFilteredRowsSelected}
+            onCheckedChange={(checked) =>
+              handleToggleAllSales(Boolean(checked))
+            }
+            aria-label="Select all sales"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={selectedSaleIdSet.has(row.original.id)}
+            onCheckedChange={(checked) =>
+              handleToggleSale(row.original.id, Boolean(checked))
+            }
+            aria-label={`Select sale ${row.original.id.slice(0, 8)}`}
+          />
+        ),
+      },
       {
         accessorKey: "createdAt",
         header: ({ column }) => (
@@ -508,7 +651,16 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
         ),
       },
     ],
-    [data.endDate, data.startDate, handleCopySaleId, isTrashView]
+    [
+      allFilteredRowsSelected,
+      data.endDate,
+      data.startDate,
+      handleCopySaleId,
+      handleToggleAllSales,
+      handleToggleSale,
+      isTrashView,
+      selectedSaleIdSet,
+    ]
   )
 
   return (
@@ -734,6 +886,31 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
                     ))}
                   </SelectContent>
                 </Select>
+
+                {selectedCount > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{selectedCount} selected</Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedSaleIds([])}
+                    >
+                      Clear Selection
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      onClick={() =>
+                        setBulkDeletingMode(isTrashView ? "permanent" : "soft")
+                      }
+                    >
+                      <Trash2 data-icon="inline-start" />
+                      {isTrashView ? "Delete Selected" : "Move Selected to Trash"}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             }
           />
@@ -754,6 +931,33 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
           ) : null}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={bulkDeletingMode !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBulkDeletingMode(null)
+          }
+        }}
+        title={
+          bulkDeletingMode === "permanent"
+            ? `Delete ${selectedCount} selected sale${selectedCount === 1 ? "" : "s"} permanently?`
+            : `Move ${selectedCount} selected sale${selectedCount === 1 ? "" : "s"} to trash?`
+        }
+        description={
+          bulkDeletingMode === "permanent"
+            ? "This permanently removes the selected trashed sales and their receipt files."
+            : "This soft-deletes the selected sales and removes them from live sales totals while keeping them available in trash."
+        }
+        confirmLabel={
+          bulkDeletingMode === "permanent"
+            ? "Delete Selected Permanently"
+            : "Move Selected to Trash"
+        }
+        pendingLabel={bulkDeletingMode === "permanent" ? "Deleting..." : "Moving..."}
+        cancelLabel="Keep Sales"
+        variant="destructive"
+        onConfirm={handleBulkDeleteSelectedSales}
+      />
       <ConfirmDialog
         open={Boolean(softDeletingSale)}
         onOpenChange={(open) => {
