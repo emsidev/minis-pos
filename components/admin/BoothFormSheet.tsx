@@ -51,8 +51,10 @@ function boothToForm(booth: Booth | null): BoothFormInput {
     name: booth.name,
     locationText: booth.location_text ?? "",
     googleMapsUrl: booth.google_maps_url ?? "",
-    latitude: booth.location_lat ?? "",
-    longitude: booth.location_lng ?? "",
+    latitude:
+      booth.location_lat === null ? "" : String(booth.location_lat),
+    longitude:
+      booth.location_lng === null ? "" : String(booth.location_lng),
   }
 }
 

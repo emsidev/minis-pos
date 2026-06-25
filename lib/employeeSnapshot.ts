@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto"
 
-import type { Database, EmployeeRole } from "@/lib/database.types"
+import type { Database } from "@/lib/database.types"
+import type { EmployeeRole } from "@/lib/domain-types"
 
 type EmployeeRecord = Database["public"]["Tables"]["employees"]["Row"]
 
@@ -124,6 +125,7 @@ export function employeeSnapshotToRecord(
   snapshot: EmployeeSnapshot
 ): EmployeeRecord {
   return {
+    approval_status: "approved",
     id: snapshot.id,
     user_id: snapshot.user_id,
     email: snapshot.email,

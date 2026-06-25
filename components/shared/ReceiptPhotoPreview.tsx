@@ -28,7 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import type { PaymentMethod } from "@/lib/database.types"
+import type { PaymentMethod } from "@/lib/domain-types"
 import { prepareReceiptPhotoDataUrl } from "@/lib/receiptPhotoClient"
 import type { SaleReceiptSyncState } from "@/lib/shifts"
 import { cn, formatCurrency } from "@/lib/utils"

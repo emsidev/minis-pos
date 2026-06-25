@@ -23,6 +23,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
 import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
+import type { PaymentMethod } from "@/lib/domain-types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -55,7 +56,6 @@ import type {
   AdminSalesLedgerRow,
   AdminSalesLedgerView,
 } from "@/lib/adminSales"
-import type { PaymentMethod } from "@/lib/database.types"
 import { cn, formatCurrency, getBusinessDate } from "@/lib/utils"
 
 type AdminSalesClientProps = {

@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import type { Json } from "@/lib/database.types"
 import type {
   PendingShiftApproval,
   PendingShiftApprovalData,
@@ -36,6 +37,8 @@ import { cn, formatCurrency } from "@/lib/utils"
 type AdminApprovalsClientProps = {
   data: PendingShiftApprovalData
 }
+
+type JsonObject = { [key: string]: Json | undefined }
 
 type ApprovalRow = {
   id: string
@@ -86,7 +89,7 @@ function getBoothLabel(approval: PendingShiftApproval) {
 
 function isPayloadRecord(
   payload: PendingShiftApproval["payload"]
-): payload is Record<string, unknown> {
+): payload is JsonObject {
   return (
     typeof payload === "object" && payload !== null && !Array.isArray(payload)
   )

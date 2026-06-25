@@ -6,7 +6,7 @@ import { requireEmployeeRole } from "@/lib/auth.server"
 import { normalizeEmployeeEmail } from "@/lib/auth.shared"
 import { isEmployeeRole } from "@/lib/adminEmployees"
 import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
-import type { EmployeeRole } from "@/lib/database.types"
+import type { EmployeeRole } from "@/lib/domain-types"
 import {
   getEmployeeApprovalStatus,
   isEmployeePendingApproval,

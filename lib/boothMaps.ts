@@ -1,9 +1,10 @@
-import type { Booth } from "@/lib/shifts"
-
-export type BoothMapLocation = Pick<
-  Booth,
-  "name" | "google_maps_url" | "location_lat" | "location_lng" | "location_text"
->
+export type BoothMapLocation = {
+  google_maps_url: string | null
+  location_lat: string | number | null
+  location_lng: string | number | null
+  location_text: string | null
+  name: string
+}
 
 export type BoothCoordinates = {
   latitude: number
@@ -28,8 +29,8 @@ const DEFAULT_BOOTH_MAP_CENTER: BoothCoordinates = {
   longitude: 121.774,
 }
 
-function parseCoordinate(value: string | null | undefined) {
-  if (!value) {
+function parseCoordinate(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
     return null
   }
 

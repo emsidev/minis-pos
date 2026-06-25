@@ -294,6 +294,10 @@ export function ShiftDetailView({
     saleItems
       .reduce(
         (acc, item) => {
+          if (!item.product_id) {
+            return acc
+          }
+
           const current = acc.get(item.product_id) ?? {
             productId: item.product_id,
             productName:

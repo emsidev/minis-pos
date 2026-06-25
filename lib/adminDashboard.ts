@@ -1,10 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server"
-import type {
-  Database,
-  Json,
-  PaymentMethod,
-  ScheduleStatus,
-} from "@/lib/database.types"
+import type { Database, Json } from "@/lib/database.types"
+import type { PaymentMethod, ScheduleStatus } from "@/lib/domain-types"
 import {
   getBoothDisplayName,
   getBusinessDate,
@@ -146,6 +142,24 @@ const paymentMethods: PaymentMethod[] = [
   "other",
 ]
 
+function normalizePaymentMethod(
+  value: string | null | undefined
+): PaymentMethod {
+  return paymentMethods.includes(value as PaymentMethod)
+    ? (value as PaymentMethod)
+    : "cash"
+}
+
+function normalizeScheduleStatus(
+  value: string | null | undefined
+): ScheduleStatus {
+  if (value === "closed" || value === "cancelled") {
+    return value
+  }
+
+  return "scheduled"
+}
+
 function isValidDateString(value: string | undefined) {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value))
 }
@@ -169,7 +183,11 @@ function getBusinessDayRange(date: string) {
   }
 }
 
-function getBusinessDayKey(value: string) {
+function getBusinessDayKey(value: string | null | undefined) {
+  if (!value) {
+    return ""
+  }
+
   const parts = businessDayFormatter.formatToParts(new Date(value))
   const year = parts.find((part) => part.type === "year")?.value
   const month = parts.find((part) => part.type === "month")?.value
@@ -485,6 +503,10 @@ function buildTopProducts(saleItems: SaleItemRow[]) {
   const topProductMap = new Map<string, DashboardTopProduct>()
 
   for (const item of saleItems) {
+    if (!item.product_id) {
+      continue
+    }
+
     const current = topProductMap.get(item.product_id)
     const revenue = toNumber(item.subtotal)
     const productName = getProductDisplayName(item.products)
@@ -522,18 +544,18 @@ function buildRecentTransactions(sales: SelectedSaleRow[]) {
   return sales
     .map<DashboardRecentTransaction>((sale) => ({
       id: sale.id,
-      createdAt: sale.created_at,
+      createdAt: sale.created_at ?? "",
       boothName: getBoothDisplayName(sale.booths),
       employeeName: getEmployeeDisplayName(sale.employees),
-      paymentMethod: sale.payment_method,
+      paymentMethod: normalizePaymentMethod(sale.payment_method),
       totalAmount: toNumber(sale.total_amount),
       hasReceipt: Boolean(sale.receipt_photo_path),
       receiptPhotoPath: sale.receipt_photo_path,
       canEditReceipt:
-        sale.payment_method !== "cash" &&
+        normalizePaymentMethod(sale.payment_method) !== "cash" &&
         Boolean(sale.receipt_photo_path) &&
-        sale.booth_schedules?.status === "scheduled",
-      status: sale.status,
+        normalizeScheduleStatus(sale.booth_schedules?.status) === "scheduled",
+      status: sale.status ?? "completed",
     }))
     .sort((left, right) => {
       if (left.createdAt === right.createdAt) {
@@ -637,17 +659,21 @@ export async function getAdminDashboardData(requestedDate?: string) {
   const paymentMap = buildPaymentMap()
 
   for (const schedule of schedules) {
-    incrementScheduleCount(summary, schedule.status)
-    const boothCard = boothCardMap.get(schedule.booth_id)
+    const scheduleStatus = normalizeScheduleStatus(schedule.status)
+    incrementScheduleCount(summary, scheduleStatus)
+    const boothCard = schedule.booth_id
+      ? boothCardMap.get(schedule.booth_id)
+      : undefined
 
     if (boothCard) {
-      incrementScheduleCount(boothCard, schedule.status)
+      incrementScheduleCount(boothCard, scheduleStatus)
     }
   }
 
   for (const sale of sales) {
     const amount = toNumber(sale.total_amount)
-    const isCash = sale.payment_method === "cash"
+    const paymentMethod = normalizePaymentMethod(sale.payment_method)
+    const isCash = paymentMethod === "cash"
 
     summary.totalRevenue += amount
     summary.saleCount += 1
@@ -658,7 +684,7 @@ export async function getAdminDashboardData(requestedDate?: string) {
       summary.nonCashRevenue += amount
     }
 
-    const boothCard = boothCardMap.get(sale.booth_id)
+    const boothCard = sale.booth_id ? boothCardMap.get(sale.booth_id) : undefined
     if (boothCard) {
       boothCard.totalRevenue += amount
       boothCard.saleCount += 1
@@ -670,7 +696,7 @@ export async function getAdminDashboardData(requestedDate?: string) {
       }
     }
 
-    const paymentEntry = paymentMap.get(sale.payment_method)
+    const paymentEntry = paymentMap.get(paymentMethod)
     if (paymentEntry) {
       paymentEntry.count += 1
       paymentEntry.total += amount

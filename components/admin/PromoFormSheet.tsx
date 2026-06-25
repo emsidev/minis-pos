@@ -39,7 +39,7 @@ import {
   type PromoType,
   type SpecialPriceBenefit,
 } from "@/lib/promos"
-import type { PaymentMethod } from "@/lib/database.types"
+import type { PaymentMethod } from "@/lib/domain-types"
 
 type PromoFormSheetProps = {
   open: boolean

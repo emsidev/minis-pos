@@ -1,7 +1,7 @@
 export type EmployeeApprovalStatus = "pending" | "approved"
 
 export type EmployeeApprovalFields = {
-  approval_status?: EmployeeApprovalStatus | null
+  approval_status?: string | null
 }
 
 export function getEmployeeApprovalStatus(

@@ -6,7 +6,12 @@ import type {
   ShiftDetailData,
   SaleWithJoins,
 } from "@/lib/shifts"
-import type { CounterPromo } from "@/lib/promos"
+import {
+  PROMO_TYPES,
+  type CounterPromo,
+  type PromoProductRole,
+  type PromoType,
+} from "@/lib/promos"
 import type { Database } from "@/lib/database.types"
 import {
   db,
@@ -79,7 +84,7 @@ function localProductToShiftProduct(
   return {
     id: product.id,
     name: product.name,
-    price: product.price.toString(),
+    price: product.price,
     category: product.category,
     image_url: product.image_url,
     is_available: product.is_available,
@@ -92,8 +97,8 @@ function localProductToShiftProduct(
 function localSaleToSaleWithJoins(sale: LocalSale): SaleWithJoins {
   return {
     ...sale,
-    total_amount: sale.total_amount.toString(),
-    promo_discount_total: sale.promo_discount_total.toString(),
+    total_amount: sale.total_amount,
+    promo_discount_total: sale.promo_discount_total,
     receipt_photo_local: sale.receipt_photo_local,
     sync_state: sale.sync_state,
     employees: null,
@@ -109,6 +114,16 @@ function sortSchedulesDescending(a: BoothSchedule, b: BoothSchedule) {
 
 function sortSalesDescending(a: LocalSale, b: LocalSale) {
   return (b.created_at ?? "").localeCompare(a.created_at ?? "")
+}
+
+function normalizeCachedPromoType(value: string): PromoType {
+  return PROMO_TYPES.includes(value as PromoType)
+    ? (value as PromoType)
+    : "percent_off"
+}
+
+function normalizeCachedPromoProductRole(value: string): PromoProductRole {
+  return value === "reward" ? "reward" : "qualifying"
 }
 
 function shiftDateByDays(days: number) {
@@ -324,12 +339,14 @@ export async function getCachedShiftDetails(
       .map(localSaleToSaleWithJoins),
     saleItems: saleItems.map((item) => ({
       ...item,
-      base_unit_price: item.base_unit_price.toString(),
-      discount_amount: item.discount_amount.toString(),
-      unit_price: item.unit_price.toString(),
-      subtotal: item.subtotal.toString(),
+      base_unit_price: item.base_unit_price,
+      discount_amount: item.discount_amount,
+      unit_price: item.unit_price,
+      subtotal: item.subtotal,
       products: (() => {
-        const product = saleItemProductMap.get(item.product_id)
+        const product = item.product_id
+          ? saleItemProductMap.get(item.product_id)
+          : undefined
 
         if (!product) {
           return null
@@ -338,7 +355,7 @@ export async function getCachedShiftDetails(
         return {
           id: product.id,
           name: product.name,
-          price: product.price.toString(),
+          price: product.price,
           category: product.category,
           image_url: product.image_url,
           is_available: product.is_available,
@@ -428,6 +445,10 @@ export async function getCachedEmployeeSalesHistoryForDate(
 
   const salesBySchedule = new Map<string, SaleWithJoins[]>()
   for (const sale of sales) {
+    if (!sale.schedule_id) {
+      continue
+    }
+
     const current = salesBySchedule.get(sale.schedule_id) ?? []
     current.push(localSaleToSaleWithJoins(sale))
     salesBySchedule.set(sale.schedule_id, current)
@@ -490,7 +511,7 @@ export async function getCachedAvailableProducts(): Promise<Product[]> {
 
   return products.map((product) => ({
     ...product,
-    price: product.price.toString(),
+    price: product.price,
   }))
 }
 
@@ -517,26 +538,29 @@ export async function getCachedCounterPromos(): Promise<CounterPromo[]> {
     products.map((product) => [product.id, product.name])
   )
 
-  return promos.map((promo) => ({
+  return promos.map((promo) => {
+    const promoType = normalizeCachedPromoType(promo.promo_type)
+
+    return {
     id: promo.id,
     name: promo.name,
-    promoType: promo.promo_type,
+    promoType,
     startsOn: promo.starts_on,
     endsOn: promo.ends_on,
     isActive: promo.is_active !== false,
     requiresAdminApproval: promo.requires_admin_approval === true,
     criteria: normalizePromoCriteria(promo.criteria),
-    benefit: normalizePromoBenefit(promo.promo_type, promo.benefit),
+    benefit: normalizePromoBenefit(promoType, promo.benefit),
     products: promoProducts
       .filter((product) => product.promo_id === promo.id)
       .map((product) => ({
         productId: product.product_id,
         productName: productNameById.get(product.product_id),
-        role: product.role,
+        role: normalizeCachedPromoProductRole(product.role),
       })),
     createdAt: promo.created_at,
     updatedAt: promo.updated_at,
-  }))
+  }})
 }
 
 export async function getCachedSaleItems(
@@ -559,12 +583,12 @@ export async function getCachedSaleItems(
 
   return saleItems.map((item) => ({
     ...item,
-    base_unit_price: item.base_unit_price.toString(),
-    discount_amount: item.discount_amount.toString(),
-    unit_price: item.unit_price.toString(),
-    subtotal: item.subtotal.toString(),
+    base_unit_price: item.base_unit_price,
+    discount_amount: item.discount_amount,
+    unit_price: item.unit_price,
+    subtotal: item.subtotal,
     products: (() => {
-      const product = productMap.get(item.product_id)
+      const product = item.product_id ? productMap.get(item.product_id) : undefined
 
       if (!product) {
         return null
@@ -573,7 +597,7 @@ export async function getCachedSaleItems(
       return {
         id: product.id,
         name: product.name,
-        price: product.price.toString(),
+        price: product.price,
         category: product.category,
         image_url: product.image_url,
         is_available: product.is_available,
@@ -603,7 +627,7 @@ export async function cacheServerSaleItems(
     .map<LocalProduct>((product) => ({
       id: product.id,
       name: product.name,
-      price: parseFloat(product.price),
+      price: Number(product.price),
       category: product.category,
       image_url: product.image_url,
       is_available: product.is_available,
@@ -615,10 +639,10 @@ export async function cacheServerSaleItems(
     sale_id: item.sale_id,
     product_id: item.product_id,
     quantity: item.quantity,
-    base_unit_price: parseFloat(item.base_unit_price),
-    discount_amount: parseFloat(item.discount_amount),
-    unit_price: parseFloat(item.unit_price),
-    subtotal: parseFloat(item.subtotal),
+    base_unit_price: Number(item.base_unit_price),
+    discount_amount: Number(item.discount_amount),
+    unit_price: Number(item.unit_price),
+    subtotal: Number(item.subtotal),
     stock_before: null,
   }))
 

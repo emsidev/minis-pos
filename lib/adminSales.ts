@@ -1,9 +1,6 @@
 import { requireEmployeeRole } from "@/lib/auth.server"
-import type {
-  Database,
-  PaymentMethod,
-  ScheduleStatus,
-} from "@/lib/database.types"
+import type { Database } from "@/lib/database.types"
+import type { PaymentMethod, ScheduleStatus } from "@/lib/domain-types"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import {
   getBoothDisplayName,
@@ -75,6 +72,35 @@ const ADMIN_SALES_PAGE_SIZE = 100
 type AdminSalesCursor = {
   createdAt: string
   id: string
+}
+
+function normalizePaymentMethod(
+  value: string | null | undefined
+): PaymentMethod {
+  switch (value) {
+    case "cash":
+    case "gcash":
+    case "maya":
+    case "maribank":
+    case "unionbank":
+    case "other":
+      return value
+    default:
+      return "cash"
+  }
+}
+
+function normalizeScheduleStatus(
+  value: string | null | undefined
+): ScheduleStatus | undefined {
+  switch (value) {
+    case "scheduled":
+    case "closed":
+    case "cancelled":
+      return value
+    default:
+      return undefined
+  }
 }
 
 function encodeCursor(cursor: AdminSalesCursor) {
@@ -215,29 +241,36 @@ export async function getAdminSalesLedger(
   }
 
   const pageRows = ((data ?? []) as SalesRow[]).slice(0, ADMIN_SALES_PAGE_SIZE)
-  const rows = pageRows.map((sale) => ({
+  const rows = pageRows.map((sale) => {
+    const createdAt = sale.created_at ?? sale.updated_at ?? ""
+    const updatedAt = sale.updated_at ?? sale.created_at ?? ""
+    const paymentMethod = normalizePaymentMethod(sale.payment_method)
+    const scheduleStatus = normalizeScheduleStatus(sale.booth_schedules?.status)
+    const saleStatus = sale.status ?? (view === "trash" ? "deleted" : "completed")
+
+    return {
     id: sale.id,
-    boothId: sale.booth_id,
+    boothId: sale.booth_id ?? sale.booths?.id ?? "",
     boothName: getBoothDisplayName(sale.booths),
-    employeeId: sale.employee_id,
+    employeeId: sale.employee_id ?? "",
     employeeName: getEmployeeDisplayName(sale.employees),
-    scheduleId: sale.schedule_id,
-    scheduleDate: sale.booth_schedules?.date ?? sale.created_at.slice(0, 10),
+    scheduleId: sale.schedule_id ?? "",
+    scheduleDate: sale.booth_schedules?.date ?? createdAt.slice(0, 10),
     shiftLabel: formatShiftLabel(sale.booth_schedules),
-    createdAt: sale.created_at,
-    updatedAt: sale.updated_at,
-    paymentMethod: sale.payment_method,
+    createdAt,
+    updatedAt,
+    paymentMethod,
     receiptPhotoPath: sale.receipt_photo_path,
     hasReceipt: Boolean(sale.receipt_photo_path),
     canEditReceipt: canEditReceipt(
-      sale.payment_method,
+      paymentMethod,
       sale.receipt_photo_path,
-      sale.booth_schedules?.status,
-      sale.status
+      scheduleStatus,
+      saleStatus
     ),
-    status: sale.status,
+    status: saleStatus,
     totalAmount: Number(sale.total_amount),
-  }))
+  }})
 
   return {
     ...range,
@@ -246,7 +279,10 @@ export async function getAdminSalesLedger(
     nextCursor:
       (data?.length ?? 0) > ADMIN_SALES_PAGE_SIZE && pageRows.length > 0
         ? encodeCursor({
-            createdAt: pageRows[pageRows.length - 1].created_at,
+            createdAt:
+              pageRows[pageRows.length - 1].created_at ??
+              pageRows[pageRows.length - 1].updated_at ??
+              "",
             id: pageRows[pageRows.length - 1].id,
           })
         : null,

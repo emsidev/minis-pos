@@ -50,7 +50,7 @@ function productToForm(product: AdminProductRecord | null): ProductFormInput {
   return {
     id: product.id,
     name: product.name,
-    price: product.price,
+    price: product.price.toFixed(2),
     category: product.category ?? "",
     imageUrl: product.image_url ?? "",
     isAvailable: product.is_available !== false,

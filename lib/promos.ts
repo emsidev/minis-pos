@@ -1,4 +1,5 @@
-import type { Json, PaymentMethod } from "@/lib/database.types"
+import type { Json } from "@/lib/database.types"
+import type { PaymentMethod } from "@/lib/domain-types"
 
 export const PROMO_TYPES = [
   "percent_off",

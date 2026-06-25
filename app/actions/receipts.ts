@@ -244,6 +244,13 @@ export async function replaceReceiptPhotoForSale(
       }
     }
 
+    if (!saleRecord.employee_id) {
+      return {
+        ok: false,
+        error: "This sale is missing its employee record.",
+      }
+    }
+
     const schedule = saleRecord.booth_schedules
 
     if (!schedule || schedule.status !== "scheduled") {
@@ -325,10 +332,14 @@ export async function replaceReceiptPhotoForSale(
     revalidatePath("/admin/dashboard")
     revalidatePath("/admin/sales")
     revalidatePath("/admin/booths")
-    revalidatePath(`/admin/booths/${saleRecord.booth_id}`)
+    if (saleRecord.booth_id) {
+      revalidatePath(`/admin/booths/${saleRecord.booth_id}`)
+    }
     revalidatePath("/schedule")
     revalidatePath("/shift")
-    revalidatePath(`/shift/${saleRecord.schedule_id}`)
+    if (saleRecord.schedule_id) {
+      revalidatePath(`/shift/${saleRecord.schedule_id}`)
+    }
 
     return { ok: true, receiptPhotoPath: nextReceiptPhotoPath }
   } catch (error) {

@@ -182,9 +182,9 @@ export function AppShell({
             id: sale.id,
             kind: "sale",
             title: `${formatCurrency(sale.total_amount)} sale`,
-            detail: `${sale.payment_method.toUpperCase()} payment`,
+            detail: `${(sale.payment_method ?? "unknown").toUpperCase()} payment`,
             error: sale.sync_error ?? "Sync failed without a stored reason.",
-            occurredAt: sale.created_at,
+            occurredAt: sale.created_at ?? sale.updated_at,
             canCancel:
               sale.sync_failure_kind === "conflict" ||
               sale.sync_failure_kind === "permanent",

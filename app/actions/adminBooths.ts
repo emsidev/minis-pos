@@ -23,6 +23,10 @@ import {
   hasBusinessShiftStarted,
 } from "@/lib/utils"
 
+type ServerSupabaseClient = Awaited<
+  ReturnType<typeof createServerSupabaseClient>
+>
+
 export type BoothFormInput = {
   id?: string
   name: string
@@ -100,8 +104,8 @@ type BoothWrite = {
   name: string
   location_text: string | null
   google_maps_url: string | null
-  location_lat: string | null
-  location_lng: string | null
+  location_lat: number | null
+  location_lng: number | null
 }
 
 function optionalText(value: string) {
@@ -109,19 +113,26 @@ function optionalText(value: string) {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function parseCoordinate(value: string, minimum: number, maximum: number) {
+function parseCoordinate(
+  value: string,
+  minimum: number,
+  maximum: number
+): { value: number | null; error?: string } {
   const cleaned = value.trim()
 
   if (!cleaned) {
-    return { value: null as string | null }
+    return { value: null }
   }
 
   const parsed = Number(cleaned)
   if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) {
-    return { error: `Coordinates must be between ${minimum} and ${maximum}.` }
+    return {
+      value: null,
+      error: `Coordinates must be between ${minimum} and ${maximum}.`,
+    }
   }
 
-  return { value: parsed.toString() }
+  return { value: parsed }
 }
 
 function parseBoothInput(input: BoothFormInput): {
@@ -145,9 +156,10 @@ function parseBoothInput(input: BoothFormInput): {
 
   const mapsUrl = optionalText(input.googleMapsUrl)
   const normalizedMapsUrl =
-    latitude.value && longitude.value
-      ? buildGoogleMapsLink(Number(latitude.value), Number(longitude.value))
+    latitude.value !== null && longitude.value !== null
+      ? buildGoogleMapsLink(latitude.value, longitude.value)
       : mapsUrl
+
   if (normalizedMapsUrl) {
     try {
       const url = new URL(normalizedMapsUrl)
@@ -164,8 +176,8 @@ function parseBoothInput(input: BoothFormInput): {
       name,
       location_text: optionalText(input.locationText),
       google_maps_url: normalizedMapsUrl,
-      location_lat: latitude.value ?? null,
-      location_lng: longitude.value ?? null,
+      location_lat: latitude.value,
+      location_lng: longitude.value,
     },
   }
 }
@@ -178,7 +190,7 @@ type ParsedScheduleInput =
       mode: "create-range"
       startDate: string
       endDate: string
-    } & ScheduleFormInputBase & { employeeIds: string[] })
+    } & ScheduleFormInputBase)
 
 type ParsedScheduleRowInput = {
   id?: string
@@ -366,6 +378,7 @@ function revalidateBoothRoutes(boothIds?: string | string[]) {
   Array.from(new Set(boothIdList.filter(Boolean))).forEach((boothId) => {
     revalidatePath(`/admin/booths/${boothId}`)
   })
+
   revalidatePath("/")
   revalidatePath("/schedule")
   revalidatePath("/shift")
@@ -411,7 +424,7 @@ function summarizeConflictDates(dates: string[]) {
 }
 
 async function getScheduleConflicts(
-  supabase: ReturnType<typeof createServerSupabaseClient>,
+  supabase: ServerSupabaseClient,
   input: ScheduleConflictLookupInput
 ): Promise<{ conflicts: ScheduleConflictSummary[]; error?: string }> {
   if (input.employeeIds.length === 0 || input.targetDates.length === 0) {
@@ -454,6 +467,7 @@ async function getScheduleConflicts(
         employeeName: getEmployeeDisplayName(row.employees),
         dates: new Set<string>(),
       }
+
       existingConflict.dates.add(schedule.date)
       conflictMap.set(row.employee_id, existingConflict)
     }
@@ -494,7 +508,7 @@ function buildScheduleConflictMessage(conflicts: ScheduleConflictSummary[]) {
 }
 
 async function persistScheduleRow(
-  supabase: ReturnType<typeof createServerSupabaseClient>,
+  supabase: ServerSupabaseClient,
   row: ParsedScheduleRowInput
 ) {
   const { data, error } = await supabase.rpc("save_booth_schedule", {
@@ -507,7 +521,7 @@ async function persistScheduleRow(
     p_end_time: row.endTime,
     p_current_date: getBusinessDate(),
     p_current_time: getBusinessTime(),
-  })
+  } as never)
 
   if (error) {
     return { error: getActionErrorMessage(error.message) }
@@ -520,17 +534,21 @@ function buildBulkEditableRow(
   row: ParsedScheduleRowInput,
   savedId?: string | null
 ): BulkScheduleEditableRow {
+  const id = savedId ?? row.id
+
+  if (!id) {
+    throw new Error("Saved schedule ID is missing.")
+  }
+
   return {
-    id: savedId ?? row.id,
+    id,
     boothId: row.boothId,
     date: row.date,
     startTime: row.startTime,
     endTime: row.endTime,
     employeeIds: row.employeeIds,
     operatorEmployeeId: row.operatorEmployeeId,
-    startedLocked: Boolean(savedId ?? row.id)
-      ? hasBusinessShiftStarted(row.date, row.startTime)
-      : false,
+    startedLocked: hasBusinessShiftStarted(row.date, row.startTime),
   }
 }
 
@@ -604,6 +622,7 @@ function getActionErrorMessage(message: string) {
   ) {
     return "You do not have permission to save this shift. Apply the latest database schema and try again."
   }
+
   return "Unable to save your changes. Please try again."
 }
 
@@ -683,6 +702,7 @@ export async function deactivateBooth(
 
   revalidateBoothRoutes(boothId)
   const count = data ?? 0
+
   return {
     ok: true,
     message:
@@ -757,6 +777,7 @@ export async function saveBulkScheduleRows(
 
   for (const row of rows) {
     const parsed = parseScheduleRowInput(row)
+
     if (!parsed.value) {
       results.push({
         rowKey: row.rowKey,
@@ -793,6 +814,7 @@ export async function saveBulkScheduleRows(
     }
 
     const persisted = await persistScheduleRow(supabase, parsed.value)
+
     if (persisted.error) {
       results.push({
         rowKey: row.rowKey,
@@ -803,6 +825,7 @@ export async function saveBulkScheduleRows(
     }
 
     touchedBoothIds.add(parsed.value.boothId)
+
     results.push({
       rowKey: row.rowKey,
       ok: true,
@@ -824,6 +847,7 @@ export async function saveBoothSchedule(
 
   const parsed = parseScheduleInput(input)
   const value = parsed.value
+
   if (!value) {
     return { ok: false, error: parsed.error }
   }
@@ -855,6 +879,7 @@ export async function saveBoothSchedule(
 
   if (value.mode === "edit") {
     const persisted = await persistScheduleRow(supabase, value)
+
     if (persisted.error) {
       return { ok: false, error: persisted.error }
     }
@@ -869,7 +894,7 @@ export async function saveBoothSchedule(
       p_end_time: value.endTime,
       p_current_date: getBusinessDate(),
       p_current_time: getBusinessTime(),
-    })
+    } as never)
 
     if (rpcResult.error) {
       return {
@@ -880,6 +905,7 @@ export async function saveBoothSchedule(
   }
 
   revalidateBoothRoutes(value.boothId)
+
   return {
     ok: true,
     message: value.mode === "edit" ? "Shift updated." : "Shifts scheduled.",
@@ -892,6 +918,7 @@ export async function overrideShiftInventory(
   await requireEmployeeRole("admin")
 
   const reason = input.reason.trim()
+
   if (!input.scheduleId || !input.boothId || !reason) {
     return { ok: false, error: "Add a reason for this stock override." }
   }
@@ -953,6 +980,7 @@ export async function cancelBoothSchedule(
   }
 
   revalidateBoothRoutes(boothId)
+
   return {
     ok: true,
     message: "Shift cancelled. Its history has been retained.",
@@ -994,6 +1022,7 @@ export async function deleteBoothScheduleCascade(
   revalidateBoothRoutes(boothId)
   revalidatePath("/admin/dashboard")
   revalidatePath("/admin/sales")
+
   return {
     ok: true,
     message: cleanupFailed
@@ -1040,6 +1069,7 @@ export async function deleteBoothCascade(
     typeof data.sale_count === "number"
       ? data.sale_count
       : null
+
   const scheduleCount =
     typeof data === "object" &&
     data !== null &&
@@ -1051,6 +1081,7 @@ export async function deleteBoothCascade(
   revalidateBoothRoutes(boothId)
   revalidatePath("/admin/dashboard")
   revalidatePath("/admin/sales")
+
   return {
     ok: true,
     message: cleanupFailed

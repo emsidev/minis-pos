@@ -50,7 +50,7 @@ import {
 import { getSaleItems } from "@/app/actions/shifts"
 import { cacheServerSaleItems, getCachedSaleItems } from "@/lib/offlineData"
 import { replaceLocalSaleReceiptPhoto } from "@/lib/sync"
-import type { PaymentMethod } from "@/lib/database.types"
+import type { PaymentMethod } from "@/lib/domain-types"
 import type { Product, SaleItemWithProduct, SaleWithJoins } from "@/lib/shifts"
 import { cn, formatCurrency, getProductDisplayName } from "@/lib/utils"
 
@@ -88,6 +88,14 @@ const PAYMENT_OPTIONS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "other", label: "Other" },
 ]
 
+function normalizePaymentMethod(
+  value: string | null | undefined
+): PaymentMethod {
+  return PAYMENT_OPTIONS.some((option) => option.value === value)
+    ? (value as PaymentMethod)
+    : "cash"
+}
+
 function formatAmountInput(value: number) {
   return value.toFixed(2)
 }
@@ -106,7 +114,7 @@ function formatSaleTime(value?: string) {
 function seedEditableLines(items: SaleItemWithProduct[]) {
   return items.map((item) => ({
     rowId: item.id,
-    productId: item.product_id,
+    productId: item.product_id ?? "",
     quantity: String(item.quantity),
     unitPrice: formatAmountInput(Number(item.unit_price)),
   }))
@@ -127,13 +135,15 @@ function buildEditableProducts(
   }
 
   for (const item of items) {
-    if (!productMap.has(item.product_id)) {
-      productMap.set(item.product_id, {
-        id: item.product_id,
+    if (!item.product_id || productMap.has(item.product_id)) {
+      continue
+    }
+
+    productMap.set(item.product_id, {
+      id: item.product_id,
         name: getProductDisplayName(item.products),
         price: item.unit_price,
       })
-    }
   }
 
   return Array.from(productMap.values()).sort((left, right) =>
@@ -202,9 +212,9 @@ function SaleRow({
   const [editLines, setEditLines] = useState<EditableSaleLine[]>([])
   const [editReason, setEditReason] = useState("")
   const [deleteReason, setDeleteReason] = useState("")
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-    sale.payment_method
-  )
+  const salePaymentMethod = normalizePaymentMethod(sale.payment_method)
+  const [paymentMethod, setPaymentMethod] =
+    useState<PaymentMethod>(salePaymentMethod)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitPending, setSubmitPending] = useState(false)
 
@@ -231,7 +241,7 @@ function SaleRow({
     if (items.length > 0) {
       if (openAfterLoad) {
         setEditLines(seedEditableLines(items))
-        setPaymentMethod(sale.payment_method)
+        setPaymentMethod(salePaymentMethod)
         setSubmitError(null)
         setEditReason("")
         setEditOpen(true)
@@ -253,7 +263,7 @@ function SaleRow({
             }
             if (openAfterLoad) {
               setEditLines(seedEditableLines(cachedItems))
-              setPaymentMethod(sale.payment_method)
+              setPaymentMethod(salePaymentMethod)
               setSubmitError(null)
               setEditReason("")
               setEditOpen(true)
@@ -281,7 +291,7 @@ function SaleRow({
           setItems(data)
           if (openAfterLoad) {
             setEditLines(seedEditableLines(data))
-            setPaymentMethod(sale.payment_method)
+            setPaymentMethod(salePaymentMethod)
             setSubmitError(null)
             setEditReason("")
             setEditOpen(true)
@@ -391,7 +401,7 @@ function SaleRow({
       saleUpdatedAt: sale.updated_at,
       reason: editReason,
       paymentMethod,
-      receiptPhotoPath: sale.receipt_photo_path,
+      receiptPhotoPath: sale.receipt_photo_path ?? undefined,
       items: parsed.data,
     })
     setSubmitPending(false)
@@ -452,7 +462,7 @@ function SaleRow({
             </div>
             <div>
               <p className="text-foreground text-sm font-semibold">
-                {formatSaleTime(sale.created_at)}
+                {formatSaleTime(sale.created_at ?? undefined)}
               </p>
               <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-[0.65rem] tracking-wider uppercase">
                 <span>ID: {sale.id.slice(0, 8)}</span>
@@ -468,23 +478,23 @@ function SaleRow({
             variant="outline"
             className={cn(
               "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold tracking-wider uppercase",
-              sale.payment_method === "cash"
+              salePaymentMethod === "cash"
                 ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                 : "border-secondary/20 bg-secondary/10 text-secondary"
             )}
           >
-            {sale.payment_method}
+            {salePaymentMethod}
           </Badge>
         </TableCell>
         <TableCell>
           <ReceiptPhotoPreview
             saleId={sale.id}
-            paymentMethod={sale.payment_method}
+            paymentMethod={salePaymentMethod}
             receiptPhotoPath={sale.receipt_photo_path}
             receiptPhotoLocal={sale.receipt_photo_local ?? null}
             syncState={sale.sync_state ?? null}
             canEditReceipt={canEditReceipts}
-            createdAt={sale.created_at}
+            createdAt={sale.created_at ?? undefined}
             boothName={sale.booths?.name ?? undefined}
             employeeName={sale.employees?.name ?? undefined}
             amount={Number(sale.total_amount)}
@@ -495,7 +505,7 @@ function SaleRow({
             }
             fallback={
               <span className="text-muted-foreground text-xs">
-                {sale.payment_method === "cash" ? "Cash sale" : "Missing"}
+                {salePaymentMethod === "cash" ? "Cash sale" : "Missing"}
               </span>
             }
           />

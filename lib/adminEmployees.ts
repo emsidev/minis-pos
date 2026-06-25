@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server"
-import type { Database, EmployeeRole } from "@/lib/database.types"
+import type { Database } from "@/lib/database.types"
+import type { EmployeeRole } from "@/lib/domain-types"
 import type { EmployeeApprovalFields } from "@/lib/employeeApproval"
 
 export type AdminEmployeeRecord =

@@ -133,7 +133,10 @@ export async function getActiveOperatorBoothSchedule(employeeId: string) {
   )
 }
 
-export type SaleWithJoins = Database["public"]["Tables"]["sales"]["Row"] & {
+export type SaleWithJoins = Omit<
+  Database["public"]["Tables"]["sales"]["Row"],
+  "receipt_photo_url" | "synced"
+> & {
   employees: { name: string } | null
   booths: { name: string } | null
   receipt_photo_local?: string | null
@@ -479,6 +482,10 @@ export async function getEmployeeSalesHistoryForDate(
 
   const salesBySchedule = new Map<string, SaleWithJoins[]>()
   for (const sale of (sales ?? []) as SaleWithJoins[]) {
+    if (!sale.schedule_id) {
+      continue
+    }
+
     const current = salesBySchedule.get(sale.schedule_id) ?? []
     current.push(sale)
     salesBySchedule.set(sale.schedule_id, current)

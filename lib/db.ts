@@ -1,5 +1,6 @@
 import Dexie, { type Table } from "dexie"
-import { Database, type InventoryEventType } from "./database.types"
+import { Database } from "./database.types"
+import type { InventoryEventType } from "./domain-types"
 
 type PublicSchema = Database["public"]["Tables"]
 
@@ -34,7 +35,7 @@ type LocalSyncMetadata = {
 
 export type LocalSale = Omit<
   PublicSchema["sales"]["Row"],
-  "total_amount" | "promo_discount_total"
+  "promo_discount_total" | "receipt_photo_url" | "synced" | "total_amount"
 > &
   LocalSyncMetadata & {
     total_amount: number
@@ -143,8 +144,11 @@ export class MinisPOSDatabase extends Dexie {
             sale.sync_state =
               sale.sync_state ?? (sale.synced ? "synced" : "pending")
             sale.sync_error = sale.sync_error ?? null
-            delete sale.receipt_photo_url
-            delete sale.synced
+            Reflect.deleteProperty(
+              sale as Record<string, unknown>,
+              "receipt_photo_url"
+            )
+            Reflect.deleteProperty(sale as Record<string, unknown>, "synced")
           })
       )
 
@@ -192,7 +196,10 @@ export class MinisPOSDatabase extends Dexie {
           .modify((schedule) => {
             schedule.operator_employee_id =
               schedule.operator_employee_id ?? schedule.employee_id
-            delete schedule.employee_id
+            Reflect.deleteProperty(
+              schedule as Record<string, unknown>,
+              "employee_id"
+            )
           })
 
         await transaction

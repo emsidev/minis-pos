@@ -13,7 +13,6 @@ import {
   loadEmployeeScheduleBrowserItems,
 } from "@/app/actions/shifts"
 import { CashDeductionSheet } from "@/components/shifts/CashDeductionSheet"
-import { LoadingBanner } from "@/components/shared/LoadingSkeletons"
 import { AllBoothsBrowseCalendar } from "@/components/shifts/AllBoothsBrowseCalendar"
 import { ShiftCloseoutSheet } from "@/components/shifts/ShiftCloseoutSheet"
 import { ShiftDetailSheet } from "@/components/shifts/ShiftDetailSheet"
@@ -148,7 +147,7 @@ export function ScheduleCalendar({
     typeof window === "undefined" ? true : window.navigator.onLine
   )
   const [isPending, startTransition] = useTransition()
-  const [isMonthPending, startMonthTransition] = useTransition()
+  const [, startMonthTransition] = useTransition()
   const [isJoiningShift, startJoinTransition] = useTransition()
   const [isStartingShift, startShiftTransition] = useTransition()
   const monthRequestRef = useRef(0)

@@ -5,7 +5,7 @@ import type {
 } from "@/lib/adminBooths"
 import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
 import type { AdminProductRecord } from "@/lib/adminProducts"
-import type { EmployeeRole } from "@/lib/database.types"
+import type { EmployeeRole } from "@/lib/domain-types"
 import type { EmployeeApprovalStatus } from "@/lib/employeeApproval"
 import type { Booth } from "@/lib/shifts"
 
@@ -124,8 +124,8 @@ export function buildOptimisticProductRecord(
     created_at: currentProduct?.created_at ?? new Date().toISOString(),
     name: input.name.trim() || currentProduct?.name || "",
     price: Number.isFinite(parsedPrice)
-      ? parsedPrice.toFixed(2)
-      : (currentProduct?.price ?? "0.00"),
+      ? Number(parsedPrice.toFixed(2))
+      : (currentProduct?.price ?? 0),
     category: input.category.trim() || null,
     image_url: input.imageUrl.trim() || null,
     is_available: input.isAvailable,
@@ -155,6 +155,9 @@ export function buildOptimisticBoothRecord(
   optimisticId: string,
   currentBooth?: Booth | null
 ): Booth {
+  const parsedLatitude = Number.parseFloat(input.latitude)
+  const parsedLongitude = Number.parseFloat(input.longitude)
+
   return {
     id: currentBooth?.id ?? optimisticId,
     created_at: currentBooth?.created_at ?? new Date().toISOString(),
@@ -162,8 +165,8 @@ export function buildOptimisticBoothRecord(
     name: input.name.trim() || currentBooth?.name || "",
     location_text: input.locationText.trim() || null,
     google_maps_url: input.googleMapsUrl.trim() || null,
-    location_lat: input.latitude.trim() || null,
-    location_lng: input.longitude.trim() || null,
+    location_lat: Number.isFinite(parsedLatitude) ? parsedLatitude : null,
+    location_lng: Number.isFinite(parsedLongitude) ? parsedLongitude : null,
   }
 }
 

@@ -1,7 +1,8 @@
 "use server"
 
 import { requireEmployeeRole } from "@/lib/auth.server"
-import type { PaymentMethod } from "@/lib/database.types"
+import type { Database } from "@/lib/database.types"
+import type { PaymentMethod } from "@/lib/domain-types"
 import { getPromoById } from "@/lib/promoData"
 import {
   buildPromoApprovalSnapshot,
@@ -68,6 +69,9 @@ type PreparedCheckout = {
   promo: CounterPromo | null
   promoSnapshot: ReturnType<typeof buildPromoApprovalSnapshot> | null
 }
+
+type FinalizePosSaleRpcArgs =
+  Database["public"]["Functions"]["finalize_pos_sale"]["Args"]
 
 function normalizeCheckoutItems(items: CheckoutItemInput[]) {
   const grouped = new Map<
@@ -352,7 +356,7 @@ export async function finalizePosSale(
     }
 
     const supabase = await createServerSupabaseClient()
-    const { error } = await supabase.rpc("finalize_pos_sale", {
+    const rpcArgs = {
       p_sale_id: input.saleId,
       p_booth_id: input.boothId,
       p_schedule_id: input.scheduleId,
@@ -374,7 +378,8 @@ export async function finalizePosSale(
       p_promo_discount_total: prepared.pricing.discountTotal,
       p_promo_approval_id: input.promoApprovalId ?? null,
       p_promo_snapshot: prepared.promoSnapshot,
-    })
+    } as unknown as FinalizePosSaleRpcArgs
+    const { error } = await supabase.rpc("finalize_pos_sale", rpcArgs)
 
     if (error) {
       throw new Error(error.message)
@@ -476,6 +481,9 @@ export async function getPromoApprovalStatus(
   return {
     ok: true,
     approvalId: data.id,
-    status: data.status,
+    status:
+      data.status === "approved" || data.status === "rejected"
+        ? data.status
+        : "pending",
   }
 }

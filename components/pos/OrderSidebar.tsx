@@ -36,8 +36,8 @@ import {
   saveSaleOnlineConfirmed,
   syncPendingPosOperations,
 } from "@/lib/sync"
+import type { PaymentMethod } from "@/lib/domain-types"
 import { prepareReceiptPhotoDataUrl } from "@/lib/receiptPhotoClient"
-import type { PaymentMethod } from "@/lib/database.types"
 import {
   buildPromoApprovalSnapshot,
   evaluatePromoSelection,

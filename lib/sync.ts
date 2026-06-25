@@ -27,12 +27,8 @@ import {
   getBusinessTime,
   hasStartedOperatorPeriod,
 } from "./utils"
-import type {
-  Database,
-  InventoryEventType,
-  Json,
-  PaymentMethod,
-} from "./database.types"
+import type { Database, Json } from "./database.types"
+import type { InventoryEventType, PaymentMethod } from "./domain-types"
 import type { CounterPromo } from "./promos"
 import type { Product, SharedBoothSchedule } from "./shifts"
 
@@ -41,6 +37,32 @@ const OFFLINE_FUTURE_DAYS = 30
 const OFFLINE_BOOTSTRAP_FRESHNESS_MS = 5 * 60 * 1000
 const RETRY_DELAYS_MS = [30_000, 120_000, 600_000, 1_800_000] as const
 const IN_FLIGHT_SYNC_STATES = ["pending", "syncing"] satisfies LocalSyncState[]
+
+function normalizeInventoryEventType(value: string): InventoryEventType {
+  switch (value) {
+    case "opening":
+    case "adjustment":
+    case "admin_override":
+    case "closeout":
+      return value
+    default:
+      return "adjustment"
+  }
+}
+
+function normalizePaymentMethod(value: string | null | undefined): PaymentMethod {
+  switch (value) {
+    case "cash":
+    case "gcash":
+    case "maya":
+    case "maribank":
+    case "unionbank":
+    case "other":
+      return value
+    default:
+      return "cash"
+  }
+}
 
 function getOfflineBootstrapStorageKey(employeeId: string) {
   return `mini-pos:offline-bootstrap:${employeeId}`
@@ -765,11 +787,13 @@ async function pruneOfflineCache(
   const removableScheduleSet = new Set(removableScheduleIds)
   const removableSales = oldSales.filter(
     (sale) =>
+      !sale.schedule_id ||
       !protectedScheduleIds.has(sale.schedule_id) ||
       removableScheduleSet.has(sale.schedule_id)
   )
   const removableEvents = oldEvents.filter(
     (event) =>
+      !event.schedule_id ||
       !protectedScheduleIds.has(event.schedule_id) ||
       removableScheduleSet.has(event.schedule_id)
   )
@@ -994,6 +1018,7 @@ export async function bootstrapEmployeeOfflineData(
   const cachedInventoryEvents = inventoryEvents.map<LocalInventoryEvent>(
     (event) => ({
       ...event,
+      event_type: normalizeInventoryEventType(event.event_type),
       sync_state: "synced",
       sync_error: null,
       sync_attempt_count: 0,
@@ -1010,10 +1035,12 @@ export async function bootstrapEmployeeOfflineData(
       .toArray(),
     db.sales.where("sync_state").anyOf(IN_FLIGHT_SYNC_STATES).toArray(),
   ])
-  const protectedScheduleIds = new Set([
-    ...localPendingEvents.map((event) => event.schedule_id),
-    ...localPendingSales.map((sale) => sale.schedule_id),
-  ])
+  const protectedScheduleIds = new Set(
+    [
+      ...localPendingEvents.map((event) => event.schedule_id),
+      ...localPendingSales.map((sale) => sale.schedule_id),
+    ].filter((scheduleId): scheduleId is string => Boolean(scheduleId))
+  )
 
   report(4, 5, "Saving to local database...")
 
@@ -1326,7 +1353,7 @@ export async function pushInventoryEventToSupabase(
     })
 
     const supabase = createClient()
-    const { error } = await supabase.rpc("record_shift_inventory_event", {
+    const rpcArgs = {
       p_event_id: event.id,
       p_schedule_id: event.schedule_id,
       p_event_type: event.event_type as "opening" | "adjustment",
@@ -1337,7 +1364,8 @@ export async function pushInventoryEventToSupabase(
         previous_stock: line.previous_stock,
         resulting_stock: line.resulting_stock,
       })) satisfies Json,
-    })
+    } as unknown as Database["public"]["Functions"]["record_shift_inventory_event"]["Args"]
+    const { error } = await supabase.rpc("record_shift_inventory_event", rpcArgs)
 
     if (error) throw error
 
@@ -1569,6 +1597,10 @@ export async function pushSaleToSupabase(
       items
         .reduce(
           (map, item) => {
+            if (!item.product_id) {
+              return map
+            }
+
             const existing = map.get(item.product_id)
             if (existing) {
               existing.quantity += item.quantity
@@ -1595,11 +1627,20 @@ export async function pushSaleToSupabase(
         .values()
     )
 
+    if (
+      !sale.booth_id ||
+      !sale.schedule_id ||
+      !sale.employee_id ||
+      !sale.created_at
+    ) {
+      throw new Error("The queued sale is missing required shift details.")
+    }
+
     const finalizeResult = await finalizePosSale({
       saleId: sale.id,
       boothId: sale.booth_id,
       scheduleId: sale.schedule_id,
-      paymentMethod: sale.payment_method,
+      paymentMethod: normalizePaymentMethod(sale.payment_method),
       receiptPhotoPath,
       createdAt: sale.created_at,
       items: aggregatedItems,
@@ -1673,7 +1714,11 @@ async function rollbackStagedSale(saleId: string, cleanupReceiptPhoto = false) {
     [db.sales, db.saleItems, db.boothScheduleProducts],
     async () => {
       for (const item of saleItems) {
-        if (item.stock_before === null) {
+        if (
+          item.stock_before === null ||
+          !sale.schedule_id ||
+          !item.product_id
+        ) {
           continue
         }
 
@@ -1793,15 +1838,15 @@ async function performPendingPosSync(
   const operations = [
     ...allEvents.map((event) => ({
       id: event.id,
-      scheduleId: event.schedule_id,
-      at: event.occurred_at,
+      scheduleId: event.schedule_id ?? "",
+      at: event.occurred_at ?? "",
       type: "inventory" as const,
       eligible: shouldAttemptFailedOperation(event, manual, now),
     })),
     ...allSales.map((sale) => ({
       id: sale.id,
-      scheduleId: sale.schedule_id,
-      at: sale.created_at,
+      scheduleId: sale.schedule_id ?? "",
+      at: sale.created_at ?? "",
       type: "sale" as const,
       eligible: shouldAttemptFailedOperation(sale, manual, now),
     })),

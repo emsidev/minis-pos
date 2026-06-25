@@ -51,3 +51,4 @@ next-env.d.ts
 # serwist
 public/sw*
 public/workbox-*.js
+supabase/.temp/linked-project.json

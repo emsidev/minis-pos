@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache"
 
 import { requireEmployeeRole } from "@/lib/auth.server"
-import type { Json, PaymentMethod } from "@/lib/database.types"
+import type { Json } from "@/lib/database.types"
+import type { PaymentMethod } from "@/lib/domain-types"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import {
   getPendingApprovalRevenue,

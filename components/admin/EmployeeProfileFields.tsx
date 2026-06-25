@@ -2,7 +2,7 @@
 
 import { Shield, UserCheck, UserRound, UserX } from "lucide-react"
 
-import type { EmployeeRole } from "@/lib/database.types"
+import type { EmployeeRole } from "@/lib/domain-types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {

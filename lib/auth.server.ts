@@ -9,7 +9,8 @@ import {
   EmployeeRecord,
   normalizeEmployeeEmail,
 } from "./auth.shared"
-import { Database, EmployeeRole } from "./database.types"
+import { Database } from "./database.types"
+import type { EmployeeRole } from "./domain-types"
 import { createServerSupabaseClient } from "./supabase-server"
 import { cookies } from "next/headers"
 import {

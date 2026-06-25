@@ -7,7 +7,8 @@ import type { AdminProductRecord } from "@/lib/adminProducts"
 import { getPromoById } from "@/lib/promoData"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { PROMO_TYPES, type CounterPromo, type PromoType } from "@/lib/promos"
-import type { Json, PaymentMethod } from "@/lib/database.types"
+import type { Json } from "@/lib/database.types"
+import type { PaymentMethod } from "@/lib/domain-types"
 
 export type ProductFormInput = {
   id?: string
@@ -265,7 +266,7 @@ function parseProductInput(input: ProductFormInput) {
       image_url: imageUrl || null,
       is_available: input.isAvailable,
       name,
-      price: price.toFixed(2),
+      price: Number(price.toFixed(2)),
     },
   }
 }
