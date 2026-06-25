@@ -16,11 +16,8 @@ npm install
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 NEXT_PUBLIC_APP_NAME=Mini's Pastries
-magiclink=false
 OFFLINE_SNAPSHOT_SIGNING_KEY=...
 ```
-
-`magiclink=false` switches login to email and password. Omit `magiclink` or set any value other than `false` to keep magic-link login.
 
 `OFFLINE_SNAPSHOT_SIGNING_KEY` is server-only and signs the cached employee profile used during offline navigation. Provider-added Postgres or Supabase secret variables are not application configuration contracts.
 
@@ -46,10 +43,10 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Authentication And Receipts
 
-- Users sign in with Supabase magic links by default. Set `magiclink=false` to use Supabase email/password login instead. The first successful login creates an `employee` profile.
-- For password login, Email auth must be enabled in Supabase Auth Providers, and each user must have a Supabase Auth password. Existing magic-link-only users need a password set through Supabase, an admin flow, or password reset.
-- Password mode includes `/forgot-password` and `/reset-password` for self-service recovery and first-password setup. The recovery email returns through `/auth/recovery`.
-- Add your allowed recovery URLs in Supabase Auth URL Configuration before testing password reset. Include `http://localhost:3000/auth/recovery` for local work and each deployed `/auth/recovery` URL for preview or production.
+- Users sign in with email/password or Google OAuth. The first successful login creates or claims an `employee` profile by email.
+- Email auth must be enabled in Supabase Auth Providers for password sign-in and reset. Password setup and recovery use `/forgot-password`, `/reset-password`, and `/auth/recovery`.
+- Add your allowed redirect URLs in Supabase Auth URL Configuration before testing auth. Include `http://localhost:3000/auth/callback`, `http://localhost:3000/auth/recovery`, and each deployed preview or production equivalent.
+- Enable the Google provider in Supabase Auth Providers and add the matching Google OAuth client credentials there before using Google sign-in.
 - Promote the first admin by setting the employee row `role` to `admin` in Supabase, then sign in again.
 - Non-cash transactions require a receipt photo. Photos are stored privately under `receipts/<employee_id>/<sale_id>.<ext>`.
 - The database stores `receipt_photo_path`; display flows request short-lived signed URLs instead of publishing receipt URLs.

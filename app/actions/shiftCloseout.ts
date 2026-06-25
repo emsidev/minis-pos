@@ -43,10 +43,10 @@ function revalidateShiftRoutes(scheduleId: string, boothId?: string) {
 
 function getShiftCloseoutError(message: string) {
   if (message.includes("SHIFT_NOT_ACTIVE_FOR_CLOSEOUT")) {
-    return "This shift is no longer available for closeout."
+    return "This shift cannot be closed yet."
   }
   if (message.includes("EMPLOYEE_NOT_OPERATOR")) {
-    return "Only the current POS operator can close this shift."
+    return "Only the current POS operator or an admin can close this shift."
   }
   if (message.includes("INVALID_CASH_COUNT")) {
     return "Enter a valid counted cash total."
@@ -56,6 +56,9 @@ function getShiftCloseoutError(message: string) {
   }
   if (message.includes("INVENTORY_STALE")) {
     return "Stock changed while this form was open. Refresh and recount before closing."
+  }
+  if (message.includes("PENDING_CASH_DEDUCTIONS")) {
+    return "Resolve pending cash deductions before closing this shift."
   }
   if (message.includes("INVENTORY_NOT_INITIALIZED")) {
     return "Opening inventory must be recorded before closeout."

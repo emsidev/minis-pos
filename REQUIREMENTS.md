@@ -12,7 +12,7 @@ Statuses: `[ ]` not started | `[~]` in progress | `[x]` complete | `[!]` blocked
 - [x] Project scaffolded (Next.js, Tailwind, shadcn)
 - [x] Supabase tables created
 - [x] RLS policies applied
-- [x] Login page (magic link by default; email/password when `magiclink=false`)
+- [x] Login page (email/password plus Google OAuth)
 - [x] Role-based redirect (admin vs employee)
 - [x] Route protection middleware
 - [x] Basic layout shells
@@ -75,10 +75,11 @@ Statuses: `[ ]` not started | `[~]` in progress | `[x]` complete | `[!]` blocked
 - [x] Signed offline employee snapshot contract implemented
 - [x] Data/UI/repository conventions normalized and stale paths removed
 - [x] Next.js patched from 14.2.31 to the requested 14.2.35 release line
-- [x] Password recovery and first-password flow implemented for password mode (`magiclink=false`)
+- [x] Password recovery and first-password flow implemented
 - [x] Admin dashboard/sales date pickers, data-table responsiveness, and route transition feedback stabilized
 - [x] Compute-cost optimization pass implemented in code (lean dashboard aggregates, month-scoped schedule loading, sync/bootstrap dedupe, retry backoff, cache pruning, and redundant refresh removal)
 - [x] Online operator handoff server-truth repair implemented (safe sale finalization lock path, server-first employee refresh, and failed-review isolation from live stock/sales)
+- [x] Manual same-day shift start available from employee shift surfaces
 - [!] Resolve newly reported high-severity `npm audit` advisories requiring a reviewed Next.js major-version upgrade beyond the current Next.js 14 project constraint
 - [!] Apply `supabase/reset.sql`, `supabase/schema.sql`, and optional demo seed to the disposable development project
 - [!] Run `EXPLAIN (ANALYZE, BUFFERS)` and large-data validation after applying the updated schema indexes/RPCs in Supabase
@@ -87,7 +88,7 @@ Statuses: `[ ]` not started | `[~]` in progress | `[x]` complete | `[!]` blocked
 ## Milestone 7 - Admin Employee Management
 
 - [x] Employee list
-- [x] Invite by email (magic link)
+- [x] Invite by email (password setup flow)
 - [x] Edit role and status
 - [x] Deactivate employee
 
@@ -108,5 +109,12 @@ Statuses: `[ ]` not started | `[~]` in progress | `[x]` complete | `[!]` blocked
 - [x] Service worker (maintained Serwist integration)
 - [x] Loading skeletons
 - [x] Error boundaries
-- [ ] Touch target audit
+- [x] Touch target audit
 - [ ] iPad install test
+
+## Post-Milestone Shift Corrections
+
+- [x] Shift sale edit/delete workflow for active, closed, and passed shifts, with POS-operator approval requests, admin approval/rejection, pending revenue delta KPIs, and admin-visible sales plus inventory audit history
+- [x] Same-day shift-state polish completed across `/shift`, `/schedule`, Counter gating, and admin selectors, including early-start inventory support, modal today-shift details, and human-readable UI labels
+- [x] Temporary shift cash deduction requests added for operator/admin submission on unclosed shifts, admin approval history, and closeout cash reconciliation against approved deductions
+- [x] Admin destructive cleanup flows added for booth delete cascade, shift delete cascade, and sales trash with permanent delete

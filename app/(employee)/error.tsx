@@ -14,7 +14,7 @@ export default function EmployeeError({
       error={error}
       reset={reset}
       title="Employee screen unavailable"
-      description="This employee screen could not load right now. Try again or return to the Counter workspace."
+      description="This screen could not load. Try again or go back to Counter."
       homeHref="/"
       homeLabel="Go to Counter"
     />

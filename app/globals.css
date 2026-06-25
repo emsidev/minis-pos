@@ -168,6 +168,99 @@
     @apply text-muted-foreground text-sm leading-6;
   }
 
+  .app-screen-header {
+    @apply flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between;
+  }
+
+  .app-screen-copy {
+    @apply flex min-w-0 flex-col gap-2;
+  }
+
+  .app-screen-title {
+    @apply text-3xl font-semibold tracking-tight sm:text-[2rem];
+  }
+
+  .app-screen-description {
+    @apply text-muted-foreground max-w-2xl text-sm leading-6;
+  }
+
+  .app-screen-actions {
+    @apply flex flex-wrap items-center gap-3;
+  }
+
+  .app-banner {
+    @apply border-border/70 bg-card/90 text-muted-foreground flex items-center gap-2 rounded-[calc(var(--radius)-0.15rem)] border px-4 py-3 text-sm shadow-sm;
+  }
+
+  .auth-shell {
+    @apply selection:bg-primary/25 selection:text-foreground bg-background relative flex min-h-screen flex-col overflow-hidden;
+    background-image:
+      radial-gradient(
+        circle at top left,
+        rgba(224, 64, 160, 0.14),
+        transparent 26%
+      ),
+      radial-gradient(
+        circle at bottom right,
+        rgba(47, 156, 194, 0.12),
+        transparent 28%
+      );
+  }
+
+  .auth-shell__body {
+    @apply relative flex flex-1 items-center justify-center px-4 py-10 sm:px-6;
+  }
+
+  .auth-shell__frame {
+    @apply w-full max-w-xl;
+  }
+
+  .auth-brand {
+    @apply mb-6 flex flex-col gap-2 text-center;
+  }
+
+  .auth-brand-mark {
+    @apply text-primary text-3xl font-semibold tracking-tight;
+  }
+
+  .auth-brand-caption {
+    @apply text-muted-foreground text-xs font-semibold tracking-[0.22em] uppercase;
+  }
+
+  .auth-panel {
+    border-radius: calc(var(--radius) + 0.45rem);
+    border: 1px solid rgba(132, 89, 118, 0.16);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 24px 55px -36px rgba(90, 44, 80, 0.3);
+    @apply px-6 py-7 backdrop-blur-xl sm:px-8 sm:py-8;
+  }
+
+  .auth-panel-header {
+    @apply mb-8 flex flex-col gap-3 text-center;
+  }
+
+  .auth-panel-title {
+    @apply text-3xl font-semibold tracking-tight;
+  }
+
+  .auth-panel-copy {
+    @apply text-muted-foreground text-base leading-7;
+  }
+
+  .auth-chip-row {
+    @apply mt-6 flex flex-wrap items-center justify-center gap-3;
+  }
+
+  .auth-chip {
+    border: 1px solid rgba(132, 89, 118, 0.12);
+    background: rgba(255, 248, 252, 0.82);
+    @apply text-muted-foreground inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold tracking-[0.12em] uppercase backdrop-blur-md;
+  }
+
+  .auth-footer {
+    @apply text-muted-foreground/70 mt-6 pb-6 text-center text-[11px] tracking-[0.18em] uppercase;
+  }
+
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }

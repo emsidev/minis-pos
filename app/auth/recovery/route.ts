@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { isMagicLinkAuthEnabled, isSupabaseConfigured } from "@/lib/env"
+import { isSupabaseConfigured } from "@/lib/env"
 import {
   clearPasswordRecoveryCookie,
   writePasswordRecoveryCookie,
@@ -15,14 +15,6 @@ export async function GET(request: Request) {
   if (!isSupabaseConfigured) {
     const response = NextResponse.redirect(
       buildForgotPasswordUrl(origin, { error: "config" })
-    )
-    clearPasswordRecoveryCookie(response.cookies)
-    return response
-  }
-
-  if (isMagicLinkAuthEnabled()) {
-    const response = NextResponse.redirect(
-      buildForgotPasswordUrl(origin, { error: "password-auth-disabled" })
     )
     clearPasswordRecoveryCookie(response.cookies)
     return response

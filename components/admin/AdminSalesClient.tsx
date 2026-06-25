@@ -3,10 +3,23 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
-import { Copy, Ellipsis, Loader2, Store, UserRound, Wallet } from "lucide-react"
+import {
+  Copy,
+  Ellipsis,
+  Loader2,
+  Store,
+  Trash2,
+  UserRound,
+  Wallet,
+} from "lucide-react"
 import { toast } from "sonner"
 
-import { loadAdminSalesPage } from "@/app/actions/adminSales"
+import {
+  deleteSalePermanently,
+  loadAdminSalesPage,
+} from "@/app/actions/adminSales"
+import { submitSaleChange } from "@/app/actions/shifts"
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
 import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
@@ -29,10 +42,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { SingleSelect } from "@/components/ui/single-select"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type {
   AdminSalesLedgerData,
   AdminSalesLedgerRow,
+  AdminSalesLedgerView,
 } from "@/lib/adminSales"
 import type { PaymentMethod } from "@/lib/database.types"
 import { cn, formatCurrency, getBusinessDate } from "@/lib/utils"
@@ -49,6 +69,8 @@ const paymentLabels: Record<PaymentMethod, string> = {
   unionbank: "UnionBank",
   other: "Other",
 }
+
+const SALES_FILTER_ALL = "__all__"
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-PH", {
@@ -70,6 +92,27 @@ function formatStatusLabel(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+function buildSalesRoute(
+  startDate: string,
+  endDate: string,
+  view: AdminSalesLedgerView
+) {
+  const businessDate = getBusinessDate()
+  const params = new URLSearchParams()
+
+  if (startDate !== businessDate || endDate !== businessDate) {
+    params.set("from", startDate)
+    params.set("to", endDate)
+  }
+
+  if (view === "trash") {
+    params.set("view", "trash")
+  }
+
+  const query = params.toString()
+  return query.length > 0 ? `/admin/sales?${query}` : "/admin/sales"
+}
+
 export function AdminSalesClient({ data }: AdminSalesClientProps) {
   const router = useRouter()
   const [rows, setRows] = useState(data.rows)
@@ -84,7 +127,12 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
   const [paymentFilter, setPaymentFilter] = useState<PaymentMethod | "all">(
     "all"
   )
+  const [softDeletingSale, setSoftDeletingSale] =
+    useState<AdminSalesLedgerRow | null>(null)
+  const [permanentlyDeletingSale, setPermanentlyDeletingSale] =
+    useState<AdminSalesLedgerRow | null>(null)
   const [isPending, startTransition] = useTransition()
+  const isTrashView = data.view === "trash"
 
   useEffect(() => {
     setRows(data.rows)
@@ -94,6 +142,12 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       endDate: data.endDate,
     })
   }, [data.endDate, data.nextCursor, data.rows, data.startDate])
+
+  useEffect(() => {
+    setBoothFilter("all")
+    setEmployeeFilter("all")
+    setPaymentFilter("all")
+  }, [data.view])
 
   const boothOptions = useMemo(
     () => [
@@ -158,7 +212,8 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       const page = await loadAdminSalesPage(
         data.startDate,
         data.endDate,
-        nextCursor
+        nextCursor,
+        data.view
       )
       setRows((current) => {
         const byId = new Map(current.map((row) => [row.id, row]))
@@ -195,20 +250,21 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
     setSelectedRange(nextValue)
 
     startTransition(() => {
-      const businessDate = getBusinessDate()
-      if (
-        nextValue.startDate === businessDate &&
-        nextValue.endDate === businessDate
-      ) {
-        router.push("/admin/sales")
-        return
-      }
+      router.push(
+        buildSalesRoute(nextValue.startDate, nextValue.endDate, data.view)
+      )
+    })
+  }
 
-      const params = new URLSearchParams({
-        from: nextValue.startDate,
-        to: nextValue.endDate,
-      })
-      router.push(`/admin/sales?${params.toString()}`)
+  const handleViewChange = (view: AdminSalesLedgerView) => {
+    if (view === data.view) {
+      return
+    }
+
+    startTransition(() => {
+      router.push(
+        buildSalesRoute(selectedRange.startDate, selectedRange.endDate, view)
+      )
     })
   }
 
@@ -220,6 +276,47 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       toast.error("Unable to copy the sale ID.")
     }
   }, [])
+
+  const handleSoftDeleteSale = async () => {
+    if (!softDeletingSale) {
+      return
+    }
+
+    const result = await submitSaleChange({
+      saleId: softDeletingSale.id,
+      actionType: "delete_sale",
+      saleUpdatedAt: softDeletingSale.updatedAt,
+    })
+
+    if (!result.ok) {
+      toast.error(result.error ?? "Unable to delete this sale.")
+      throw new Error(result.error ?? "Unable to delete this sale.")
+    }
+
+    setRows((current) =>
+      current.filter((row) => row.id !== softDeletingSale.id)
+    )
+    toast.success(result.message ?? "Sale moved to trash.")
+    router.refresh()
+  }
+
+  const handlePermanentDeleteSale = async () => {
+    if (!permanentlyDeletingSale) {
+      return
+    }
+
+    const result = await deleteSalePermanently(permanentlyDeletingSale.id)
+    if (!result.ok) {
+      toast.error(result.error ?? "Unable to delete this sale permanently.")
+      throw new Error(result.error ?? "Unable to delete this sale permanently.")
+    }
+
+    setRows((current) =>
+      current.filter((row) => row.id !== permanentlyDeletingSale.id)
+    )
+    toast.success(result.message ?? "Sale deleted permanently.")
+    router.refresh()
+  }
 
   const getSalesSearchText = useCallback((row: AdminSalesLedgerRow) => {
     return [
@@ -388,27 +485,63 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
                   <Copy data-icon="inline-start" />
                   Copy Sale ID
                 </DropdownMenuItem>
+                {isTrashView ? (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setPermanentlyDeletingSale(row.original)}
+                  >
+                    <Trash2 data-icon="inline-start" />
+                    Delete Permanently
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setSoftDeletingSale(row.original)}
+                  >
+                    <Trash2 data-icon="inline-start" />
+                    Move to Trash
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         ),
       },
     ],
-    [data.endDate, data.startDate, handleCopySaleId]
+    [data.endDate, data.startDate, handleCopySaleId, isTrashView]
   )
 
   return (
     <div className="app-page flex flex-col gap-6">
-      <header className="flex flex-col justify-between gap-4 xl:flex-row xl:items-center">
-        <div>
-          <p className="app-kicker">Admin Workspace</p>
-          <h1 className="text-3xl font-semibold">Sales</h1>
-          <p className="app-caption">
-            Review transaction history by date, booth, employee, and payment
-            method.
+      <header className="app-screen-header">
+        <div className="app-screen-copy">
+          <h1 className="app-screen-title">
+            {isTrashView ? "Sales Trash" : "Sales"}
+          </h1>
+          <p className="app-screen-description">
+            {isTrashView
+              ? "Restore context, then permanently delete sales when you are sure."
+              : "Filter sales by date, booth, employee, or payment."}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="app-screen-actions">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant={isTrashView ? "outline" : "secondary"}
+              onClick={() => handleViewChange("active")}
+            >
+              Sales
+            </Button>
+            <Button
+              type="button"
+              variant={isTrashView ? "secondary" : "outline"}
+              onClick={() => handleViewChange("trash")}
+            >
+              <Trash2 data-icon="inline-start" />
+              Trash
+            </Button>
+          </div>
           <DateRangePicker
             value={selectedRange}
             onChange={handleDateRangeChange}
@@ -423,7 +556,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       </header>
 
       {isPending ? (
-        <div className="border-border bg-card text-muted-foreground flex items-center gap-2 rounded-xl border px-4 py-3 text-sm">
+        <div className="app-banner">
           <Loader2 className="text-primary animate-spin" />
           Loading sales data...
         </div>
@@ -432,8 +565,12 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader>
-            <CardTitle>Total Revenue</CardTitle>
-            <CardDescription>Visible filtered sales</CardDescription>
+            <CardTitle>
+              {isTrashView ? "Deleted Value" : "Total Revenue"}
+            </CardTitle>
+            <CardDescription>
+              {isTrashView ? "Visible deleted sales" : "Visible filtered sales"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-primary text-3xl font-semibold">
@@ -443,7 +580,9 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Transactions</CardTitle>
+            <CardTitle>
+              {isTrashView ? "Deleted Rows" : "Transactions"}
+            </CardTitle>
             <CardDescription>Rows matching current filters</CardDescription>
           </CardHeader>
           <CardContent>
@@ -454,8 +593,12 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Cash Revenue</CardTitle>
-            <CardDescription>Cash-only totals</CardDescription>
+            <CardTitle>
+              {isTrashView ? "Deleted Cash" : "Cash Revenue"}
+            </CardTitle>
+            <CardDescription>
+              {isTrashView ? "Cash sales in trash" : "Cash-only totals"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-foreground text-3xl font-semibold">
@@ -465,8 +608,14 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Non-Cash Revenue</CardTitle>
-            <CardDescription>Receipt-backed totals</CardDescription>
+            <CardTitle>
+              {isTrashView ? "Deleted Non-Cash" : "Non-Cash Revenue"}
+            </CardTitle>
+            <CardDescription>
+              {isTrashView
+                ? "Non-cash sales in trash"
+                : "Receipt-backed totals"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-foreground text-3xl font-semibold">
@@ -478,9 +627,11 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Sales Ledger</CardTitle>
+          <CardTitle>{isTrashView ? "Trash" : "Sales Ledger"}</CardTitle>
           <CardDescription>
-            Sort and filter transaction records without leaving the page.
+            {isTrashView
+              ? "Deleted sales stay here until you remove them permanently."
+              : "Sort and filter transaction records without leaving the page."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -489,35 +640,100 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
             data={filteredRows}
             searchPlaceholder="Search receipt ID, booth, employee, or shift"
             getSearchText={getSalesSearchText}
-            emptyMessage="No sales match the current filters."
+            emptyMessage={
+              isTrashView
+                ? "Trash is empty for the current filters."
+                : "No sales match the current filters."
+            }
             initialSorting={[{ id: "createdAt", desc: true }]}
             toolbarContent={
               <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap">
-                <SingleSelect
-                  value={boothFilter}
-                  onChange={setBoothFilter}
-                  options={boothOptions}
-                  placeholder="All booths"
-                  className="sm:w-[190px]"
-                />
-
-                <SingleSelect
-                  value={employeeFilter}
-                  onChange={setEmployeeFilter}
-                  options={employeeOptions}
-                  placeholder="All employees"
-                  className="sm:w-[190px]"
-                />
-
-                <SingleSelect
-                  value={paymentFilter}
-                  onChange={(value) =>
-                    setPaymentFilter(value as PaymentMethod | "all")
+                <Select
+                  value={boothFilter === "all" ? SALES_FILTER_ALL : boothFilter}
+                  onValueChange={(value) =>
+                    setBoothFilter(
+                      value === SALES_FILTER_ALL ? "all" : (value ?? "all")
+                    )
                   }
-                  options={paymentOptions}
-                  placeholder="All payments"
-                  className="sm:w-[190px]"
-                />
+                >
+                  <SelectTrigger className="h-10 sm:w-[190px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {boothOptions.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={
+                          option.value === "all"
+                            ? SALES_FILTER_ALL
+                            : option.value
+                        }
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={
+                    employeeFilter === "all" ? SALES_FILTER_ALL : employeeFilter
+                  }
+                  onValueChange={(value) =>
+                    setEmployeeFilter(
+                      value === SALES_FILTER_ALL ? "all" : (value ?? "all")
+                    )
+                  }
+                >
+                  <SelectTrigger className="h-10 sm:w-[190px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employeeOptions.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={
+                          option.value === "all"
+                            ? SALES_FILTER_ALL
+                            : option.value
+                        }
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={
+                    paymentFilter === "all" ? SALES_FILTER_ALL : paymentFilter
+                  }
+                  onValueChange={(value) =>
+                    setPaymentFilter(
+                      value === SALES_FILTER_ALL
+                        ? "all"
+                        : ((value ?? "all") as PaymentMethod | "all")
+                    )
+                  }
+                >
+                  <SelectTrigger className="h-10 sm:w-[190px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentOptions.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={
+                          option.value === "all"
+                            ? SALES_FILTER_ALL
+                            : option.value
+                        }
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             }
           />
@@ -538,6 +754,36 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
           ) : null}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={Boolean(softDeletingSale)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSoftDeletingSale(null)
+          }
+        }}
+        title="Move this sale to trash?"
+        description="This soft-deletes the sale and removes it from live sales totals while keeping it available in trash."
+        confirmLabel="Move to Trash"
+        pendingLabel="Moving..."
+        cancelLabel="Keep Sale"
+        variant="destructive"
+        onConfirm={handleSoftDeleteSale}
+      />
+      <ConfirmDialog
+        open={Boolean(permanentlyDeletingSale)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPermanentlyDeletingSale(null)
+          }
+        }}
+        title="Delete this sale permanently?"
+        description="This removes the trashed sale and its receipt file permanently."
+        confirmLabel="Delete Permanently"
+        pendingLabel="Deleting..."
+        cancelLabel="Keep Sale"
+        variant="destructive"
+        onConfirm={handlePermanentDeleteSale}
+      />
     </div>
   )
 }

@@ -1,14 +1,14 @@
 "use server"
 
-import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 
 import { ensureEmployeeProfile, getHomeRouteForRole } from "@/lib/auth"
 import {
   clearEmployeeSnapshotCookie,
   writeEmployeeSnapshotCookie,
 } from "@/lib/employeeSnapshot"
-import { isMagicLinkAuthEnabled, isSupabaseConfigured } from "@/lib/env"
+import { isSupabaseConfigured } from "@/lib/env"
 import {
   clearPasswordRecoveryCookie,
   hasPasswordRecoveryCookie,
@@ -27,7 +27,7 @@ function readRequiredFormString(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : ""
 }
 
-export async function requestMagicLinkAction(formData: FormData) {
+export async function signInWithGoogleAction() {
   const origin = await getRequestOrigin()
   const cookieStore = await cookies()
 
@@ -35,28 +35,25 @@ export async function requestMagicLinkAction(formData: FormData) {
     redirect(buildLoginUrl(origin, { error: "config" }))
   }
 
-  const emailValue = formData.get("email")
-  const email = typeof emailValue === "string" ? emailValue.trim() : ""
-
-  if (!email) {
-    redirect(buildLoginUrl(origin, { error: "Please enter an email address." }))
-  }
-
   clearPasswordRecoveryCookie(cookieStore)
 
   const supabase = createServerSupabaseClient()
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
     options: {
-      emailRedirectTo: `${origin}/auth/callback`,
+      redirectTo: `${origin}/auth/callback`,
     },
   })
 
-  if (error) {
-    redirect(buildLoginUrl(origin, { error: error.message }))
+  if (error || !data.url) {
+    redirect(
+      buildLoginUrl(origin, {
+        error: error?.message ?? "Unable to start Google sign-in.",
+      })
+    )
   }
 
-  redirect(buildLoginUrl(origin, { email, sent: "1" }))
+  redirect(data.url)
 }
 
 export async function signInWithPasswordAction(formData: FormData) {
@@ -65,10 +62,6 @@ export async function signInWithPasswordAction(formData: FormData) {
 
   if (!isSupabaseConfigured) {
     redirect(buildLoginUrl(origin, { error: "config" }))
-  }
-
-  if (isMagicLinkAuthEnabled()) {
-    redirect(buildLoginUrl(origin, { error: "password-auth-disabled" }))
   }
 
   const email = readRequiredFormString(formData, "email")
@@ -128,12 +121,6 @@ export async function requestPasswordResetAction(formData: FormData) {
     redirect(buildForgotPasswordUrl(origin, { error: "config" }))
   }
 
-  if (isMagicLinkAuthEnabled()) {
-    redirect(
-      buildForgotPasswordUrl(origin, { error: "password-auth-disabled" })
-    )
-  }
-
   const email = readRequiredFormString(formData, "email")
 
   if (!email) {
@@ -169,12 +156,6 @@ export async function updatePasswordAction(formData: FormData) {
 
   if (!isSupabaseConfigured) {
     redirect(buildResetPasswordUrl(origin, { error: "config" }))
-  }
-
-  if (isMagicLinkAuthEnabled()) {
-    redirect(
-      buildForgotPasswordUrl(origin, { error: "password-auth-disabled" })
-    )
   }
 
   if (!hasPasswordRecoveryCookie(cookieStore)) {

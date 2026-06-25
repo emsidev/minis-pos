@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   Ellipsis,
@@ -16,9 +16,12 @@ import { toast } from "sonner"
 
 import {
   resendEmployeeInvite,
+  type EmployeeInviteInput,
+  type EmployeeUpdateInput,
   updateEmployeeRole,
   updateEmployeeStatus,
 } from "@/app/actions/adminEmployees"
+import { buildOptimisticEmployeeRecord } from "@/lib/adminOptimistic"
 import { EmployeeEditSheet } from "@/components/admin/EmployeeEditSheet"
 import { EmployeeInviteSheet } from "@/components/admin/EmployeeInviteSheet"
 import { DataTable } from "@/components/shared/DataTable"
@@ -42,7 +45,6 @@ import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
 
 type AdminEmployeesClientProps = {
   employees: AdminEmployeeRecord[]
-  magicLinkEnabled: boolean
 }
 
 function sortEmployees(rows: AdminEmployeeRecord[]) {
@@ -55,10 +57,7 @@ function sortEmployees(rows: AdminEmployeeRecord[]) {
   })
 }
 
-export function AdminEmployeesClient({
-  employees,
-  magicLinkEnabled,
-}: AdminEmployeesClientProps) {
+export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
   const [displayEmployees, setDisplayEmployees] = useState(employees)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [editingEmployee, setEditingEmployee] =
@@ -66,10 +65,74 @@ export function AdminEmployeesClient({
   const [pendingEmployeeId, setPendingEmployeeId] = useState<string | null>(
     null
   )
+  const optimisticEmployeeIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     setDisplayEmployees(employees)
   }, [employees])
+
+  const handleOptimisticInvite = useCallback(
+    (input: EmployeeInviteInput) => {
+      const previousEmployees = displayEmployees
+      const matchedEmployee = displayEmployees.find(
+        (employee) =>
+          employee.email.trim().toLowerCase() ===
+          input.email.trim().toLowerCase()
+      )
+      const optimisticId =
+        matchedEmployee?.id ?? `optimistic-employee-${crypto.randomUUID()}`
+
+      optimisticEmployeeIdRef.current = matchedEmployee ? null : optimisticId
+
+      const optimisticEmployee = buildOptimisticEmployeeRecord(
+        input,
+        optimisticId,
+        matchedEmployee
+      )
+
+      setDisplayEmployees((current) =>
+        sortEmployees([
+          optimisticEmployee,
+          ...current.filter(
+            (employee) =>
+              employee.id !== optimisticEmployee.id &&
+              employee.email.trim().toLowerCase() !== optimisticEmployee.email
+          ),
+        ])
+      )
+
+      return () => {
+        optimisticEmployeeIdRef.current = null
+        setDisplayEmployees(previousEmployees)
+      }
+    },
+    [displayEmployees]
+  )
+
+  const handleOptimisticEdit = useCallback(
+    (input: EmployeeUpdateInput) => {
+      const previousEmployees = displayEmployees
+      const optimisticEmployee = buildOptimisticEmployeeRecord(
+        input,
+        input.id,
+        editingEmployee
+      )
+
+      optimisticEmployeeIdRef.current = null
+      setDisplayEmployees((current) =>
+        sortEmployees(
+          current.map((employee) =>
+            employee.id === input.id ? optimisticEmployee : employee
+          )
+        )
+      )
+
+      return () => {
+        setDisplayEmployees(previousEmployees)
+      }
+    },
+    [displayEmployees, editingEmployee]
+  )
 
   const handleRoleChange = useCallback(
     async (employeeId: string, nextRole: "employee" | "admin") => {
@@ -324,13 +387,11 @@ export function AdminEmployeesClient({
 
   return (
     <div className="app-page flex flex-col gap-6">
-      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <p className="app-kicker">Admin Workspace</p>
-          <h1 className="text-3xl font-semibold">Employee Management</h1>
-          <p className="app-caption">
-            Invite staff, control access, and keep booth assignment rosters up
-            to date.
+      <header className="app-screen-header">
+        <div className="app-screen-copy">
+          <h1 className="app-screen-title">Employee Management</h1>
+          <p className="app-screen-description">
+            Invite staff and manage access.
           </p>
         </div>
         <Button type="button" size="lg" onClick={() => setInviteOpen(true)}>
@@ -369,12 +430,16 @@ export function AdminEmployeesClient({
       <EmployeeInviteSheet
         open={inviteOpen}
         onOpenChange={setInviteOpen}
-        magicLinkEnabled={magicLinkEnabled}
+        onOptimisticSave={handleOptimisticInvite}
         onSaved={(employee) => {
+          const optimisticId = optimisticEmployeeIdRef.current
+          optimisticEmployeeIdRef.current = null
           setDisplayEmployees((current) =>
             sortEmployees([
               employee,
-              ...current.filter((entry) => entry.id !== employee.id),
+              ...current.filter(
+                (entry) => entry.id !== employee.id && entry.id !== optimisticId
+              ),
             ])
           )
         }}
@@ -387,6 +452,7 @@ export function AdminEmployeesClient({
             setEditingEmployee(null)
           }
         }}
+        onOptimisticSave={handleOptimisticEdit}
         onSaved={(employee) => {
           setDisplayEmployees((current) =>
             sortEmployees(

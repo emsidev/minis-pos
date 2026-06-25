@@ -1,9 +1,44 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { ChevronDown, ChevronRight, Receipt } from "lucide-react"
+import { useMemo, useState, useTransition } from "react"
+import {
+  ChevronDown,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Receipt,
+  Trash2,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
+import { submitSaleChange } from "@/app/actions/shifts"
 import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -12,43 +47,229 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { cn, formatCurrency } from "@/lib/utils"
-import type { SaleItemWithProduct, SaleWithJoins } from "@/lib/shifts"
 import { getSaleItems } from "@/app/actions/shifts"
 import { cacheServerSaleItems, getCachedSaleItems } from "@/lib/offlineData"
 import { replaceLocalSaleReceiptPhoto } from "@/lib/sync"
+import type { PaymentMethod } from "@/lib/database.types"
+import type { Product, SaleItemWithProduct, SaleWithJoins } from "@/lib/shifts"
+import { cn, formatCurrency, getProductDisplayName } from "@/lib/utils"
+
+type SaleActionMode = "none" | "direct" | "request"
+
+type EditableSaleLine = {
+  rowId: string
+  productId: string
+  quantity: string
+  unitPrice: string
+}
+
+type EditableProduct = {
+  id: string
+  name: string
+  price: string | number
+}
 
 type SaleRowProps = {
   sale: SaleWithJoins
+  products: Product[]
   allowOfflineCache: boolean
   canEditReceipts: boolean
+  saleActionMode: SaleActionMode
+  pendingSaleChange: boolean
+  onSalesChanged?: () => void
 }
 
-function SaleRow({ sale, allowOfflineCache, canEditReceipts }: SaleRowProps) {
+const PAYMENT_OPTIONS: Array<{ value: PaymentMethod; label: string }> = [
+  { value: "cash", label: "Cash" },
+  { value: "gcash", label: "GCash" },
+  { value: "maya", label: "Maya" },
+  { value: "maribank", label: "Maribank" },
+  { value: "unionbank", label: "UnionBank" },
+  { value: "other", label: "Other" },
+]
+
+function formatAmountInput(value: number) {
+  return value.toFixed(2)
+}
+
+function formatSaleTime(value?: string) {
+  if (!value) {
+    return "Time unavailable"
+  }
+
+  return new Date(value).toLocaleTimeString("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+function seedEditableLines(items: SaleItemWithProduct[]) {
+  return items.map((item) => ({
+    rowId: item.id,
+    productId: item.product_id,
+    quantity: String(item.quantity),
+    unitPrice: formatAmountInput(Number(item.unit_price)),
+  }))
+}
+
+function buildEditableProducts(
+  products: Product[],
+  items: SaleItemWithProduct[]
+): EditableProduct[] {
+  const productMap = new Map<string, EditableProduct>()
+
+  for (const product of products) {
+    productMap.set(product.id, {
+      id: product.id,
+      name: product.name,
+      price: product.price,
+    })
+  }
+
+  for (const item of items) {
+    if (!productMap.has(item.product_id)) {
+      productMap.set(item.product_id, {
+        id: item.product_id,
+        name: getProductDisplayName(item.products),
+        price: item.unit_price,
+      })
+    }
+  }
+
+  return Array.from(productMap.values()).sort((left, right) =>
+    left.name.localeCompare(right.name)
+  )
+}
+
+function parseEditableLines(lines: EditableSaleLine[]) {
+  const normalized = lines.map((line) => {
+    const quantity = Number.parseInt(line.quantity, 10)
+    const unitPrice = Number.parseFloat(line.unitPrice)
+
+    return {
+      productId: line.productId,
+      quantity,
+      unitPrice,
+    }
+  })
+
+  if (normalized.some((line) => !line.productId)) {
+    return { error: "Choose a product for every row." as const }
+  }
+
+  if (
+    normalized.some(
+      (line) =>
+        !Number.isInteger(line.quantity) ||
+        line.quantity <= 0 ||
+        !Number.isFinite(line.unitPrice) ||
+        line.unitPrice < 0
+    )
+  ) {
+    return {
+      error: "Use whole quantities and valid unit prices." as const,
+    }
+  }
+
+  if (
+    new Set(normalized.map((line) => line.productId)).size !== normalized.length
+  ) {
+    return { error: "Each product can appear only once." as const }
+  }
+
+  return { data: normalized }
+}
+
+function getHasReceipt(sale: SaleWithJoins) {
+  return Boolean(sale.receipt_photo_path || sale.receipt_photo_local)
+}
+
+function SaleRow({
+  sale,
+  products,
+  allowOfflineCache,
+  canEditReceipts,
+  saleActionMode,
+  pendingSaleChange,
+  onSalesChanged,
+}: SaleRowProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [items, setItems] = useState<SaleItemWithProduct[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [editLines, setEditLines] = useState<EditableSaleLine[]>([])
+  const [editReason, setEditReason] = useState("")
+  const [deleteReason, setDeleteReason] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    sale.payment_method
+  )
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitPending, setSubmitPending] = useState(false)
 
-  const toggleExpand = async () => {
-    if (!isExpanded && items.length === 0) {
-      setLoadError(null)
+  const editableProducts = useMemo(
+    () => buildEditableProducts(products, items),
+    [items, products]
+  )
+  const hasReceipt = getHasReceipt(sale)
+  const canManageSale = saleActionMode !== "none" && !pendingSaleChange
+  const actionVerb = saleActionMode === "request" ? "Request" : ""
+  const editTotal = useMemo(() => {
+    const parsed = parseEditableLines(editLines)
+    if ("error" in parsed) {
+      return 0
+    }
+
+    return parsed.data.reduce(
+      (total, line) => total + line.quantity * line.unitPrice,
+      0
+    )
+  }, [editLines])
+
+  const loadSaleItems = async (openAfterLoad = false) => {
+    if (items.length > 0) {
+      if (openAfterLoad) {
+        setEditLines(seedEditableLines(items))
+        setPaymentMethod(sale.payment_method)
+        setSubmitError(null)
+        setEditReason("")
+        setEditOpen(true)
+      }
+      return items
+    }
+
+    setLoadError(null)
+
+    return await new Promise<SaleItemWithProduct[]>((resolve) => {
       startTransition(async () => {
         if (allowOfflineCache) {
           const cachedItems = await getCachedSaleItems(sale.id)
 
           if (cachedItems.length > 0 || !window.navigator.onLine) {
             setItems(cachedItems)
-            setIsExpanded(true)
             if (cachedItems.length === 0 && !window.navigator.onLine) {
               setLoadError("Sale items are not available offline yet.")
             }
+            if (openAfterLoad) {
+              setEditLines(seedEditableLines(cachedItems))
+              setPaymentMethod(sale.payment_method)
+              setSubmitError(null)
+              setEditReason("")
+              setEditOpen(true)
+            }
+            if (!isExpanded) {
+              setIsExpanded(true)
+            }
+            resolve(cachedItems)
             return
           }
         } else if (!window.navigator.onLine) {
-          setIsExpanded(true)
           setLoadError("Reconnect to load sale items for this shift preview.")
+          if (!isExpanded) {
+            setIsExpanded(true)
+          }
+          resolve([])
           return
         }
 
@@ -58,15 +279,36 @@ function SaleRow({ sale, allowOfflineCache, canEditReceipts }: SaleRowProps) {
             await cacheServerSaleItems(data)
           }
           setItems(data)
-          setIsExpanded(true)
+          if (openAfterLoad) {
+            setEditLines(seedEditableLines(data))
+            setPaymentMethod(sale.payment_method)
+            setSubmitError(null)
+            setEditReason("")
+            setEditOpen(true)
+          }
+          if (!isExpanded) {
+            setIsExpanded(true)
+          }
+          resolve(data)
         } catch {
           setLoadError("Unable to load sale items.")
-          setIsExpanded(true)
           toast.error("Unable to load sale items.")
+          if (!isExpanded) {
+            setIsExpanded(true)
+          }
+          resolve([])
         }
       })
+    })
+  }
+
+  const toggleExpand = async () => {
+    if (!isExpanded && items.length === 0) {
+      await loadSaleItems(false)
+      setIsExpanded(true)
       return
     }
+
     setIsExpanded(!isExpanded)
   }
 
@@ -80,6 +322,114 @@ function SaleRow({ sale, allowOfflineCache, canEditReceipts }: SaleRowProps) {
           : "Unable to update this receipt photo."
       )
     }
+  }
+
+  const openEditDialog = async () => {
+    const loadedItems = await loadSaleItems(true)
+
+    if (loadedItems.length === 0) {
+      setSubmitError("Sale items are required before this sale can be edited.")
+    }
+  }
+
+  const addLine = () => {
+    const fallbackProduct = editableProducts[0]
+
+    setEditLines((current) => [
+      ...current,
+      {
+        rowId: crypto.randomUUID(),
+        productId: fallbackProduct?.id ?? "",
+        quantity: "1",
+        unitPrice: fallbackProduct
+          ? formatAmountInput(Number(fallbackProduct.price))
+          : "0.00",
+      },
+    ])
+  }
+
+  const updateLine = (
+    rowId: string,
+    field: keyof EditableSaleLine,
+    value: string
+  ) => {
+    setEditLines((current) =>
+      current.map((line) =>
+        line.rowId === rowId ? { ...line, [field]: value } : line
+      )
+    )
+  }
+
+  const removeLine = (rowId: string) => {
+    setEditLines((current) => current.filter((line) => line.rowId !== rowId))
+  }
+
+  const handleSubmitEdit = async () => {
+    if (!window.navigator.onLine) {
+      setSubmitError("Reconnect before saving sale changes.")
+      return
+    }
+
+    const parsed = parseEditableLines(editLines)
+    if (!("data" in parsed)) {
+      setSubmitError(parsed.error)
+      return
+    }
+
+    if (paymentMethod !== "cash" && !hasReceipt) {
+      setSubmitError(
+        "Switching to non-cash needs a receipt photo already attached to the sale."
+      )
+      return
+    }
+
+    setSubmitPending(true)
+    setSubmitError(null)
+    const result = await submitSaleChange({
+      saleId: sale.id,
+      actionType: "edit_sale",
+      saleUpdatedAt: sale.updated_at,
+      reason: editReason,
+      paymentMethod,
+      receiptPhotoPath: sale.receipt_photo_path,
+      items: parsed.data,
+    })
+    setSubmitPending(false)
+
+    if (!result.ok) {
+      setSubmitError(result.error ?? "Unable to save this sale change.")
+      return
+    }
+
+    setEditOpen(false)
+    toast.success(result.message)
+    onSalesChanged?.()
+  }
+
+  const handleDelete = async () => {
+    if (!window.navigator.onLine) {
+      setSubmitError("Reconnect before deleting a sale.")
+      return
+    }
+
+    setSubmitPending(true)
+    setSubmitError(null)
+    const result = await submitSaleChange({
+      saleId: sale.id,
+      actionType: "delete_sale",
+      saleUpdatedAt: sale.updated_at,
+      reason: deleteReason,
+    })
+    setSubmitPending(false)
+
+    if (!result.ok) {
+      setSubmitError(result.error ?? "Unable to delete this sale.")
+      return
+    }
+
+    setDeleteOpen(false)
+    toast.success(result.message)
+    onSalesChanged?.()
   }
 
   return (
@@ -102,16 +452,14 @@ function SaleRow({ sale, allowOfflineCache, canEditReceipts }: SaleRowProps) {
             </div>
             <div>
               <p className="text-foreground text-sm font-semibold">
-                {sale.created_at
-                  ? new Date(sale.created_at).toLocaleTimeString("en-PH", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })
-                  : "Time unavailable"}
+                {formatSaleTime(sale.created_at)}
               </p>
-              <p className="text-muted-foreground text-[0.65rem] tracking-wider uppercase">
-                ID: {sale.id.slice(0, 8)}
-              </p>
+              <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-[0.65rem] tracking-wider uppercase">
+                <span>ID: {sale.id.slice(0, 8)}</span>
+                {pendingSaleChange ? (
+                  <span className="text-primary">Pending approval</span>
+                ) : null}
+              </div>
             </div>
           </div>
         </TableCell>
@@ -152,17 +500,64 @@ function SaleRow({ sale, allowOfflineCache, canEditReceipts }: SaleRowProps) {
             }
           />
         </TableCell>
-        <TableCell className="text-foreground text-right font-bold">
-          {formatCurrency(Number(sale.total_amount))}
+        <TableCell className="text-right">
+          <div className="flex items-center justify-end gap-2">
+            {canManageSale ? (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 rounded-full px-2.5"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    void openEditDialog()
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  <span className="sr-only">
+                    {actionVerb ? `${actionVerb} edit` : "Edit"} sale
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive h-8 rounded-full px-2.5"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setSubmitError(null)
+                    setDeleteReason("")
+                    setDeleteOpen(true)
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span className="sr-only">
+                    {actionVerb ? `${actionVerb} delete` : "Delete"} sale
+                  </span>
+                </Button>
+              </>
+            ) : null}
+            <span className="text-foreground font-bold">
+              {formatCurrency(Number(sale.total_amount))}
+            </span>
+          </div>
         </TableCell>
       </TableRow>
-      {isExpanded && (
+      {isExpanded ? (
         <TableRow className="bg-surface-container-low/30 hover:bg-surface-container-low/30">
           <TableCell colSpan={5} className="p-0">
             <div className="space-y-3 px-14 py-4">
-              <h4 className="text-muted-foreground text-[0.62rem] font-bold tracking-[0.2em] uppercase">
-                Sale Items
-              </h4>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-muted-foreground text-[0.62rem] font-bold tracking-[0.2em] uppercase">
+                  Sale Items
+                </h4>
+                {pendingSaleChange ? (
+                  <Badge variant="secondary" className="rounded-full">
+                    Waiting for approval
+                  </Badge>
+                ) : null}
+              </div>
               {isPending ? (
                 <div className="text-muted-foreground flex animate-pulse items-center gap-2 py-2 text-xs">
                   <div className="bg-primary/40 h-2 w-2 rounded-full" />
@@ -188,7 +583,7 @@ function SaleRow({ sale, allowOfflineCache, canEditReceipts }: SaleRowProps) {
                           {item.quantity}x
                         </span>
                         <span className="text-muted-foreground">
-                          {item.products?.name || "Unknown Product"}
+                          {getProductDisplayName(item.products)}
                         </span>
                       </div>
                       <span className="text-muted-foreground">
@@ -208,21 +603,256 @@ function SaleRow({ sale, allowOfflineCache, canEditReceipts }: SaleRowProps) {
             </div>
           </TableCell>
         </TableRow>
-      )}
+      ) : null}
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-3xl p-0">
+          <div className="space-y-5 p-6">
+            <div>
+              <DialogTitle>
+                {saleActionMode === "request"
+                  ? "Request sale edit"
+                  : "Edit sale"}
+              </DialogTitle>
+              <DialogDescription className="mt-1">
+                Update the recorded items and payment method for sale{" "}
+                {sale.id.slice(0, 8)}.
+              </DialogDescription>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_12rem]">
+              <div>
+                <label className="text-muted-foreground mb-2 block text-xs font-semibold tracking-[0.18em] uppercase">
+                  Payment method
+                </label>
+                <Select
+                  value={paymentMethod}
+                  onValueChange={(value) =>
+                    setPaymentMethod(value as PaymentMethod)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_OPTIONS.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={option.value}
+                        label={option.label}
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!hasReceipt ? (
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    Non-cash changes need an existing receipt photo on this
+                    sale.
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <label className="text-muted-foreground mb-2 block text-xs font-semibold tracking-[0.18em] uppercase">
+                  Total
+                </label>
+                <div className="border-border/60 bg-muted/30 text-foreground flex h-11 items-center rounded-[calc(var(--radius)-0.25rem)] border px-3.5 text-sm font-semibold">
+                  {formatCurrency(editTotal)}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-muted-foreground text-xs font-semibold tracking-[0.18em] uppercase">
+                  Sale items
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={addLine}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add item
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {editLines.map((line) => (
+                  <div
+                    key={line.rowId}
+                    className="border-border/60 grid gap-3 rounded-[var(--radius)] border p-3 md:grid-cols-[minmax(0,1.4fr)_7rem_8rem_auto]"
+                  >
+                    <Select
+                      value={line.productId}
+                      onValueChange={(value) =>
+                        updateLine(line.rowId, "productId", value ?? "")
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose product" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {editableProducts.map((product) => (
+                          <SelectItem
+                            key={product.id}
+                            value={product.id}
+                            label={product.name}
+                          >
+                            {product.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={line.quantity}
+                      onChange={(event) =>
+                        updateLine(line.rowId, "quantity", event.target.value)
+                      }
+                    />
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={line.unitPrice}
+                      onChange={(event) =>
+                        updateLine(line.rowId, "unitPrice", event.target.value)
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11 rounded-full px-3"
+                      onClick={() => removeLine(line.rowId)}
+                      disabled={editLines.length === 1}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-muted-foreground mb-2 block text-xs font-semibold tracking-[0.18em] uppercase">
+                Reason
+              </label>
+              <textarea
+                value={editReason}
+                onChange={(event) => setEditReason(event.target.value)}
+                rows={3}
+                className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-[calc(var(--radius)-0.25rem)] border px-3.5 py-3 text-sm outline-none focus-visible:ring-3"
+                placeholder="Optional note for the audit log"
+              />
+            </div>
+
+            {submitError ? (
+              <p className="text-destructive text-sm">{submitError}</p>
+            ) : null}
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditOpen(false)}
+                disabled={submitPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSubmitEdit}
+                disabled={submitPending}
+              >
+                {submitPending
+                  ? "Saving..."
+                  : saleActionMode === "request"
+                    ? "Send approval request"
+                    : "Save changes"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent size="default">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {saleActionMode === "request"
+                ? "Request sale deletion"
+                : "Delete sale"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {saleActionMode === "request"
+                ? "This sale will stay in place until an admin approves the deletion."
+                : "This will remove the sale from revenue totals and restore its stock."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-2">
+            <label className="text-muted-foreground block text-xs font-semibold tracking-[0.18em] uppercase">
+              Reason
+            </label>
+            <textarea
+              value={deleteReason}
+              onChange={(event) => setDeleteReason(event.target.value)}
+              rows={3}
+              className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 w-full rounded-[calc(var(--radius)-0.25rem)] border px-3.5 py-3 text-sm outline-none focus-visible:ring-3"
+              placeholder="Optional note for the audit log"
+            />
+            {submitError ? (
+              <p className="text-destructive text-sm">{submitError}</p>
+            ) : null}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={submitPending}
+              onClick={(event) => {
+                event.preventDefault()
+                void handleDelete()
+              }}
+            >
+              {submitPending
+                ? "Saving..."
+                : saleActionMode === "request"
+                  ? "Send approval request"
+                  : "Delete sale"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
 
 type SalesTableProps = {
   sales: SaleWithJoins[]
+  products?: Product[]
   allowOfflineCache?: boolean
   canEditReceipts?: boolean
+  saleActionMode?: SaleActionMode
+  pendingSaleChangeSaleIds?: string[]
+  onSalesChanged?: () => void
 }
 
 export function SalesTable({
   sales,
+  products = [],
   allowOfflineCache = true,
   canEditReceipts = false,
+  saleActionMode = "none",
+  pendingSaleChangeSaleIds = [],
+  onSalesChanged,
 }: SalesTableProps) {
   if (sales.length === 0) {
     return (
@@ -263,8 +893,12 @@ export function SalesTable({
             <SaleRow
               key={sale.id}
               sale={sale}
+              products={products}
               allowOfflineCache={allowOfflineCache}
               canEditReceipts={canEditReceipts}
+              saleActionMode={saleActionMode}
+              pendingSaleChange={pendingSaleChangeSaleIds.includes(sale.id)}
+              onSalesChanged={onSalesChanged}
             />
           ))}
         </TableBody>

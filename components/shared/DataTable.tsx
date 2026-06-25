@@ -192,15 +192,15 @@ export function DataTable<TData, TValue>({
   return (
     <div className="flex flex-col gap-4">
       {showToolbar ? (
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="app-panel-muted flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             {showSearch ? (
               <Input
                 type="search"
                 value={globalFilter}
                 onChange={(event) => setGlobalFilter(event.target.value)}
                 placeholder={searchPlaceholder}
-                className="h-10 w-full sm:max-w-sm"
+                className="bg-background/90 w-full sm:max-w-sm"
               />
             ) : null}
             {toolbarContent}
@@ -209,7 +209,13 @@ export function DataTable<TData, TValue>({
           {showColumnVisibility && hideableColumns.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="outline" size="sm" />}
+                render={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                  />
+                }
               >
                 <SlidersHorizontal data-icon="inline-start" />
                 Columns
@@ -268,7 +274,7 @@ export function DataTable<TData, TValue>({
               <TableRow>
                 <TableCell
                   colSpan={visibleColumnCount}
-                  className="text-muted-foreground h-28 text-center text-sm"
+                  className="text-muted-foreground h-32 text-center text-sm"
                 >
                   {emptyMessage}
                 </TableCell>
@@ -278,7 +284,7 @@ export function DataTable<TData, TValue>({
         </Table>
       </div>
 
-      <div className="text-muted-foreground flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="text-muted-foreground bg-muted/25 flex flex-col gap-3 rounded-[calc(var(--radius)-0.25rem)] px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
         <p>
           {filteredRowCount} result
           {filteredRowCount === 1 ? "" : "s"}
@@ -293,7 +299,7 @@ export function DataTable<TData, TValue>({
             <Button
               type="button"
               variant="outline"
-              size="icon-sm"
+              size="icon"
               disabled={!table.getCanPreviousPage()}
               onClick={() => table.previousPage()}
             >
@@ -303,7 +309,7 @@ export function DataTable<TData, TValue>({
             <Button
               type="button"
               variant="outline"
-              size="icon-sm"
+              size="icon"
               disabled={!table.getCanNextPage()}
               onClick={() => table.nextPage()}
             >

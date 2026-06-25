@@ -193,6 +193,52 @@ create table if not exists public.products (
   created_at timestamptz default now()
 );
 
+create table if not exists public.promos (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  promo_type text not null,
+  starts_on date not null,
+  ends_on date not null,
+  criteria jsonb not null default '{}'::jsonb,
+  benefit jsonb not null default '{}'::jsonb,
+  requires_admin_approval boolean not null default false,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint promos_type_check
+    check (
+      promo_type in (
+        'percent_off',
+        'fixed_amount_off',
+        'special_price',
+        'buy_x_get_y',
+        'bundle_price',
+        'free_item'
+      )
+    ),
+  constraint promos_date_order_check check (starts_on <= ends_on)
+);
+
+create index if not exists promos_active_window_idx
+  on public.promos (is_active, starts_on, ends_on);
+
+create table if not exists public.promo_products (
+  promo_id uuid not null
+    constraint promo_products_promo_id_fkey
+    references public.promos(id) on delete cascade,
+  product_id uuid not null
+    constraint promo_products_product_id_fkey
+    references public.products(id),
+  role text not null default 'qualifying',
+  created_at timestamptz not null default now(),
+  primary key (promo_id, product_id, role),
+  constraint promo_products_role_check
+    check (role in ('qualifying', 'reward'))
+);
+
+create index if not exists promo_products_product_role_idx
+  on public.promo_products (product_id, role);
+
 -- Products deployed for a specific booth schedule (inventory for that shift)
 create table if not exists public.booth_schedule_products (
   id uuid primary key default gen_random_uuid(),
@@ -281,6 +327,41 @@ create table if not exists public.sales (
     check (payment_method = 'cash' or receipt_photo_path is not null)
 );
 
+alter table public.sales
+  add column if not exists updated_at timestamptz;
+
+update public.sales
+set updated_at = coalesce(updated_at, created_at, now())
+where updated_at is null;
+
+alter table public.sales
+  alter column updated_at set default now();
+
+alter table public.sales
+  alter column updated_at set not null;
+
+alter table public.sales
+  add column if not exists promo_id uuid references public.promos(id);
+
+alter table public.sales
+  add column if not exists promo_name text;
+
+alter table public.sales
+  add column if not exists promo_type text;
+
+alter table public.sales
+  add column if not exists promo_discount_total numeric(10,2) not null default 0;
+
+alter table public.sales
+  add column if not exists promo_approval_id uuid;
+
+alter table public.sales
+  drop constraint if exists sales_status_check;
+
+alter table public.sales
+  add constraint sales_status_check
+    check (status in ('completed', 'deleted'));
+
 create index if not exists sales_created_at_idx
   on public.sales (created_at desc);
 
@@ -297,6 +378,10 @@ create index if not exists sales_receipt_photo_path_idx
   on public.sales (receipt_photo_path)
   where receipt_photo_path is not null;
 
+create index if not exists sales_promo_id_idx
+  on public.sales (promo_id)
+  where promo_id is not null;
+
 create table if not exists public.shift_closeouts (
   id uuid primary key default gen_random_uuid(),
   schedule_id uuid references public.booth_schedules(id) on delete cascade not null,
@@ -304,6 +389,7 @@ create table if not exists public.shift_closeouts (
   closed_at timestamptz not null default now(),
   system_cash_sales numeric(10,2) not null,
   counted_cash_sales numeric(10,2) not null,
+  cash_deductions_total numeric(10,2) not null default 0,
   cash_variance numeric(10,2) not null,
   system_stock_total integer not null,
   counted_stock_total integer not null,
@@ -312,7 +398,11 @@ create table if not exists public.shift_closeouts (
   reopened_by_employee_id uuid references public.employees(id),
   reopened_at timestamptz,
   constraint shift_closeouts_cash_nonnegative
-    check (system_cash_sales >= 0 and counted_cash_sales >= 0),
+    check (
+      system_cash_sales >= 0
+      and counted_cash_sales >= 0
+      and cash_deductions_total >= 0
+    ),
   constraint shift_closeouts_stock_nonnegative
     check (system_stock_total >= 0 and counted_stock_total >= 0),
   constraint shift_closeouts_reopen_requires_actor
@@ -329,6 +419,83 @@ create table if not exists public.shift_closeouts (
 create index if not exists shift_closeouts_schedule_closed_at_idx
   on public.shift_closeouts (schedule_id, closed_at desc);
 
+alter table public.shift_closeouts
+  add column if not exists cash_deductions_total numeric(10,2) not null default 0;
+
+alter table public.shift_closeouts
+  drop constraint if exists shift_closeouts_cash_nonnegative;
+
+alter table public.shift_closeouts
+  add constraint shift_closeouts_cash_nonnegative
+    check (
+      system_cash_sales >= 0
+      and counted_cash_sales >= 0
+      and cash_deductions_total >= 0
+    );
+
+create table if not exists public.shift_action_approvals (
+  id uuid primary key default gen_random_uuid(),
+  schedule_id uuid references public.booth_schedules(id) on delete cascade not null,
+  requested_by_employee_id uuid references public.employees(id) not null,
+  action_type text not null,
+  payload jsonb not null default '{}'::jsonb,
+  status text not null default 'pending',
+  resolved_by_employee_id uuid references public.employees(id),
+  resolved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint shift_action_approvals_action_type_check
+    check (
+      action_type in (
+        'reopen_shift',
+        'edit_sale',
+        'delete_sale',
+        'apply_promo',
+        'cash_deduction'
+      )
+    ),
+  constraint shift_action_approvals_status_check
+    check (status in ('pending', 'approved', 'rejected')),
+  constraint shift_action_approvals_resolution_check
+    check (
+      (status = 'pending' and resolved_by_employee_id is null and resolved_at is null)
+      or (
+        status in ('approved', 'rejected')
+        and resolved_by_employee_id is not null
+        and resolved_at is not null
+      )
+    )
+);
+
+create index if not exists shift_action_approvals_schedule_status_idx
+  on public.shift_action_approvals (schedule_id, status, created_at desc);
+
+create index if not exists shift_action_approvals_requester_status_idx
+  on public.shift_action_approvals (requested_by_employee_id, status, created_at desc);
+
+alter table public.shift_action_approvals
+  drop constraint if exists shift_action_approvals_action_type_check;
+
+alter table public.shift_action_approvals
+  add constraint shift_action_approvals_action_type_check
+    check (
+      action_type in (
+        'reopen_shift',
+        'edit_sale',
+        'delete_sale',
+        'apply_promo',
+        'cash_deduction'
+      )
+    );
+
+alter table public.sales
+  drop constraint if exists sales_promo_approval_id_fkey;
+
+alter table public.sales
+  add constraint sales_promo_approval_id_fkey
+    foreign key (promo_approval_id)
+    references public.shift_action_approvals(id);
+
 create table if not exists public.sale_items (
   id uuid primary key default gen_random_uuid(),
   sale_id uuid references public.sales(id) on delete cascade not null,
@@ -340,11 +507,55 @@ create table if not exists public.sale_items (
   constraint sale_items_amount_nonnegative check (unit_price >= 0 and subtotal >= 0)
 );
 
+alter table public.sale_items
+  add column if not exists base_unit_price numeric(10,2);
+
+update public.sale_items
+set base_unit_price = coalesce(base_unit_price, unit_price)
+where base_unit_price is null;
+
+alter table public.sale_items
+  alter column base_unit_price set not null;
+
+alter table public.sale_items
+  add column if not exists discount_amount numeric(10,2) not null default 0;
+
+alter table public.sale_items
+  drop constraint if exists sale_items_discount_nonnegative;
+
+alter table public.sale_items
+  add constraint sale_items_discount_nonnegative
+    check (base_unit_price >= 0 and discount_amount >= 0);
+
 create index if not exists sale_items_sale_id_idx
   on public.sale_items (sale_id);
 
 create index if not exists sale_items_product_id_idx
   on public.sale_items (product_id);
+
+create table if not exists public.sale_promos (
+  id uuid primary key default gen_random_uuid(),
+  sale_id uuid not null
+    constraint sale_promos_sale_id_fkey
+    references public.sales(id) on delete cascade,
+  promo_id uuid
+    constraint sale_promos_promo_id_fkey
+    references public.promos(id),
+  promo_name text not null,
+  promo_type text not null,
+  discount_total numeric(10,2) not null default 0,
+  promo_approval_id uuid
+    constraint sale_promos_promo_approval_id_fkey
+    references public.shift_action_approvals(id),
+  snapshot jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  constraint sale_promos_sale_id_unique unique (sale_id),
+  constraint sale_promos_discount_nonnegative check (discount_total >= 0)
+);
+
+create unique index if not exists sale_promos_approval_unique_idx
+  on public.sale_promos (promo_approval_id)
+  where promo_approval_id is not null;
 
 create or replace function public.current_employee_id()
 returns uuid
@@ -426,6 +637,7 @@ begin
     from public.sales as sale
     where sale.created_at >= v_start
       and sale.created_at < v_end
+      and sale.status = 'completed'
   ),
   filtered_schedules as materialized (
     select booth_id, status
@@ -437,6 +649,7 @@ begin
     from public.sales as sale
     where sale.created_at >= v_trend_start
       and sale.created_at < v_end
+      and sale.status = 'completed'
   ),
   filtered_sale_items as materialized (
     select
@@ -664,7 +877,6 @@ declare
   v_now timestamptz := now();
   v_requested_employee_ids uuid[] := coalesce(p_employee_ids, array[]::uuid[]);
   v_started boolean := false;
-  v_requested_core_fields_changed boolean := false;
 begin
   if p_start_time >= p_end_time then
     raise exception using message = 'INVALID_SHIFT_TIME';
@@ -727,17 +939,14 @@ begin
       or (
         v_schedule.date = p_current_date
         and v_schedule.start_time <= p_current_time
+      )
+      or exists (
+        select 1
+        from public.booth_schedule_operator_periods as period
+        where period.schedule_id = p_schedule_id
+          and period.starts_at <= v_now
       );
-
-    v_requested_core_fields_changed :=
-      v_schedule.booth_id is distinct from p_booth_id
-      or v_schedule.date is distinct from p_date
-      or v_schedule.start_time is distinct from p_start_time
-      or v_schedule.end_time is distinct from p_end_time;
-
-    if v_started and v_requested_core_fields_changed then
-      raise exception using message = 'LIVE_SHIFT_CORE_FIELDS_LOCKED';
-    elsif not v_started
+    if not v_started
       and (
         p_date < p_current_date
         or (
@@ -1187,6 +1396,7 @@ begin
             sale.receipt_photo_path,
             sale.status,
             sale.created_at,
+            sale.updated_at,
             case
               when employee.id is null then null
               else jsonb_build_object('name', employee.name)
@@ -1198,7 +1408,43 @@ begin
           left join public.booths as booth
             on booth.id = sale.booth_id
           where sale.schedule_id = v_schedule.id
+            and sale.status = 'completed'
         ) as sale_row
+      ),
+      '[]'::jsonb
+    ),
+    'saleItems',
+    coalesce(
+      (
+        select jsonb_agg(to_jsonb(item_row) order by item_row.id)
+        from (
+          select
+            item.id,
+            item.sale_id,
+            item.product_id,
+            item.quantity,
+            item.unit_price,
+            item.subtotal,
+            case
+              when product.id is null then null
+              else jsonb_build_object(
+                'id', product.id,
+                'name', product.name,
+                'price', product.price,
+                'category', product.category,
+                'image_url', product.image_url,
+                'is_available', product.is_available,
+                'created_at', product.created_at
+              )
+            end as products
+          from public.sale_items as item
+          join public.sales as sale
+            on sale.id = item.sale_id
+          left join public.products as product
+            on product.id = item.product_id
+          where sale.schedule_id = v_schedule.id
+            and sale.status = 'completed'
+        ) as item_row
       ),
       '[]'::jsonb
     )
@@ -1252,9 +1498,12 @@ begin
             )
           end as products
         from public.sale_items as item
+        join public.sales as sale
+          on sale.id = item.sale_id
         left join public.products as product
           on product.id = item.product_id
         where item.sale_id = p_sale_id
+          and sale.status = 'completed'
       ) as item_row
     ),
     '[]'::jsonb
@@ -1360,7 +1609,6 @@ begin
   if not found
     or v_schedule.status <> 'scheduled'
     or v_schedule.date <> timezone('Asia/Manila', now())::date
-    or v_schedule.start_time > timezone('Asia/Manila', now())::time
     or v_schedule.end_time <= timezone('Asia/Manila', now())::time then
     raise exception using message = 'SHIFT_NOT_ACTIVE';
   end if;
@@ -1375,8 +1623,36 @@ begin
   end if;
 
   if v_schedule.operator_employee_id = v_employee_id then
+    update public.booth_schedule_operator_periods
+    set starts_at = least(starts_at, now())
+    where schedule_id = p_schedule_id
+      and operator_employee_id = v_employee_id
+      and ends_at is null;
+
+    if not found then
+      insert into public.booth_schedule_operator_periods (
+        schedule_id,
+        operator_employee_id,
+        initiated_by_employee_id,
+        transition_type,
+        starts_at
+      )
+      values (
+        p_schedule_id,
+        v_employee_id,
+        v_employee_id,
+        'takeover',
+        now()
+      );
+    end if;
+
     return p_schedule_id;
   end if;
+
+  delete from public.booth_schedule_operator_periods
+  where schedule_id = p_schedule_id
+    and ends_at is null
+    and starts_at > now();
 
   update public.booth_schedule_operator_periods
   set ends_at = now()
@@ -1419,7 +1695,10 @@ where inventory.schedule_id = schedule.id
     )
   )
   and not exists (
-    select 1 from public.sales where sales.schedule_id = schedule.id
+    select 1
+    from public.sales
+    where sales.schedule_id = schedule.id
+      and sales.status = 'completed'
   );
 
 create or replace function public.record_shift_inventory_event(
@@ -1437,11 +1716,12 @@ set search_path = public
 as $$
 declare
   v_employee_id uuid;
+  v_employee_role text;
   v_line record;
   v_existing_stock integer;
 begin
-  select employees.id
-  into v_employee_id
+  select employees.id, employees.role
+  into v_employee_id, v_employee_role
   from public.employees
   where employees.user_id = (select auth.uid())
     and employees.is_active is true
@@ -1469,15 +1749,30 @@ begin
     where schedule.id = p_schedule_id
       and schedule.status = 'scheduled'
       and schedule.date = timezone('Asia/Manila', p_occurred_at)::date
-      and schedule.start_time <= timezone('Asia/Manila', p_occurred_at)::time
       and schedule.end_time > timezone('Asia/Manila', p_occurred_at)::time
-      and exists (
-        select 1
-        from public.booth_schedule_operator_periods as period
-        where period.schedule_id = schedule.id
-          and period.operator_employee_id = v_employee_id
-          and period.starts_at <= p_occurred_at
-          and (period.ends_at is null or period.ends_at > p_occurred_at)
+      and (
+        schedule.start_time <= timezone('Asia/Manila', p_occurred_at)::time
+        or exists (
+          select 1
+          from public.booth_schedule_products
+          where booth_schedule_products.schedule_id = schedule.id
+        )
+        or p_event_type = 'opening'
+      )
+      and (
+        v_employee_role = 'admin'
+        or exists (
+          select 1
+          from public.booth_schedule_operator_periods as period
+          where period.schedule_id = schedule.id
+            and period.operator_employee_id = v_employee_id
+            and period.starts_at <= p_occurred_at
+            and (period.ends_at is null or period.ends_at > p_occurred_at)
+        )
+        or (
+          p_event_type = 'opening'
+          and schedule.operator_employee_id = v_employee_id
+        )
       )
   ) then
     raise exception using message = 'SHIFT_NOT_ACTIVE_FOR_INVENTORY';
@@ -1567,6 +1862,14 @@ begin
     nullif(btrim(p_reason), ''),
     p_occurred_at
   );
+
+  if p_event_type = 'opening' then
+    update public.booth_schedule_operator_periods
+    set starts_at = least(starts_at, p_occurred_at)
+    where schedule_id = p_schedule_id
+      and operator_employee_id = v_employee_id
+      and ends_at is null;
+  end if;
 
   for v_line in
     select *
@@ -1678,7 +1981,6 @@ begin
     where schedule.id = p_schedule_id
       and schedule.status = 'scheduled'
       and schedule.date = timezone('Asia/Manila', now())::date
-      and schedule.start_time <= timezone('Asia/Manila', now())::time
       and schedule.end_time > timezone('Asia/Manila', now())::time
       and exists (
         select 1
@@ -1811,6 +2113,7 @@ declare
   v_line_count integer;
   v_now timestamptz := now();
   v_system_cash_sales numeric(10,2);
+  v_cash_deductions_total numeric(10,2) := 0;
   v_system_stock_total integer := 0;
   v_counted_stock_total integer := 0;
   v_closeout_event_id uuid := gen_random_uuid();
@@ -1870,26 +2173,28 @@ begin
     raise exception using message = 'SCHEDULE_NOT_FOUND';
   end if;
 
-  if v_schedule.status <> 'scheduled'
-    or (
-      v_schedule.date > timezone('Asia/Manila', v_now)::date
-      or (
-        v_schedule.date = timezone('Asia/Manila', v_now)::date
-        and v_schedule.start_time > timezone('Asia/Manila', v_now)::time
-      )
-    ) then
-    raise exception using message = 'SHIFT_NOT_ACTIVE_FOR_CLOSEOUT';
-  end if;
-
-  if v_schedule.operator_employee_id is null
-    or v_schedule.operator_employee_id <> v_employee_id then
-    raise exception using message = 'EMPLOYEE_NOT_OPERATOR';
-  end if;
-
   select count(*)
   into v_inventory_row_count
   from public.booth_schedule_products
   where schedule_id = p_schedule_id;
+
+  if v_schedule.status <> 'scheduled'
+    or v_schedule.date > timezone('Asia/Manila', v_now)::date
+    or (
+      v_schedule.date = timezone('Asia/Manila', v_now)::date
+      and v_schedule.start_time > timezone('Asia/Manila', v_now)::time
+      and v_inventory_row_count = 0
+    ) then
+    raise exception using message = 'SHIFT_NOT_ACTIVE_FOR_CLOSEOUT';
+  end if;
+
+  if v_employee_role <> 'admin'
+    and (
+      v_schedule.operator_employee_id is null
+      or v_schedule.operator_employee_id <> v_employee_id
+    ) then
+    raise exception using message = 'EMPLOYEE_NOT_OPERATOR';
+  end if;
 
   if v_inventory_row_count = 0 then
     raise exception using message = 'INVENTORY_NOT_INITIALIZED';
@@ -1908,7 +2213,25 @@ begin
   into v_system_cash_sales
   from public.sales
   where schedule_id = p_schedule_id
-    and payment_method = 'cash';
+    and payment_method = 'cash'
+    and status = 'completed';
+
+  if exists (
+    select 1
+    from public.shift_action_approvals
+    where schedule_id = p_schedule_id
+      and action_type = 'cash_deduction'
+      and status = 'pending'
+  ) then
+    raise exception using message = 'PENDING_CASH_DEDUCTIONS';
+  end if;
+
+  select coalesce(sum(nullif(payload ->> 'amount', '')::numeric), 0)::numeric(10,2)
+  into v_cash_deductions_total
+  from public.shift_action_approvals
+  where schedule_id = p_schedule_id
+    and action_type = 'cash_deduction'
+    and status = 'approved';
 
   insert into public.inventory_events (
     id,
@@ -1976,6 +2299,7 @@ begin
     closed_at,
     system_cash_sales,
     counted_cash_sales,
+    cash_deductions_total,
     cash_variance,
     system_stock_total,
     counted_stock_total,
@@ -1987,7 +2311,11 @@ begin
     v_now,
     v_system_cash_sales,
     p_counted_cash_sales::numeric(10,2),
-    (p_counted_cash_sales::numeric(10,2) - v_system_cash_sales)::numeric(10,2),
+    v_cash_deductions_total,
+    (
+      p_counted_cash_sales::numeric(10,2)
+      - (v_system_cash_sales - v_cash_deductions_total)
+    )::numeric(10,2),
     v_system_stock_total,
     v_counted_stock_total,
     v_counted_stock_total - v_system_stock_total
@@ -1999,6 +2327,1010 @@ begin
   where id = p_schedule_id;
 
   return v_closeout_id;
+end;
+$$;
+
+create or replace function public.cancel_booth_schedule(
+  p_schedule_id uuid,
+  p_current_date date,
+  p_current_time time
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_schedule public.booth_schedules%rowtype;
+begin
+  if not public.current_employee_is_admin() then
+    raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+  end if;
+
+  select *
+  into v_schedule
+  from public.booth_schedules
+  where id = p_schedule_id
+  for update;
+
+  if not found then
+    raise exception using message = 'SCHEDULE_NOT_FOUND';
+  end if;
+
+  if v_schedule.status <> 'scheduled' then
+    raise exception using message = 'SCHEDULE_CANCELLED';
+  end if;
+
+  if v_schedule.date < p_current_date
+    or (
+      v_schedule.date = p_current_date
+      and v_schedule.end_time <= p_current_time
+    ) then
+    raise exception using message = 'SHIFT_ALREADY_PASSED';
+  end if;
+
+  update public.booth_schedules
+  set status = 'cancelled'
+  where id = p_schedule_id;
+
+  return p_schedule_id;
+end;
+$$;
+
+create or replace function public.delete_booth_schedule_cascade(
+  p_schedule_id uuid
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_schedule public.booth_schedules%rowtype;
+begin
+  if not public.current_employee_is_admin() then
+    raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+  end if;
+
+  select *
+  into v_schedule
+  from public.booth_schedules
+  where id = p_schedule_id
+  for update;
+
+  if not found then
+    raise exception using message = 'SCHEDULE_NOT_FOUND';
+  end if;
+
+  delete from public.sales
+  where schedule_id = p_schedule_id;
+
+  delete from public.booth_schedules
+  where id = p_schedule_id;
+
+  return v_schedule.id;
+end;
+$$;
+
+create or replace function public.request_shift_action_approval(
+  p_schedule_id uuid,
+  p_action_type text,
+  p_payload jsonb default '{}'::jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_employee_id uuid;
+  v_existing_id uuid;
+  v_schedule public.booth_schedules%rowtype;
+  v_promo_id text;
+begin
+  select employees.id
+  into v_employee_id
+  from public.employees
+  where employees.user_id = (select auth.uid())
+    and employees.is_active is true
+  limit 1;
+
+  if v_employee_id is null then
+    raise exception using message = 'EMPLOYEE_NOT_AUTHORIZED';
+  end if;
+
+  if p_action_type not in ('reopen_shift', 'apply_promo') then
+    raise exception using message = 'INVALID_APPROVAL_ACTION';
+  end if;
+
+  select *
+  into v_schedule
+  from public.booth_schedules
+  where id = p_schedule_id
+  for update;
+
+  if not found then
+    raise exception using message = 'SCHEDULE_NOT_FOUND';
+  end if;
+
+  if p_action_type = 'reopen_shift' then
+    if v_schedule.status <> 'closed' then
+      raise exception using message = 'SHIFT_NOT_CLOSED';
+    end if;
+
+    if not exists (
+      select 1
+      from public.booth_schedule_assignments
+      where schedule_id = p_schedule_id
+        and employee_id = v_employee_id
+    ) and not public.current_employee_is_admin() then
+      raise exception using message = 'EMPLOYEE_NOT_ASSIGNED';
+    end if;
+
+    select id
+    into v_existing_id
+    from public.shift_action_approvals
+    where schedule_id = p_schedule_id
+      and action_type = p_action_type
+      and status = 'pending'
+    order by created_at desc
+    limit 1
+    for update;
+  else
+    v_promo_id := nullif(coalesce(p_payload ->> 'promo_id', ''), '');
+
+    if v_promo_id is null then
+      raise exception using message = 'INVALID_PROMO';
+    end if;
+
+    if v_schedule.status <> 'scheduled' then
+      raise exception using message = 'INVALID_ACTIVE_SCHEDULE';
+    end if;
+
+    if not public.current_employee_is_admin()
+      and not exists (
+        select 1
+        from public.booth_schedule_operator_periods as period
+        where period.schedule_id = p_schedule_id
+          and period.operator_employee_id = v_employee_id
+          and period.starts_at <= now()
+          and (period.ends_at is null or period.ends_at > now())
+      ) then
+      raise exception using message = 'PROMO_APPROVAL_NOT_ALLOWED';
+    end if;
+
+    select id
+    into v_existing_id
+    from public.shift_action_approvals
+    where schedule_id = p_schedule_id
+      and requested_by_employee_id = v_employee_id
+      and action_type = p_action_type
+      and status = 'pending'
+      and payload ->> 'promo_id' = v_promo_id
+    order by created_at desc
+    limit 1
+    for update;
+  end if;
+
+  if v_existing_id is not null then
+    return v_existing_id;
+  end if;
+
+  insert into public.shift_action_approvals (
+    schedule_id,
+    requested_by_employee_id,
+    action_type,
+    payload
+  )
+  values (
+    p_schedule_id,
+    v_employee_id,
+    p_action_type,
+    coalesce(p_payload, '{}'::jsonb)
+  )
+  returning id into v_existing_id;
+
+  return v_existing_id;
+end;
+$$;
+
+create or replace function public.request_shift_cash_deduction(
+  p_schedule_id uuid,
+  p_amount numeric,
+  p_reason text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_employee public.employees%rowtype;
+  v_schedule public.booth_schedules%rowtype;
+  v_approval_id uuid;
+begin
+  select *
+  into v_employee
+  from public.employees
+  where employees.user_id = (select auth.uid())
+    and employees.is_active is true
+  limit 1;
+
+  if v_employee.id is null then
+    raise exception using message = 'EMPLOYEE_NOT_AUTHORIZED';
+  end if;
+
+  if p_amount is null or p_amount <= 0 then
+    raise exception using message = 'INVALID_CASH_DEDUCTION_AMOUNT';
+  end if;
+
+  if nullif(btrim(p_reason), '') is null then
+    raise exception using message = 'CASH_DEDUCTION_REASON_REQUIRED';
+  end if;
+
+  select *
+  into v_schedule
+  from public.booth_schedules
+  where id = p_schedule_id
+  for update;
+
+  if not found then
+    raise exception using message = 'SCHEDULE_NOT_FOUND';
+  end if;
+
+  if v_schedule.status <> 'scheduled' then
+    raise exception using message = 'SHIFT_NOT_OPEN';
+  end if;
+
+  if v_employee.role <> 'admin'
+    and (
+      v_schedule.operator_employee_id is null
+      or v_schedule.operator_employee_id <> v_employee.id
+    ) then
+    raise exception using message = 'CASH_DEDUCTION_NOT_ALLOWED';
+  end if;
+
+  insert into public.shift_action_approvals (
+    schedule_id,
+    requested_by_employee_id,
+    action_type,
+    payload
+  )
+  values (
+    p_schedule_id,
+    v_employee.id,
+    'cash_deduction',
+    jsonb_build_object(
+      'amount',
+      round(p_amount::numeric, 2)::numeric(10,2),
+      'reason',
+      btrim(p_reason)
+    )
+  )
+  returning id into v_approval_id;
+
+  return v_approval_id;
+end;
+$$;
+
+create or replace function public.get_pending_shift_action_approvals(
+  p_schedule_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.current_employee_is_admin() then
+    raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+  end if;
+
+  return coalesce(
+    (
+      select jsonb_agg(
+        jsonb_build_object(
+          'id', approval.id,
+          'schedule_id', approval.schedule_id,
+          'requested_by_employee_id', approval.requested_by_employee_id,
+          'requested_by_name', requester.name,
+          'action_type', approval.action_type,
+          'payload', approval.payload,
+          'status', approval.status,
+          'created_at', approval.created_at
+        )
+        order by approval.created_at desc
+      )
+      from public.shift_action_approvals as approval
+      left join public.employees as requester
+        on requester.id = approval.requested_by_employee_id
+      where approval.status = 'pending'
+        and (p_schedule_id is null or approval.schedule_id = p_schedule_id)
+    ),
+    '[]'::jsonb
+  );
+end;
+$$;
+
+create or replace function public.apply_sale_change_from_payload(
+  p_sale_id uuid,
+  p_action_type text,
+  p_payload jsonb,
+  p_actor_employee_id uuid
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_sale public.sales%rowtype;
+  v_expected_updated_at timestamptz;
+  v_now timestamptz := now();
+  v_payment_method text;
+  v_receipt_photo_path text;
+  v_total_amount numeric(10,2) := 0;
+  v_reason text;
+  v_delta_row_count integer := 0;
+  v_locked_row_count integer := 0;
+  v_event_id uuid;
+  v_delta record;
+begin
+  if p_action_type not in ('edit_sale', 'delete_sale') then
+    raise exception using message = 'INVALID_SALE_ACTION';
+  end if;
+
+  select *
+  into v_sale
+  from public.sales
+  where id = p_sale_id
+  for update;
+
+  if not found then
+    raise exception using message = 'SALE_NOT_FOUND';
+  end if;
+
+  if v_sale.status <> 'completed' then
+    raise exception using message = 'SALE_NOT_EDITABLE';
+  end if;
+
+  if nullif(coalesce(p_payload ->> 'sale_updated_at', ''), '') is null then
+    raise exception using message = 'SALE_SNAPSHOT_REQUIRED';
+  end if;
+
+  v_expected_updated_at := (p_payload ->> 'sale_updated_at')::timestamptz;
+
+  if v_sale.updated_at <> v_expected_updated_at then
+    raise exception using message = 'SALE_CHANGE_STALE';
+  end if;
+
+  v_reason := nullif(btrim(coalesce(p_payload ->> 'reason', '')), '');
+
+  if p_action_type = 'edit_sale' then
+    if p_payload -> 'items' is null
+      or jsonb_typeof(p_payload -> 'items') <> 'array'
+      or jsonb_array_length(p_payload -> 'items') = 0 then
+      raise exception using message = 'SALE_ITEMS_REQUIRED';
+    end if;
+
+    v_payment_method := coalesce(
+      nullif(p_payload ->> 'payment_method', ''),
+      v_sale.payment_method
+    );
+
+    if v_payment_method not in ('cash', 'gcash', 'maya', 'maribank', 'unionbank', 'other') then
+      raise exception using message = 'INVALID_PAYMENT_METHOD';
+    end if;
+
+    if p_payload ? 'receipt_photo_path' then
+      v_receipt_photo_path := nullif(p_payload ->> 'receipt_photo_path', '');
+    else
+      v_receipt_photo_path := v_sale.receipt_photo_path;
+    end if;
+
+    if v_payment_method <> 'cash' and v_receipt_photo_path is null then
+      raise exception using message = 'RECEIPT_PHOTO_REQUIRED';
+    end if;
+
+    if v_receipt_photo_path is not null
+      and not exists (
+        select 1
+        from storage.objects
+        where bucket_id = 'receipts'
+          and name = v_receipt_photo_path
+      ) then
+      raise exception using message = 'RECEIPT_PHOTO_NOT_FOUND';
+    end if;
+
+    if exists (
+      select 1
+      from jsonb_to_recordset(p_payload -> 'items')
+        as item(product_id uuid, quantity integer, unit_price numeric)
+      left join public.products on products.id = item.product_id
+      where item.product_id is null
+        or item.quantity is null
+        or item.quantity <= 0
+        or item.unit_price is null
+        or item.unit_price < 0
+        or products.id is null
+    ) then
+      raise exception using message = 'INVALID_SALE_ITEMS';
+    end if;
+
+    if (
+      select count(*) <> count(distinct item.product_id)
+      from jsonb_to_recordset(p_payload -> 'items')
+        as item(product_id uuid, quantity integer, unit_price numeric)
+    ) then
+      raise exception using message = 'DUPLICATE_SALE_ITEMS';
+    end if;
+
+    select coalesce(sum(item.quantity * item.unit_price), 0)::numeric(10,2)
+    into v_total_amount
+    from jsonb_to_recordset(p_payload -> 'items')
+      as item(product_id uuid, quantity integer, unit_price numeric);
+
+    select count(*)
+    into v_delta_row_count
+    from (
+      with requested as (
+        select item.product_id, item.quantity
+        from jsonb_to_recordset(p_payload -> 'items')
+          as item(product_id uuid, quantity integer, unit_price numeric)
+      ),
+      existing as (
+        select item.product_id, item.quantity
+        from public.sale_items as item
+        where item.sale_id = p_sale_id
+      ),
+      deltas as (
+        select
+          coalesce(requested.product_id, existing.product_id) as product_id,
+          coalesce(existing.quantity, 0) as previous_quantity,
+          coalesce(requested.quantity, 0) as next_quantity
+        from requested
+        full join existing
+          on existing.product_id = requested.product_id
+      )
+      select 1
+      from deltas
+    ) as delta_rows;
+
+    for v_delta in
+      with requested as (
+        select item.product_id, item.quantity
+        from jsonb_to_recordset(p_payload -> 'items')
+          as item(product_id uuid, quantity integer, unit_price numeric)
+      ),
+      existing as (
+        select item.product_id, item.quantity
+        from public.sale_items as item
+        where item.sale_id = p_sale_id
+      ),
+      deltas as (
+        select
+          coalesce(requested.product_id, existing.product_id) as product_id,
+          coalesce(existing.quantity, 0) as previous_quantity,
+          coalesce(requested.quantity, 0) as next_quantity
+        from requested
+        full join existing
+          on existing.product_id = requested.product_id
+      )
+      select
+        inventory.product_id,
+        inventory.stock as previous_stock,
+        inventory.stock - (deltas.next_quantity - deltas.previous_quantity) as resulting_stock
+      from deltas
+      join public.booth_schedule_products as inventory
+        on inventory.schedule_id = v_sale.schedule_id
+       and inventory.product_id = deltas.product_id
+      order by inventory.product_id
+      for update of inventory
+    loop
+      v_locked_row_count := v_locked_row_count + 1;
+
+      if v_delta.resulting_stock < 0 then
+        raise exception using message = 'INVENTORY_STALE';
+      end if;
+
+      if v_delta.previous_stock <> v_delta.resulting_stock then
+        if v_event_id is null then
+          insert into public.inventory_events (
+            schedule_id,
+            actor_employee_id,
+            event_type,
+            reason,
+            occurred_at
+          )
+          values (
+            v_sale.schedule_id,
+            p_actor_employee_id,
+            'admin_override',
+            coalesce(v_reason, 'Sale updated') || ' [sale ' || left(p_sale_id::text, 8) || ']',
+            v_now
+          )
+          returning id into v_event_id;
+        end if;
+
+        update public.booth_schedule_products
+        set stock = v_delta.resulting_stock
+        where schedule_id = v_sale.schedule_id
+          and product_id = v_delta.product_id;
+
+        insert into public.inventory_event_lines (
+          id,
+          event_id,
+          product_id,
+          previous_stock,
+          resulting_stock,
+          delta
+        )
+        values (
+          gen_random_uuid(),
+          v_event_id,
+          v_delta.product_id,
+          v_delta.previous_stock,
+          v_delta.resulting_stock,
+          v_delta.resulting_stock - v_delta.previous_stock
+        );
+      end if;
+    end loop;
+
+    if v_locked_row_count <> v_delta_row_count then
+      raise exception using message = 'INVENTORY_STALE';
+    end if;
+
+    update public.sales
+    set total_amount = v_total_amount,
+        payment_method = v_payment_method,
+        receipt_photo_path = v_receipt_photo_path,
+        promo_id = null,
+        promo_name = null,
+        promo_type = null,
+        promo_discount_total = 0,
+        promo_approval_id = null,
+        updated_at = v_now
+    where id = p_sale_id;
+
+    delete from public.sale_promos
+    where sale_id = p_sale_id;
+
+    delete from public.sale_items
+    where sale_id = p_sale_id;
+
+    insert into public.sale_items (
+      id,
+      sale_id,
+      product_id,
+      quantity,
+      base_unit_price,
+      discount_amount,
+      unit_price,
+      subtotal
+    )
+    select
+      gen_random_uuid(),
+      p_sale_id,
+      item.product_id,
+      item.quantity,
+      item.unit_price,
+      0,
+      item.unit_price,
+      (item.quantity * item.unit_price)::numeric(10,2)
+    from jsonb_to_recordset(p_payload -> 'items')
+      as item(product_id uuid, quantity integer, unit_price numeric);
+  else
+    select count(*)
+    into v_delta_row_count
+    from public.sale_items
+    where sale_id = p_sale_id;
+
+    for v_delta in
+      select
+        inventory.product_id,
+        inventory.stock as previous_stock,
+        inventory.stock + item.quantity as resulting_stock
+      from public.sale_items as item
+      join public.booth_schedule_products as inventory
+        on inventory.schedule_id = v_sale.schedule_id
+       and inventory.product_id = item.product_id
+      where item.sale_id = p_sale_id
+      order by inventory.product_id
+      for update of inventory
+    loop
+      v_locked_row_count := v_locked_row_count + 1;
+
+      if v_event_id is null then
+        insert into public.inventory_events (
+          schedule_id,
+          actor_employee_id,
+          event_type,
+          reason,
+          occurred_at
+        )
+        values (
+          v_sale.schedule_id,
+          p_actor_employee_id,
+          'admin_override',
+          coalesce(v_reason, 'Sale deleted') || ' [sale ' || left(p_sale_id::text, 8) || ']',
+          v_now
+        )
+        returning id into v_event_id;
+      end if;
+
+      update public.booth_schedule_products
+      set stock = v_delta.resulting_stock
+      where schedule_id = v_sale.schedule_id
+        and product_id = v_delta.product_id;
+
+      insert into public.inventory_event_lines (
+        id,
+        event_id,
+        product_id,
+        previous_stock,
+        resulting_stock,
+        delta
+      )
+      values (
+        gen_random_uuid(),
+        v_event_id,
+        v_delta.product_id,
+        v_delta.previous_stock,
+        v_delta.resulting_stock,
+        v_delta.resulting_stock - v_delta.previous_stock
+      );
+    end loop;
+
+    if v_locked_row_count <> v_delta_row_count then
+      raise exception using message = 'INVENTORY_STALE';
+    end if;
+
+    update public.sales
+    set status = 'deleted',
+        updated_at = v_now
+    where id = p_sale_id;
+
+    delete from public.sale_promos
+    where sale_id = p_sale_id;
+  end if;
+
+  return v_sale.schedule_id;
+end;
+$$;
+
+create or replace function public.submit_sale_change(
+  p_sale_id uuid,
+  p_action_type text,
+  p_payload jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_employee public.employees%rowtype;
+  v_sale public.sales%rowtype;
+  v_schedule public.booth_schedules%rowtype;
+  v_existing_approval_id uuid;
+  v_approval_id uuid;
+  v_now timestamptz := now();
+  v_payment_method text;
+  v_receipt_photo_path text;
+  v_new_total numeric(10,2) := 0;
+  v_normalized_payload jsonb;
+begin
+  select *
+  into v_employee
+  from public.employees
+  where employees.user_id = (select auth.uid())
+    and employees.is_active is true
+  limit 1;
+
+  if v_employee.id is null then
+    raise exception using message = 'EMPLOYEE_NOT_AUTHORIZED';
+  end if;
+
+  if p_action_type not in ('edit_sale', 'delete_sale') then
+    raise exception using message = 'INVALID_SALE_ACTION';
+  end if;
+
+  select *
+  into v_sale
+  from public.sales
+  where id = p_sale_id
+  for update;
+
+  if not found then
+    raise exception using message = 'SALE_NOT_FOUND';
+  end if;
+
+  if v_sale.status <> 'completed' then
+    raise exception using message = 'SALE_NOT_EDITABLE';
+  end if;
+
+  select *
+  into v_schedule
+  from public.booth_schedules
+  where id = v_sale.schedule_id;
+
+  if not found then
+    raise exception using message = 'SCHEDULE_NOT_FOUND';
+  end if;
+
+  if v_employee.role <> 'admin'
+    and v_schedule.operator_employee_id <> v_employee.id then
+    raise exception using message = 'SALE_CHANGE_NOT_ALLOWED';
+  end if;
+
+  select id
+  into v_existing_approval_id
+  from public.shift_action_approvals
+  where status = 'pending'
+    and action_type in ('edit_sale', 'delete_sale')
+    and payload ->> 'sale_id' = p_sale_id::text
+  order by created_at desc
+  limit 1
+  for update;
+
+  if v_existing_approval_id is not null then
+    return jsonb_build_object(
+      'approval_id', v_existing_approval_id,
+      'schedule_id', v_sale.schedule_id,
+      'status', 'pending'
+    );
+  end if;
+
+  if p_action_type = 'edit_sale' then
+    if p_payload -> 'items' is null
+      or jsonb_typeof(p_payload -> 'items') <> 'array'
+      or jsonb_array_length(p_payload -> 'items') = 0 then
+      raise exception using message = 'SALE_ITEMS_REQUIRED';
+    end if;
+
+    v_payment_method := coalesce(
+      nullif(p_payload ->> 'payment_method', ''),
+      v_sale.payment_method
+    );
+
+    if v_payment_method not in ('cash', 'gcash', 'maya', 'maribank', 'unionbank', 'other') then
+      raise exception using message = 'INVALID_PAYMENT_METHOD';
+    end if;
+
+    if p_payload ? 'receipt_photo_path' then
+      v_receipt_photo_path := nullif(p_payload ->> 'receipt_photo_path', '');
+    else
+      v_receipt_photo_path := v_sale.receipt_photo_path;
+    end if;
+
+    if v_payment_method <> 'cash' and v_receipt_photo_path is null then
+      raise exception using message = 'RECEIPT_PHOTO_REQUIRED';
+    end if;
+
+    if v_receipt_photo_path is not null
+      and not exists (
+        select 1
+        from storage.objects
+        where bucket_id = 'receipts'
+          and name = v_receipt_photo_path
+      ) then
+      raise exception using message = 'RECEIPT_PHOTO_NOT_FOUND';
+    end if;
+
+    if exists (
+      select 1
+      from jsonb_to_recordset(p_payload -> 'items')
+        as item(product_id uuid, quantity integer, unit_price numeric)
+      left join public.products on products.id = item.product_id
+      where item.product_id is null
+        or item.quantity is null
+        or item.quantity <= 0
+        or item.unit_price is null
+        or item.unit_price < 0
+        or products.id is null
+    ) then
+      raise exception using message = 'INVALID_SALE_ITEMS';
+    end if;
+
+    if (
+      select count(*) <> count(distinct item.product_id)
+      from jsonb_to_recordset(p_payload -> 'items')
+        as item(product_id uuid, quantity integer, unit_price numeric)
+    ) then
+      raise exception using message = 'DUPLICATE_SALE_ITEMS';
+    end if;
+
+    select coalesce(sum(item.quantity * item.unit_price), 0)::numeric(10,2)
+    into v_new_total
+    from jsonb_to_recordset(p_payload -> 'items')
+      as item(product_id uuid, quantity integer, unit_price numeric);
+
+    v_normalized_payload := jsonb_build_object(
+      'sale_id', v_sale.id,
+      'sale_created_at', v_sale.created_at,
+      'sale_updated_at', v_sale.updated_at,
+      'previous_total_amount', v_sale.total_amount,
+      'new_total_amount', v_new_total,
+      'revenue_delta', v_new_total - v_sale.total_amount,
+      'previous_payment_method', v_sale.payment_method,
+      'payment_method', v_payment_method,
+      'receipt_photo_path', v_receipt_photo_path,
+      'reason', nullif(btrim(coalesce(p_payload ->> 'reason', '')), ''),
+      'items',
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'product_id', item.product_id,
+            'quantity', item.quantity,
+            'unit_price', item.unit_price
+          )
+          order by item.product_id
+        )
+        from jsonb_to_recordset(p_payload -> 'items')
+          as item(product_id uuid, quantity integer, unit_price numeric)
+      )
+    );
+  else
+    v_normalized_payload := jsonb_build_object(
+      'sale_id', v_sale.id,
+      'sale_created_at', v_sale.created_at,
+      'sale_updated_at', v_sale.updated_at,
+      'previous_total_amount', v_sale.total_amount,
+      'new_total_amount', 0,
+      'revenue_delta', 0 - v_sale.total_amount,
+      'previous_payment_method', v_sale.payment_method,
+      'payment_method', v_sale.payment_method,
+      'receipt_photo_path', v_sale.receipt_photo_path,
+      'reason', nullif(btrim(coalesce(p_payload ->> 'reason', '')), '')
+    );
+  end if;
+
+  if v_employee.role = 'admin' then
+    perform public.apply_sale_change_from_payload(
+      v_sale.id,
+      p_action_type,
+      v_normalized_payload,
+      v_employee.id
+    );
+
+    insert into public.shift_action_approvals (
+      schedule_id,
+      requested_by_employee_id,
+      action_type,
+      payload,
+      status,
+      resolved_by_employee_id,
+      resolved_at,
+      created_at,
+      updated_at
+    )
+    values (
+      v_sale.schedule_id,
+      v_employee.id,
+      p_action_type,
+      v_normalized_payload,
+      'approved',
+      v_employee.id,
+      v_now,
+      v_now,
+      v_now
+    )
+    returning id into v_approval_id;
+
+    return jsonb_build_object(
+      'approval_id', v_approval_id,
+      'schedule_id', v_sale.schedule_id,
+      'status', 'applied'
+    );
+  end if;
+
+  insert into public.shift_action_approvals (
+    schedule_id,
+    requested_by_employee_id,
+    action_type,
+    payload
+  )
+  values (
+    v_sale.schedule_id,
+    v_employee.id,
+    p_action_type,
+    v_normalized_payload
+  )
+  returning id into v_approval_id;
+
+  return jsonb_build_object(
+    'approval_id', v_approval_id,
+    'schedule_id', v_sale.schedule_id,
+    'status', 'pending'
+  );
+end;
+$$;
+
+create or replace function public.resolve_shift_action_approval(
+  p_approval_id uuid,
+  p_decision text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_employee_id uuid;
+  v_request public.shift_action_approvals%rowtype;
+  v_schedule public.booth_schedules%rowtype;
+  v_now timestamptz := now();
+begin
+  select employees.id
+  into v_employee_id
+  from public.employees
+  where employees.user_id = (select auth.uid())
+    and employees.role = 'admin'
+    and employees.is_active is true
+  limit 1;
+
+  if v_employee_id is null then
+    raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+  end if;
+
+  if p_decision not in ('approved', 'rejected') then
+    raise exception using message = 'INVALID_APPROVAL_DECISION';
+  end if;
+
+  select *
+  into v_request
+  from public.shift_action_approvals
+  where id = p_approval_id
+  for update;
+
+  if not found then
+    raise exception using message = 'APPROVAL_NOT_FOUND';
+  end if;
+
+  if v_request.status <> 'pending' then
+    raise exception using message = 'APPROVAL_ALREADY_RESOLVED';
+  end if;
+
+  if p_decision = 'approved' then
+    if v_request.action_type = 'reopen_shift' then
+      perform public.reopen_shift(
+        v_request.schedule_id,
+        'Approved reopen request.'
+      );
+    elsif v_request.action_type = 'cash_deduction' then
+      select *
+      into v_schedule
+      from public.booth_schedules
+      where id = v_request.schedule_id
+      for update;
+
+      if not found then
+        raise exception using message = 'SCHEDULE_NOT_FOUND';
+      end if;
+
+      if v_schedule.status <> 'scheduled' then
+        raise exception using message = 'SHIFT_NOT_OPEN';
+      end if;
+    elsif v_request.action_type in ('edit_sale', 'delete_sale') then
+      perform public.apply_sale_change_from_payload(
+        (v_request.payload ->> 'sale_id')::uuid,
+        v_request.action_type,
+        v_request.payload,
+        v_employee_id
+      );
+    elsif v_request.action_type = 'apply_promo' then
+      null;
+    end if;
+  end if;
+
+  update public.shift_action_approvals
+  set status = p_decision,
+      resolved_by_employee_id = v_employee_id,
+      resolved_at = v_now,
+      updated_at = v_now
+  where id = p_approval_id;
+
+  return v_request.schedule_id;
 end;
 $$;
 
@@ -2146,6 +3478,72 @@ begin
 end;
 $$;
 
+create or replace function public.delete_booth_cascade(
+  p_booth_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_schedule_count integer := 0;
+  v_sale_count integer := 0;
+begin
+  if not public.current_employee_is_admin() then
+    raise exception using message = 'ADMIN_NOT_AUTHORIZED';
+  end if;
+
+  perform 1
+  from public.booths
+  where id = p_booth_id
+  for update;
+
+  if not found then
+    raise exception using message = 'BOOTH_NOT_FOUND';
+  end if;
+
+  select count(*)::integer
+  into v_schedule_count
+  from public.booth_schedules
+  where booth_id = p_booth_id;
+
+  select count(*)::integer
+  into v_sale_count
+  from public.sales
+  where booth_id = p_booth_id;
+
+  delete from public.sales
+  where booth_id = p_booth_id;
+
+  delete from public.booth_schedules
+  where booth_id = p_booth_id;
+
+  delete from public.booths
+  where id = p_booth_id;
+
+  return jsonb_build_object(
+    'booth_id',
+    p_booth_id,
+    'schedule_count',
+    v_schedule_count,
+    'sale_count',
+    v_sale_count
+  );
+end;
+$$;
+
+drop function if exists public.finalize_pos_sale(
+  uuid,
+  uuid,
+  uuid,
+  numeric,
+  text,
+  text,
+  timestamptz,
+  jsonb
+);
+
 create or replace function public.finalize_pos_sale(
   p_sale_id uuid,
   p_booth_id uuid,
@@ -2154,7 +3552,13 @@ create or replace function public.finalize_pos_sale(
   p_payment_method text,
   p_receipt_photo_path text,
   p_created_at timestamptz,
-  p_items jsonb
+  p_items jsonb,
+  p_promo_id uuid default null,
+  p_promo_name text default null,
+  p_promo_type text default null,
+  p_promo_discount_total numeric default 0,
+  p_promo_approval_id uuid default null,
+  p_promo_snapshot jsonb default null
 )
 returns uuid
 language plpgsql
@@ -2164,9 +3568,12 @@ as $$
 declare
   v_employee_id uuid;
   v_existing_employee_id uuid;
+  v_is_admin boolean := false;
   v_expected_total numeric(10,2);
   v_expected_item_count integer;
   v_locked_item_count integer := 0;
+  v_business_date date;
+  v_promo public.promos%rowtype;
   v_item record;
 begin
   select employees.id
@@ -2191,6 +3598,14 @@ begin
     end if;
     return p_sale_id;
   end if;
+
+  select exists (
+    select 1
+    from public.employees
+    where employees.id = v_employee_id
+      and employees.role = 'admin'
+  )
+  into v_is_admin;
 
   if p_payment_method is null
     or p_payment_method not in ('cash', 'gcash', 'maya', 'maribank', 'unionbank', 'other') then
@@ -2222,23 +3637,35 @@ begin
     raise exception using message = 'SALE_ITEMS_REQUIRED';
   end if;
 
+  v_business_date := timezone('Asia/Manila', p_created_at)::date;
+
   if not exists (
     select 1
     from public.booth_schedules as schedule
     where schedule.id = p_schedule_id
       and schedule.booth_id = p_booth_id
       and schedule.status = 'scheduled'
-      and schedule.date = timezone('Asia/Manila', p_created_at)::date
-      and schedule.start_time <= timezone('Asia/Manila', p_created_at)::time
+      and schedule.date = v_business_date
       and schedule.end_time > timezone('Asia/Manila', p_created_at)::time
       and p_created_at <= now() + interval '5 minutes'
-      and exists (
-        select 1
-        from public.booth_schedule_operator_periods as period
-        where period.schedule_id = schedule.id
-          and period.operator_employee_id = v_employee_id
-          and period.starts_at <= p_created_at
-          and (period.ends_at is null or period.ends_at > p_created_at)
+      and (
+        schedule.start_time <= timezone('Asia/Manila', p_created_at)::time
+        or exists (
+          select 1
+          from public.booth_schedule_products
+          where booth_schedule_products.schedule_id = schedule.id
+        )
+      )
+      and (
+        v_is_admin
+        or exists (
+          select 1
+          from public.booth_schedule_operator_periods as period
+          where period.schedule_id = schedule.id
+            and period.operator_employee_id = v_employee_id
+            and period.starts_at <= p_created_at
+            and (period.ends_at is null or period.ends_at > p_created_at)
+        )
       )
   ) then
     raise exception using message = 'INVALID_ACTIVE_SCHEDULE';
@@ -2255,7 +3682,14 @@ begin
   if exists (
     select 1
     from jsonb_to_recordset(p_items)
-      as item(product_id uuid, quantity integer, unit_price numeric, expected_stock integer)
+      as item(
+        product_id uuid,
+        quantity integer,
+        unit_price numeric,
+        expected_stock integer,
+        base_unit_price numeric,
+        discount_amount numeric
+      )
     left join public.products on products.id = item.product_id
     where item.product_id is null
       or item.quantity is null
@@ -2263,46 +3697,157 @@ begin
       or item.unit_price is null
       or item.unit_price < 0
       or item.expected_stock is null
-      or item.expected_stock < item.quantity
+      or item.expected_stock < 0
+      or item.base_unit_price is null
+      or item.base_unit_price < 0
+      or item.discount_amount is null
+      or item.discount_amount < 0
       or products.id is null
   ) then
     raise exception using message = 'INVALID_SALE_ITEMS';
   end if;
 
-  if (
-    select count(*) <> count(distinct item.product_id)
-    from jsonb_to_recordset(p_items)
-      as item(product_id uuid, quantity integer, unit_price numeric, expected_stock integer)
+  if exists (
+    select 1
+    from (
+      select item.product_id, sum(item.quantity) as quantity, max(item.expected_stock) as expected_stock
+      from jsonb_to_recordset(p_items)
+        as item(
+          product_id uuid,
+          quantity integer,
+          unit_price numeric,
+          expected_stock integer,
+          base_unit_price numeric,
+          discount_amount numeric
+        )
+      group by item.product_id
+    ) as aggregated
+    where aggregated.expected_stock < aggregated.quantity
   ) then
-    raise exception using message = 'DUPLICATE_SALE_ITEMS';
+    raise exception using message = 'INVALID_SALE_ITEMS';
+  end if;
+
+  if p_promo_id is null then
+    if coalesce(p_promo_discount_total, 0)::numeric(10,2) <> 0
+      or p_promo_approval_id is not null then
+      raise exception using message = 'INVALID_PROMO';
+    end if;
+  else
+    select *
+    into v_promo
+    from public.promos
+    where id = p_promo_id
+      and is_active = true
+      and starts_on <= v_business_date
+      and ends_on >= v_business_date;
+
+    if not found then
+      raise exception using message = 'INVALID_PROMO';
+    end if;
+
+    if coalesce(p_promo_name, '') <> v_promo.name
+      or coalesce(p_promo_type, '') <> v_promo.promo_type then
+      raise exception using message = 'INVALID_PROMO';
+    end if;
+
+    if coalesce(p_promo_discount_total, 0)::numeric(10,2) <= 0 then
+      raise exception using message = 'PROMO_NOT_ELIGIBLE';
+    end if;
+
+    if v_promo.requires_admin_approval and not v_is_admin then
+      if p_promo_approval_id is null then
+        raise exception using message = 'PROMO_APPROVAL_REQUIRED';
+      end if;
+
+      if exists (
+        select 1
+        from public.sale_promos
+        where promo_approval_id = p_promo_approval_id
+      ) then
+        raise exception using message = 'PROMO_APPROVAL_USED';
+      end if;
+
+      if not exists (
+        select 1
+        from public.shift_action_approvals as approval
+        where approval.id = p_promo_approval_id
+          and approval.schedule_id = p_schedule_id
+          and approval.requested_by_employee_id = v_employee_id
+          and approval.action_type = 'apply_promo'
+          and approval.status = 'approved'
+          and approval.payload ->> 'promo_id' = p_promo_id::text
+      ) then
+        raise exception using message = 'PROMO_APPROVAL_REQUIRED';
+      end if;
+    end if;
   end if;
 
   select coalesce(sum(item.quantity * item.unit_price), 0)::numeric(10,2)
   into v_expected_total
   from jsonb_to_recordset(p_items)
-    as item(product_id uuid, quantity integer, unit_price numeric, expected_stock integer);
+    as item(
+      product_id uuid,
+      quantity integer,
+      unit_price numeric,
+      expected_stock integer,
+      base_unit_price numeric,
+      discount_amount numeric
+    );
 
   select count(*)
   into v_expected_item_count
-  from jsonb_to_recordset(p_items)
-    as item(product_id uuid, quantity integer, unit_price numeric, expected_stock integer);
+  from (
+    select item.product_id
+    from jsonb_to_recordset(p_items)
+      as item(
+        product_id uuid,
+        quantity integer,
+        unit_price numeric,
+        expected_stock integer,
+        base_unit_price numeric,
+        discount_amount numeric
+      )
+    group by item.product_id
+  ) as aggregated;
 
   if v_expected_total <> p_total_amount::numeric(10,2) then
     raise exception using message = 'SALE_TOTAL_MISMATCH';
   end if;
 
   for v_item in
-    select item.product_id, item.quantity, item.unit_price, item.expected_stock, inventory.stock
+    select
+      aggregated.product_id,
+      aggregated.quantity,
+      aggregated.expected_stock,
+      inventory.stock
     from public.booth_schedule_products as inventory
-    join jsonb_to_recordset(p_items)
-      as item(product_id uuid, quantity integer, unit_price numeric, expected_stock integer)
+    join (
+      select
+        item.product_id,
+        sum(item.quantity) as quantity,
+        max(item.expected_stock) as expected_stock
+      from jsonb_to_recordset(p_items)
+        as item(
+          product_id uuid,
+          quantity integer,
+          unit_price numeric,
+          expected_stock integer,
+          base_unit_price numeric,
+          discount_amount numeric
+        )
+      group by item.product_id
+    ) as aggregated
       on inventory.schedule_id = p_schedule_id
-      and inventory.product_id = item.product_id
+      and inventory.product_id = aggregated.product_id
     for update of inventory
   loop
     v_locked_item_count := v_locked_item_count + 1;
 
     if v_item.stock <> v_item.expected_stock then
+      raise exception using message = 'INVENTORY_STALE';
+    end if;
+
+    if v_item.stock < v_item.quantity then
       raise exception using message = 'INVENTORY_STALE';
     end if;
   end loop;
@@ -2318,9 +3863,15 @@ begin
     schedule_id,
     total_amount,
     payment_method,
+    promo_id,
+    promo_name,
+    promo_type,
+    promo_discount_total,
+    promo_approval_id,
     receipt_photo_path,
     status,
-    created_at
+    created_at,
+    updated_at
   )
   values (
     p_sale_id,
@@ -2329,28 +3880,84 @@ begin
     p_schedule_id,
     p_total_amount,
     p_payment_method,
+    p_promo_id,
+    p_promo_name,
+    p_promo_type,
+    coalesce(p_promo_discount_total, 0)::numeric(10,2),
+    p_promo_approval_id,
     p_receipt_photo_path,
     'completed',
+    coalesce(p_created_at, now()),
     coalesce(p_created_at, now())
   );
 
-  insert into public.sale_items (id, sale_id, product_id, quantity, unit_price, subtotal)
+  if p_promo_id is not null then
+    insert into public.sale_promos (
+      sale_id,
+      promo_id,
+      promo_name,
+      promo_type,
+      discount_total,
+      promo_approval_id,
+      snapshot
+    )
+    values (
+      p_sale_id,
+      p_promo_id,
+      p_promo_name,
+      p_promo_type,
+      coalesce(p_promo_discount_total, 0)::numeric(10,2),
+      p_promo_approval_id,
+      coalesce(p_promo_snapshot, '{}'::jsonb)
+    );
+  end if;
+
+  insert into public.sale_items (
+    id,
+    sale_id,
+    product_id,
+    quantity,
+    base_unit_price,
+    discount_amount,
+    unit_price,
+    subtotal
+  )
   select
     gen_random_uuid(),
     p_sale_id,
     item.product_id,
     item.quantity,
+    item.base_unit_price,
+    item.discount_amount,
     item.unit_price,
     (item.quantity * item.unit_price)::numeric(10,2)
   from jsonb_to_recordset(p_items)
-    as item(product_id uuid, quantity integer, unit_price numeric, expected_stock integer);
+    as item(
+      product_id uuid,
+      quantity integer,
+      unit_price numeric,
+      expected_stock integer,
+      base_unit_price numeric,
+      discount_amount numeric
+    );
 
   update public.booth_schedule_products as inventory
-  set stock = inventory.stock - item.quantity
-  from jsonb_to_recordset(p_items)
-    as item(product_id uuid, quantity integer, unit_price numeric, expected_stock integer)
+  set stock = inventory.stock - aggregated.quantity
+  from (
+    select item.product_id, sum(item.quantity) as quantity
+    from jsonb_to_recordset(p_items)
+      as item(
+        product_id uuid,
+        quantity integer,
+        unit_price numeric,
+        expected_stock integer,
+        base_unit_price numeric,
+        discount_amount numeric
+      )
+    group by item.product_id
+  ) as aggregated
   where inventory.schedule_id = p_schedule_id
-    and inventory.product_id = item.product_id;
+    and inventory.product_id = aggregated.product_id;
 
   return p_sale_id;
 end;
@@ -2364,11 +3971,20 @@ revoke execute on function public.get_employee_schedule_sale_items(uuid) from pu
 revoke execute on function public.join_booth_schedule(uuid) from public;
 revoke execute on function public.claim_shift_operator(uuid) from public;
 revoke execute on function public.close_shift(uuid, numeric, jsonb) from public;
+revoke execute on function public.cancel_booth_schedule(uuid, date, time) from public;
+revoke execute on function public.delete_booth_schedule_cascade(uuid) from public;
 revoke execute on function public.deactivate_booth_and_cancel_future_schedules(uuid, date, time) from public;
-revoke execute on function public.finalize_pos_sale(uuid, uuid, uuid, numeric, text, text, timestamptz, jsonb) from public;
+revoke execute on function public.delete_booth_cascade(uuid) from public;
+revoke execute on function public.finalize_pos_sale(uuid, uuid, uuid, numeric, text, text, timestamptz, jsonb, uuid, text, text, numeric, uuid, jsonb) from public;
 revoke execute on function public.record_shift_inventory_event(uuid, uuid, text, text, timestamptz, jsonb) from public;
 revoke execute on function public.record_admin_inventory_override(uuid, uuid, text, jsonb) from public;
+revoke execute on function public.apply_sale_change_from_payload(uuid, text, jsonb, uuid) from public;
 revoke execute on function public.reopen_shift(uuid, text) from public;
+revoke execute on function public.request_shift_action_approval(uuid, text, jsonb) from public;
+revoke execute on function public.request_shift_cash_deduction(uuid, numeric, text) from public;
+revoke execute on function public.get_pending_shift_action_approvals(uuid) from public;
+revoke execute on function public.resolve_shift_action_approval(uuid, text) from public;
+revoke execute on function public.submit_sale_change(uuid, text, jsonb) from public;
 grant execute on function public.save_booth_schedule(uuid, uuid, uuid[], uuid, date, time, time, date, time) to authenticated;
 grant execute on function public.save_booth_schedule_range(uuid, uuid[], uuid, date, date, time, time, date, time) to authenticated;
 grant execute on function public.get_employee_schedule_browser(date, date) to authenticated;
@@ -2377,11 +3993,19 @@ grant execute on function public.get_employee_schedule_sale_items(uuid) to authe
 grant execute on function public.join_booth_schedule(uuid) to authenticated;
 grant execute on function public.claim_shift_operator(uuid) to authenticated;
 grant execute on function public.close_shift(uuid, numeric, jsonb) to authenticated;
+grant execute on function public.cancel_booth_schedule(uuid, date, time) to authenticated;
+grant execute on function public.delete_booth_schedule_cascade(uuid) to authenticated;
 grant execute on function public.deactivate_booth_and_cancel_future_schedules(uuid, date, time) to authenticated;
-grant execute on function public.finalize_pos_sale(uuid, uuid, uuid, numeric, text, text, timestamptz, jsonb) to authenticated;
+grant execute on function public.delete_booth_cascade(uuid) to authenticated;
+grant execute on function public.finalize_pos_sale(uuid, uuid, uuid, numeric, text, text, timestamptz, jsonb, uuid, text, text, numeric, uuid, jsonb) to authenticated;
 grant execute on function public.record_shift_inventory_event(uuid, uuid, text, text, timestamptz, jsonb) to authenticated;
 grant execute on function public.record_admin_inventory_override(uuid, uuid, text, jsonb) to authenticated;
 grant execute on function public.reopen_shift(uuid, text) to authenticated;
+grant execute on function public.request_shift_action_approval(uuid, text, jsonb) to authenticated;
+grant execute on function public.request_shift_cash_deduction(uuid, numeric, text) to authenticated;
+grant execute on function public.get_pending_shift_action_approvals(uuid) to authenticated;
+grant execute on function public.resolve_shift_action_approval(uuid, text) to authenticated;
+grant execute on function public.submit_sale_change(uuid, text, jsonb) to authenticated;
 
 alter table public.booths enable row level security;
 alter table public.employees enable row level security;
@@ -2389,12 +4013,16 @@ alter table public.booth_schedules enable row level security;
 alter table public.booth_schedule_assignments enable row level security;
 alter table public.booth_schedule_operator_periods enable row level security;
 alter table public.products enable row level security;
+alter table public.promos enable row level security;
+alter table public.promo_products enable row level security;
 alter table public.booth_schedule_products enable row level security;
 alter table public.inventory_events enable row level security;
 alter table public.inventory_event_lines enable row level security;
 alter table public.sales enable row level security;
 alter table public.sale_items enable row level security;
+alter table public.sale_promos enable row level security;
 alter table public.shift_closeouts enable row level security;
+alter table public.shift_action_approvals enable row level security;
 
 drop policy if exists "admins manage booths" on public.booths;
 create policy "admins manage booths"
@@ -2492,6 +4120,36 @@ with check ((select public.current_employee_is_admin()));
 drop policy if exists "employees read products" on public.products;
 create policy "employees read products"
 on public.products
+for select
+to authenticated
+using ((select public.current_employee_id()) is not null);
+
+drop policy if exists "admins manage promos" on public.promos;
+create policy "admins manage promos"
+on public.promos
+for all
+to authenticated
+using ((select public.current_employee_is_admin()))
+with check ((select public.current_employee_is_admin()));
+
+drop policy if exists "employees read promos" on public.promos;
+create policy "employees read promos"
+on public.promos
+for select
+to authenticated
+using ((select public.current_employee_id()) is not null);
+
+drop policy if exists "admins manage promo products" on public.promo_products;
+create policy "admins manage promo products"
+on public.promo_products
+for all
+to authenticated
+using ((select public.current_employee_is_admin()))
+with check ((select public.current_employee_is_admin()));
+
+drop policy if exists "employees read promo products" on public.promo_products;
+create policy "employees read promo products"
+on public.promo_products
 for select
 to authenticated
 using ((select public.current_employee_id()) is not null);
@@ -2595,6 +4253,30 @@ using (
     select 1
     from public.sales
     where sales.id = sale_items.sale_id
+      and sales.status = 'completed'
+      and public.current_employee_is_assigned(sales.schedule_id)
+  )
+);
+
+drop policy if exists "admins manage sale promos" on public.sale_promos;
+create policy "admins manage sale promos"
+on public.sale_promos
+for all
+to authenticated
+using ((select public.current_employee_is_admin()))
+with check ((select public.current_employee_is_admin()));
+
+drop policy if exists "employees read assigned sale promos" on public.sale_promos;
+create policy "employees read assigned sale promos"
+on public.sale_promos
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.sales
+    where sales.id = sale_promos.sale_id
+      and sales.status = 'completed'
       and public.current_employee_is_assigned(sales.schedule_id)
   )
 );
@@ -2613,6 +4295,24 @@ on public.shift_closeouts
 for select
 to authenticated
 using (public.current_employee_is_assigned(schedule_id));
+
+drop policy if exists "admins manage shift action approvals" on public.shift_action_approvals;
+create policy "admins manage shift action approvals"
+on public.shift_action_approvals
+for all
+to authenticated
+using ((select public.current_employee_is_admin()))
+with check ((select public.current_employee_is_admin()));
+
+drop policy if exists "employees read own shift action approvals" on public.shift_action_approvals;
+create policy "employees read own shift action approvals"
+on public.shift_action_approvals
+for select
+to authenticated
+using (
+  requested_by_employee_id = (select public.current_employee_id())
+  or public.current_employee_is_assigned(schedule_id)
+);
 
 insert into storage.buckets (id, name, public)
 values ('receipts', 'receipts', false)
@@ -2654,6 +4354,7 @@ using (
     select 1
     from public.sales
     where sales.receipt_photo_path = storage.objects.name
+      and sales.status = 'completed'
       and public.current_employee_is_assigned(sales.schedule_id)
   )
 );
@@ -2667,3 +4368,42 @@ using (
   bucket_id = 'receipts'
   and public.current_employee_is_admin()
 );
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication
+    where pubname = 'supabase_realtime'
+  ) then
+    create publication supabase_realtime;
+  end if;
+end
+$$;
+
+do $$
+declare
+  realtime_table text;
+begin
+  foreach realtime_table in array array[
+    'public.sales',
+    'public.products',
+    'public.promos',
+    'public.promo_products',
+    'public.booth_schedule_products',
+    'public.inventory_events',
+    'public.booth_schedules',
+    'public.booth_schedule_operator_periods',
+    'public.booth_schedule_assignments'
+  ] loop
+    begin
+      execute format(
+        'alter publication supabase_realtime add table %s',
+        realtime_table
+      );
+    exception
+      when duplicate_object then null;
+    end;
+  end loop;
+end
+$$;

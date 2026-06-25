@@ -2,7 +2,6 @@
 
 import { useState, useRef } from "react"
 import { signOutAction } from "@/app/actions/auth"
-import { clearMagicLinkCooldown } from "@/lib/magicLinkCooldown"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
@@ -19,10 +18,7 @@ export function SignOutButton({
   const [isOpen, setIsOpen] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
 
-  const handleConfirm = () => {
-    clearMagicLinkCooldown()
-    formRef.current?.requestSubmit()
-  }
+  const handleConfirm = () => formRef.current?.requestSubmit()
 
   return (
     <>

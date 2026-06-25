@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import React, { useId, useState } from "react"
+import React, { useEffect, useId, useMemo, useState } from "react"
 import {
   Banknote,
   Building2,
@@ -14,39 +14,58 @@ import {
   Plus,
   ShoppingBag,
   Smartphone,
+  TicketPercent,
   Trash2,
 } from "lucide-react"
+import { toast } from "sonner"
 
+import { getPromoApprovalStatus, requestPromoApproval } from "@/app/actions/pos"
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import { useCart } from "@/components/pos/CartContext"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   saveSaleLocally,
   saveSaleOnlineConfirmed,
   syncPendingPosOperations,
 } from "@/lib/sync"
 import { prepareReceiptPhotoDataUrl } from "@/lib/receiptPhotoClient"
-import { useCart } from "@/components/pos/CartContext"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { cn, formatCurrency, isCurrentBusinessShift } from "@/lib/utils"
-import { toast } from "sonner"
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import type { PaymentMethod } from "@/lib/database.types"
+import {
+  buildPromoApprovalSnapshot,
+  evaluatePromoSelection,
+  getPromoSummary,
+  serializePromoApprovalSnapshot,
+  type CounterPromo,
+  type PromoPricingResult,
+} from "@/lib/promos"
 import type { BoothSchedule } from "@/lib/shifts"
-
-type PaymentMethod =
-  | "cash"
-  | "gcash"
-  | "maya"
-  | "maribank"
-  | "unionbank"
-  | "other"
+import { cn, formatCurrency, isCurrentBusinessShift } from "@/lib/utils"
 
 type OrderSidebarProps = {
   boothId?: string
   employeeId: string
+  employeeRole: "employee" | "admin"
+  promos: CounterPromo[]
   scheduleId?: string
   schedule?: BoothSchedule
+  shiftStarted?: boolean
   mode?: "docked" | "sheet"
   onChargeComplete?: () => void
   saleBlockedMessage?: string
+}
+
+type PromoApprovalState = {
+  approvalId: string | null
+  status: "pending" | "approved" | "rejected" | null
+  snapshotKey: string | null
 }
 
 const paymentOptions: Array<{
@@ -62,17 +81,85 @@ const paymentOptions: Array<{
   { value: "other", label: "Other", icon: CreditCard },
 ]
 
+function buildBasePricingResult(
+  items: Array<{ id: string; quantity: number; price: number }>
+): PromoPricingResult {
+  const subtotal = Number(
+    items
+      .reduce((total, item) => total + item.price * item.quantity, 0)
+      .toFixed(2)
+  )
+
+  return {
+    eligible: true,
+    subtotal,
+    discountTotal: 0,
+    total: subtotal,
+    discountByProductId: {},
+    pricedItems: items.map((item) => ({
+      productId: item.id,
+      quantity: item.quantity,
+      unitPrice: Number(item.price.toFixed(2)),
+      baseUnitPrice: Number(item.price.toFixed(2)),
+      discountAmount: 0,
+    })),
+  }
+}
+
+function getApprovalBannerText(status: PromoApprovalState["status"]) {
+  switch (status) {
+    case "pending":
+      return "Waiting for admin approval."
+    case "approved":
+      return "Admin approved this promo."
+    case "rejected":
+      return "Admin rejected this promo."
+    default:
+      return "Admin approval is required for this promo."
+  }
+}
+
+function getCriteriaSummary(promo: CounterPromo) {
+  const parts = []
+
+  if (promo.criteria.minCartSubtotal) {
+    parts.push(`Min cart ${formatCurrency(promo.criteria.minCartSubtotal)}`)
+  }
+  if (promo.criteria.minQualifyingQuantity) {
+    parts.push(`Min qty ${promo.criteria.minQualifyingQuantity}`)
+  }
+  if (promo.criteria.paymentMethods?.length) {
+    parts.push(
+      promo.criteria.paymentMethods
+        .map((method) => method.charAt(0).toUpperCase() + method.slice(1))
+        .join(", ")
+    )
+  }
+
+  return parts.length > 0 ? parts.join(" • ") : "No extra criteria"
+}
+
 export function OrderSidebar({
   boothId,
   employeeId,
+  employeeRole,
+  promos,
   scheduleId,
   schedule,
+  shiftStarted,
   mode = "docked",
   onChargeComplete,
   saleBlockedMessage,
 }: OrderSidebarProps) {
   const router = useRouter()
-  const { items, updateQuantity, total, clearCart } = useCart()
+  const {
+    items,
+    selectedPromoId,
+    setSelectedPromoId,
+    subtotal,
+    updateQuantity,
+    clearCart,
+  } = useCart()
   const receiptInputId = useId()
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
   const [cashReceived, setCashReceived] = useState("")
@@ -80,6 +167,154 @@ export function OrderSidebar({
   const [isCharging, setIsCharging] = useState(false)
   const [isPreparingReceiptPhoto, setIsPreparingReceiptPhoto] = useState(false)
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false)
+  const [isRequestingApproval, setIsRequestingApproval] = useState(false)
+  const [isOnline, setIsOnline] = useState(
+    typeof window === "undefined" ? true : window.navigator.onLine
+  )
+  const [promoApproval, setPromoApproval] = useState<PromoApprovalState>({
+    approvalId: null,
+    status: null,
+    snapshotKey: null,
+  })
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const syncOnline = () => setIsOnline(window.navigator.onLine)
+    syncOnline()
+    window.addEventListener("online", syncOnline)
+    window.addEventListener("offline", syncOnline)
+    return () => {
+      window.removeEventListener("online", syncOnline)
+      window.removeEventListener("offline", syncOnline)
+    }
+  }, [])
+
+  const availablePromos = promos
+    .slice()
+    .sort((left, right) => left.name.localeCompare(right.name))
+  const selectedPromo =
+    availablePromos.find((promo) => promo.id === selectedPromoId) ?? null
+  const promoPricing = useMemo(() => {
+    if (!selectedPromo) {
+      return buildBasePricingResult(items)
+    }
+
+    return evaluatePromoSelection({
+      promo: selectedPromo,
+      items: items.map((item) => ({
+        productId: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.price,
+      })),
+      businessDate: schedule?.date ?? new Date().toISOString().slice(0, 10),
+      paymentMethod,
+    })
+  }, [items, paymentMethod, schedule?.date, selectedPromo])
+  const promoSnapshot =
+    selectedPromo && promoPricing.eligible
+      ? buildPromoApprovalSnapshot({
+          promo: selectedPromo,
+          items: items.map((item) => ({
+            productId: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            unitPrice: item.price,
+          })),
+          paymentMethod,
+          pricing: promoPricing,
+        })
+      : null
+  const promoSnapshotKey = promoSnapshot
+    ? serializePromoApprovalSnapshot(promoSnapshot)
+    : null
+  const promoNeedsApproval =
+    Boolean(selectedPromo?.requiresAdminApproval) && employeeRole !== "admin"
+
+  useEffect(() => {
+    if (selectedPromoId && !selectedPromo) {
+      setSelectedPromoId(null)
+    }
+  }, [selectedPromo, selectedPromoId, setSelectedPromoId])
+
+  useEffect(() => {
+    if (!promoNeedsApproval) {
+      setPromoApproval({
+        approvalId: null,
+        status: null,
+        snapshotKey: null,
+      })
+      return
+    }
+
+    if (!promoSnapshotKey || !promoPricing.eligible) {
+      setPromoApproval((current) =>
+        current.approvalId || current.status
+          ? {
+              approvalId: null,
+              status: null,
+              snapshotKey: null,
+            }
+          : current
+      )
+      return
+    }
+
+    setPromoApproval((current) =>
+      current.snapshotKey && current.snapshotKey !== promoSnapshotKey
+        ? {
+            approvalId: null,
+            status: null,
+            snapshotKey: null,
+          }
+        : current
+    )
+  }, [promoNeedsApproval, promoPricing.eligible, promoSnapshotKey])
+
+  useEffect(() => {
+    if (
+      !promoApproval.approvalId ||
+      promoApproval.status !== "pending" ||
+      !isOnline
+    ) {
+      return
+    }
+
+    const interval = window.setInterval(async () => {
+      const result = await getPromoApprovalStatus(promoApproval.approvalId!)
+      const nextStatus = result.status
+
+      if (!result.ok || !nextStatus) {
+        return
+      }
+
+      setPromoApproval((current) => {
+        if (current.approvalId !== result.approvalId) {
+          return current
+        }
+
+        if (current.status === nextStatus) {
+          return current
+        }
+
+        if (nextStatus === "approved") {
+          toast.success("Promo approved. You can charge the sale now.")
+        } else if (nextStatus === "rejected") {
+          toast.error("Promo request was rejected.")
+        }
+
+        return {
+          ...current,
+          status: nextStatus,
+        }
+      })
+    }, 5000)
+
+    return () => window.clearInterval(interval)
+  }, [isOnline, promoApproval.approvalId, promoApproval.status])
 
   const isCash = paymentMethod === "cash"
   const activeShiftWindow =
@@ -89,18 +324,29 @@ export function OrderSidebar({
       schedule.start_time,
       schedule.end_time
     )
-  const hasSaleContext = Boolean(boothId && scheduleId && activeShiftWindow)
+  const hasSaleContext =
+    Boolean(boothId && scheduleId && activeShiftWindow) &&
+    shiftStarted !== false
   const unavailableMessage =
-    saleBlockedMessage ?? "Active shift required to complete sales."
+    saleBlockedMessage ??
+    (shiftStarted === false
+      ? "Start the shift before recording sales."
+      : "Active shift required to complete sales.")
   const cashAmount = Number.parseFloat(cashReceived) || 0
+  const effectiveTotal = promoPricing.total
+  const promoEligible = !selectedPromo || promoPricing.eligible
+  const approvalSatisfied =
+    !promoNeedsApproval || promoApproval.status === "approved"
   const canCharge =
     items.length > 0 &&
     hasSaleContext &&
+    promoEligible &&
+    approvalSatisfied &&
     !isCharging &&
     !isPreparingReceiptPhoto &&
-    ((isCash && cashAmount >= total) || (!isCash && Boolean(receiptPhoto)))
-
-  const changeDue = Math.max(0, cashAmount - total)
+    ((isCash && cashAmount >= effectiveTotal) ||
+      (!isCash && Boolean(receiptPhoto)))
+  const changeDue = Math.max(0, cashAmount - effectiveTotal)
 
   const handleCharge = async () => {
     if (
@@ -112,6 +358,20 @@ export function OrderSidebar({
       )
     ) {
       toast.error("Sales can be recorded only while this shift is active.")
+      return
+    }
+
+    if (!promoEligible) {
+      toast.error(
+        selectedPromo && !promoPricing.eligible
+          ? promoPricing.reason
+          : "This promo cannot be applied."
+      )
+      return
+    }
+
+    if (promoNeedsApproval && promoApproval.status !== "approved") {
+      toast.error("Admin approval is still required for this promo.")
       return
     }
 
@@ -128,20 +388,29 @@ export function OrderSidebar({
         boothId,
         employeeId,
         scheduleId,
-        totalAmount: total,
+        totalAmount: effectiveTotal,
         paymentMethod,
-        items: items.map((item) => ({
-          productId: item.id,
+        promoId: selectedPromo?.id ?? null,
+        promoName: selectedPromo?.name ?? null,
+        promoType: selectedPromo?.promoType ?? null,
+        promoDiscountTotal: promoPricing.discountTotal,
+        promoApprovalId:
+          promoNeedsApproval && promoApproval.status === "approved"
+            ? promoApproval.approvalId
+            : null,
+        items: promoPricing.pricedItems.map((item) => ({
+          productId: item.productId,
           quantity: item.quantity,
-          price: item.price,
+          price: item.unitPrice,
+          basePrice: item.baseUnitPrice,
+          discountAmount: item.discountAmount,
         })),
         receiptPhotoLocal: receiptPhoto ?? undefined,
       }
 
-      if (window.navigator.onLine) {
+      if (isOnline) {
         await saveSaleOnlineConfirmed(salePayload)
       } else {
-        // Offline POS stays Dexie-first and queues sync for reconnect.
         await saveSaleLocally(salePayload)
       }
 
@@ -149,14 +418,19 @@ export function OrderSidebar({
       setReceiptPhoto(null)
       setCashReceived("")
       setPaymentMethod("cash")
+      setPromoApproval({
+        approvalId: null,
+        status: null,
+        snapshotKey: null,
+      })
       toast.success("Sale recorded!")
       onChargeComplete?.()
 
-      if (window.navigator.onLine) {
+      if (isOnline) {
         router.refresh()
       } else {
-        syncPendingPosOperations().catch((err) => {
-          console.warn("Background sync failed; will retry later.", err)
+        syncPendingPosOperations().catch((error) => {
+          console.warn("Background sync failed; will retry later.", error)
         })
       }
     } catch (error) {
@@ -173,6 +447,11 @@ export function OrderSidebar({
 
   const handleClearCart = () => {
     clearCart()
+    setPromoApproval({
+      approvalId: null,
+      status: null,
+      snapshotKey: null,
+    })
     toast.info("Cart cleared")
   }
 
@@ -180,7 +459,9 @@ export function OrderSidebar({
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = event.target.files?.[0]
-    if (!file) return
+    if (!file) {
+      return
+    }
 
     try {
       setIsPreparingReceiptPhoto(true)
@@ -196,6 +477,49 @@ export function OrderSidebar({
       event.target.value = ""
       setIsPreparingReceiptPhoto(false)
     }
+  }
+
+  const handleRequestApproval = async () => {
+    if (!scheduleId || !selectedPromo || !promoNeedsApproval) {
+      return
+    }
+
+    if (!promoPricing.eligible) {
+      toast.error(promoPricing.reason)
+      return
+    }
+
+    if (!isOnline) {
+      toast.error("Reconnect before requesting admin approval.")
+      return
+    }
+
+    setIsRequestingApproval(true)
+
+    const result = await requestPromoApproval({
+      scheduleId,
+      paymentMethod,
+      promoId: selectedPromo.id,
+      items: items.map((item) => ({
+        productId: item.id,
+        quantity: item.quantity,
+        baseUnitPrice: item.price,
+      })),
+    })
+
+    setIsRequestingApproval(false)
+
+    if (!result.ok) {
+      toast.error(result.error ?? "Unable to request promo approval.")
+      return
+    }
+
+    setPromoApproval({
+      approvalId: result.approvalId ?? null,
+      status: result.status ?? "pending",
+      snapshotKey: promoSnapshotKey,
+    })
+    toast.success(result.message ?? "Promo request sent for approval.")
   }
 
   return (
@@ -218,7 +542,7 @@ export function OrderSidebar({
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-1 p-3">
+          <div className="flex flex-col gap-3 p-3">
             {items.map((item) => (
               <div
                 key={item.id}
@@ -287,24 +611,152 @@ export function OrderSidebar({
                 </Button>
               </div>
             ))}
+
+            <div className="border-border/60 space-y-3 rounded-2xl border px-3 py-3">
+              <div className="flex items-center gap-2">
+                <TicketPercent className="text-primary h-4 w-4" />
+                <p className="text-foreground text-sm font-semibold">Promo</p>
+              </div>
+
+              <Select
+                value={selectedPromoId ?? "none"}
+                onValueChange={(value) => {
+                  setSelectedPromoId(value === "none" ? null : (value ?? null))
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select promo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none" label="No promo">
+                    No promo
+                  </SelectItem>
+                  {availablePromos.map((promo) => (
+                    <SelectItem
+                      key={promo.id}
+                      value={promo.id}
+                      label={promo.name}
+                    >
+                      <span className="flex flex-col items-start">
+                        <span>{promo.name}</span>
+                        <span className="text-muted-foreground text-xs">
+                          {getPromoSummary(promo)}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {selectedPromo ? (
+                <div className="bg-background/80 space-y-2 rounded-xl border px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-foreground text-sm font-medium">
+                        {selectedPromo.name}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {getPromoSummary(selectedPromo)}
+                      </p>
+                    </div>
+                    {selectedPromo.requiresAdminApproval ? (
+                      <span className="text-muted-foreground rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase">
+                        Approval
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    {getCriteriaSummary(selectedPromo)}
+                  </p>
+
+                  {!promoPricing.eligible ? (
+                    <div className="bg-warning/8 text-warning-foreground rounded-xl px-3 py-2 text-xs font-medium">
+                      {promoPricing.reason}
+                    </div>
+                  ) : promoPricing.discountTotal > 0 ? (
+                    <div className="bg-primary/6 text-primary rounded-xl px-3 py-2 text-xs font-medium">
+                      Savings {formatCurrency(promoPricing.discountTotal)}
+                    </div>
+                  ) : null}
+
+                  {promoNeedsApproval ? (
+                    <div className="space-y-2">
+                      <div className="bg-muted/50 rounded-xl px-3 py-2 text-xs font-medium">
+                        {getApprovalBannerText(promoApproval.status)}
+                      </div>
+                      {!isOnline ? (
+                        <div className="bg-warning/8 text-warning-foreground rounded-xl px-3 py-2 text-xs font-medium">
+                          Approval requests need a live connection.
+                        </div>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full"
+                        disabled={
+                          isRequestingApproval ||
+                          !promoPricing.eligible ||
+                          !isOnline ||
+                          !hasSaleContext ||
+                          promoApproval.status === "pending"
+                        }
+                        onClick={() => void handleRequestApproval()}
+                      >
+                        {isRequestingApproval ? (
+                          <Loader2
+                            data-icon="inline-start"
+                            className="animate-spin"
+                          />
+                        ) : null}
+                        {promoApproval.status === "approved"
+                          ? "Approved"
+                          : promoApproval.status === "pending"
+                            ? "Approval Pending"
+                            : promoApproval.status === "rejected"
+                              ? "Request Approval Again"
+                              : "Request Approval"}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
       </div>
 
       <div className="border-border/60 shrink-0 space-y-4 border-t px-4 py-4">
-        {!hasSaleContext && (
+        {!hasSaleContext ? (
           <div className="bg-warning/8 text-warning-foreground rounded-xl px-3 py-2.5 text-xs font-medium">
             {unavailableMessage}
           </div>
-        )}
+        ) : null}
 
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground text-sm font-medium">
-            Total
-          </span>
-          <span className="text-primary text-2xl font-black tracking-tight">
-            {formatCurrency(total)}
-          </span>
+        <div className="space-y-2 rounded-2xl border px-3 py-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground font-medium">Subtotal</span>
+            <span className="text-foreground font-semibold">
+              {formatCurrency(subtotal)}
+            </span>
+          </div>
+          {promoPricing.discountTotal > 0 ? (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground font-medium">
+                Promo discount
+              </span>
+              <span className="text-primary font-semibold">
+                -{formatCurrency(promoPricing.discountTotal)}
+              </span>
+            </div>
+          ) : null}
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground text-sm font-medium">
+              Total
+            </span>
+            <span className="text-primary text-2xl font-black tracking-tight">
+              {formatCurrency(effectiveTotal)}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-1.5">
@@ -332,7 +784,7 @@ export function OrderSidebar({
           })}
         </div>
 
-        {isCash && (
+        {isCash ? (
           <div className="space-y-2">
             <div className="relative">
               <Input
@@ -342,7 +794,7 @@ export function OrderSidebar({
                 min="0"
                 step="0.01"
                 value={cashReceived}
-                onChange={(e) => setCashReceived(e.target.value)}
+                onChange={(event) => setCashReceived(event.target.value)}
                 placeholder="Cash received"
                 className="border-border/60 h-12 rounded-xl pr-14 text-lg font-bold"
                 disabled={isCharging}
@@ -351,11 +803,11 @@ export function OrderSidebar({
                 PHP
               </span>
             </div>
-            {cashAmount > 0 && (
+            {cashAmount > 0 ? (
               <div
                 className={cn(
                   "flex items-center justify-between rounded-xl px-3 py-2.5",
-                  cashAmount >= total && total > 0
+                  cashAmount >= effectiveTotal && effectiveTotal > 0
                     ? "bg-success/8 text-success"
                     : "bg-muted/50 text-foreground"
                 )}
@@ -365,11 +817,9 @@ export function OrderSidebar({
                   {formatCurrency(changeDue)}
                 </span>
               </div>
-            )}
+            ) : null}
           </div>
-        )}
-
-        {!isCash && (
+        ) : (
           <div>
             <label
               htmlFor={receiptInputId}
@@ -441,7 +891,7 @@ export function OrderSidebar({
             )}
             disabled={!canCharge}
             aria-busy={isCharging}
-            onClick={handleCharge}
+            onClick={() => void handleCharge()}
           >
             {isCharging ? (
               <>
@@ -449,7 +899,7 @@ export function OrderSidebar({
                 Processing...
               </>
             ) : hasSaleContext ? (
-              `Charge ${formatCurrency(total)}`
+              `Charge ${formatCurrency(effectiveTotal)}`
             ) : saleBlockedMessage ? (
               "POS operator only"
             ) : (

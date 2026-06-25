@@ -1,24 +1,20 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { Cookie, HelpCircle } from "lucide-react"
+import { Cookie } from "lucide-react"
 
 import {
-  requestMagicLinkAction,
+  signInWithGoogleAction,
   signInWithPasswordAction,
 } from "@/app/actions/auth"
+import { AuthSubmitButton } from "@/components/shared/AuthSubmitButton"
 import { LoginFeedback } from "@/components/shared/LoginFeedback"
-import { MagicLinkSubmitButton } from "@/components/shared/MagicLinkSubmitButton"
-import { PasswordLoginSubmitButton } from "@/components/shared/PasswordLoginSubmitButton"
 import { SignOutButton } from "@/components/shared/SignOutButton"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getCurrentSessionContext, getHomeRouteForRole } from "@/lib/auth"
 import { formatAuthMessage, readQueryValue } from "@/lib/authMessages"
-import {
-  isMagicLinkAuthEnabled,
-  isSupabaseConfigured,
-  publicEnv,
-} from "@/lib/env"
+import { isSupabaseConfigured, publicEnv } from "@/lib/env"
 
 type LoginPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -26,7 +22,6 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const resolvedSearchParams = await searchParams
-  const magicLinksEnabled = isMagicLinkAuthEnabled()
   const email = readQueryValue(resolvedSearchParams?.email)
   const error = formatAuthMessage(readQueryValue(resolvedSearchParams?.error), {
     config:
@@ -34,13 +29,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     inactive:
       "Your employee account is inactive. Ask an admin to reactivate it.",
     "profile-missing": "Your employee profile has not been created yet.",
-    "password-auth-disabled":
-      "Password sign-in is not enabled for this POS setup.",
   })
-  const sent =
-    magicLinksEnabled && readQueryValue(resolvedSearchParams?.sent) === "1"
   const passwordReset =
-    !magicLinksEnabled &&
     readQueryValue(resolvedSearchParams?.passwordReset) === "1"
   const supabaseReady = isSupabaseConfigured
   const sessionContext = supabaseReady ? await getCurrentSessionContext() : null
@@ -55,70 +45,46 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   )
 
   return (
-    <main className="selection:bg-primary/30 bg-background selection:text-primary-foreground relative flex min-h-screen flex-col overflow-hidden">
-      {/* Playful Background Decorative Elements */}
-      <div className="pointer-events-none absolute inset-0 opacity-40">
-        <div className="bg-primary/20 absolute -top-24 -left-24 h-96 w-96 rounded-full blur-3xl"></div>
-        <div className="bg-secondary/20 absolute right-0 bottom-1/4 h-64 w-64 rounded-full blur-2xl"></div>
-        <div className="bg-primary/10 absolute top-1/2 left-1/4 h-32 w-32 rounded-full blur-xl"></div>
-      </div>
-
-      <div className="z-10 flex flex-grow items-center justify-center px-4 py-12">
-        <div className="w-full max-w-lg">
-          {/* Branding Anchor */}
-          <div className="mb-10 text-center">
-            <h2 className="font-heading text-primary text-3xl font-bold tracking-tight">
-              {publicEnv.appName}
-            </h2>
-            <div className="mt-2 flex items-center justify-center gap-3">
-              <span className="bg-primary/20 h-1 w-4 rounded-full"></span>
-              <span className="text-secondary text-xs font-bold tracking-[0.2em] uppercase">
-                Professional POS
-              </span>
-              <span className="bg-primary/20 h-1 w-4 rounded-full"></span>
-            </div>
+    <main className="auth-shell">
+      <div className="auth-shell__body">
+        <div className="auth-shell__frame">
+          <div className="auth-brand">
+            <h2 className="auth-brand-mark">{publicEnv.appName}</h2>
+            <p className="auth-brand-caption">POS</p>
           </div>
 
-          {/* Login Card */}
-          <div className="border-primary/5 bg-card shadow-candy relative rounded-[2.5rem] border p-10 md:p-12">
-            {/* Top Detail Icon */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
-              <div className="bg-primary shadow-candy ring-background rounded-full p-4 ring-8">
-                <Cookie className="text-primary-foreground h-6 w-6" />
+          <section className="auth-panel">
+            <div className="auth-panel-header">
+              <div className="bg-primary/10 text-primary mx-auto flex size-14 items-center justify-center rounded-full">
+                <Cookie className="h-6 w-6" />
               </div>
-            </div>
-
-            <div className="mt-2 mb-10 text-center">
-              <h1 className="font-heading text-foreground mb-3 text-4xl font-bold">
-                Welcome back
-              </h1>
-              <p className="text-muted-foreground text-lg font-medium">
-                {magicLinksEnabled
-                  ? "Enter your email for a magic link"
-                  : "Enter your email and password"}
-              </p>
+              <div>
+                <h1 className="auth-panel-title">Sign in</h1>
+                <p className="auth-panel-copy">
+                  Use your work email and password.
+                </p>
+              </div>
             </div>
 
             <div className="space-y-6">
               <LoginFeedback
                 error={error}
-                sent={sent}
-                email={email}
                 successMessage={
                   passwordReset
                     ? "Password updated. Sign in with your new password."
                     : null
                 }
               />
-              {!supabaseReady && (
+
+              {!supabaseReady ? (
                 <div className="border-warning/10 bg-warning/5 text-warning rounded-2xl border px-4 py-3 text-sm">
                   Supabase is not configured yet. Set up your .env.local files.
                 </div>
-              )}
+              ) : null}
 
               {inactiveAccount || profileMissing ? (
-                <div className="bg-muted/50 flex flex-col gap-4 rounded-2xl p-6 text-center">
-                  <h3 className="font-heading text-xl font-bold">
+                <div className="bg-muted/50 flex flex-col gap-4 rounded-[calc(var(--radius)-0.1rem)] p-6 text-center">
+                  <h3 className="text-xl font-semibold">
                     {inactiveAccount ? "Account Inactive" : "Profile Missing"}
                   </h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">
@@ -129,22 +95,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                   <SignOutButton className="mt-2" buttonClassName="w-full" />
                 </div>
               ) : (
-                <form
-                  action={
-                    magicLinksEnabled
-                      ? requestMagicLinkAction
-                      : signInWithPasswordAction
-                  }
-                  className="space-y-6"
-                >
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="email"
-                      className="text-muted-foreground ml-4 text-xs font-bold tracking-widest uppercase"
-                    >
-                      Work Email
-                    </Label>
-                    <div className="group relative">
+                <div className="space-y-4">
+                  <form action={signInWithPasswordAction} className="space-y-6">
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="email"
+                        className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase"
+                      >
+                        Work Email
+                      </Label>
                       <Input
                         id="email"
                         name="email"
@@ -154,88 +113,95 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                         placeholder="name@minispastries.com"
                         required
                         disabled={!supabaseReady}
-                        className="bg-muted/30 focus:border-primary h-14 rounded-full border-transparent px-8 text-lg font-medium transition-all focus:ring-0"
+                        className="bg-muted/30 border-transparent px-4 text-base"
                       />
                     </div>
-                  </div>
 
-                  {!magicLinksEnabled && (
                     <div className="space-y-2">
                       <Label
                         htmlFor="password"
-                        className="text-muted-foreground ml-4 text-xs font-bold tracking-widest uppercase"
+                        className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase"
                       >
                         Password
                       </Label>
-                      <div className="group relative">
-                        <Input
-                          id="password"
-                          name="password"
-                          type="password"
-                          autoComplete="current-password"
-                          required
-                          disabled={!supabaseReady}
-                          className="bg-muted/30 focus:border-primary h-14 rounded-full border-transparent px-8 text-lg font-medium transition-all focus:ring-0"
-                        />
-                      </div>
+                      <Input
+                        id="password"
+                        name="password"
+                        type="password"
+                        autoComplete="current-password"
+                        required
+                        disabled={!supabaseReady}
+                        className="bg-muted/30 border-transparent px-4 text-base"
+                      />
                     </div>
-                  )}
 
-                  {magicLinksEnabled ? (
-                    <MagicLinkSubmitButton
+                    <AuthSubmitButton
                       disabled={!supabaseReady}
-                      sent={sent}
+                      icon="logIn"
+                      label="Sign In"
+                      pendingLabel="Signing In..."
                     />
-                  ) : (
-                    <>
-                      <PasswordLoginSubmitButton disabled={!supabaseReady} />
-                      <div className="text-center">
-                        <Link
-                          href="/forgot-password"
-                          className="hover:text-primary/80 text-primary text-sm font-semibold transition-colors hover:underline"
-                        >
-                          Forgot or need to set your password?
-                        </Link>
-                      </div>
-                    </>
-                  )}
-                </form>
+
+                    <div className="text-center">
+                      <Link
+                        href="/forgot-password"
+                        className="text-primary hover:text-primary/80 text-sm font-semibold transition-colors hover:underline"
+                      >
+                        Forgot or need to set your password?
+                      </Link>
+                    </div>
+                  </form>
+
+                  <div className="flex items-center gap-3">
+                    <div className="bg-border h-px flex-1"></div>
+                    <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+                      Or
+                    </span>
+                    <div className="bg-border h-px flex-1"></div>
+                  </div>
+
+                  <form action={signInWithGoogleAction}>
+                    <Button
+                      type="submit"
+                      size="lg"
+                      disabled={!supabaseReady}
+                      variant="outline"
+                      className="flex w-full items-center justify-center gap-2 rounded-full text-base font-semibold"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5"
+                      >
+                        <path
+                          fill="#EA4335"
+                          d="M12 10.2v3.9h5.4c-.2 1.3-1.7 3.9-5.4 3.9-3.2 0-5.9-2.7-5.9-6s2.7-6 5.9-6c1.8 0 3 .8 3.7 1.5l2.5-2.4C16.7 3.6 14.6 2.7 12 2.7A9.3 9.3 0 0 0 2.7 12 9.3 9.3 0 0 0 12 21.3c5.4 0 9-3.8 9-9.1 0-.6-.1-1.1-.2-1.6H12Z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M2.7 7.5 5.9 9.8A5.9 5.9 0 0 1 12 6c1.8 0 3 .8 3.7 1.5l2.5-2.4C16.7 3.6 14.6 2.7 12 2.7c-3.6 0-6.8 2-8.4 4.8Z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M2.7 16.5A9.2 9.2 0 0 1 2.2 12c0-1.6.4-3.1 1-4.5l3.2 2.3A5.9 5.9 0 0 0 6.1 12c0 .8.2 1.5.4 2.2l-3.8 2.3Z"
+                        />
+                        <path
+                          fill="#4285F4"
+                          d="M12 21.3c2.5 0 4.7-.8 6.2-2.3l-3-2.4c-.8.6-1.8 1-3.2 1a5.9 5.9 0 0 1-5.6-4.1l-3.7 2.8A9.3 9.3 0 0 0 12 21.3Z"
+                        />
+                      </svg>
+                      Continue with Google
+                    </Button>
+                  </form>
+                </div>
               )}
             </div>
-
-            <div className="border-border/50 mt-8 border-t pt-8 text-center">
-              <p className="text-muted-foreground text-sm font-medium">
-                New to the POS?{" "}
-                <span className="text-primary font-bold">Contact an admin</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Footer Connectivity Status */}
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-4 px-4 sm:justify-between">
-            <div className="bg-card text-muted-foreground shadow-candy flex items-center gap-2 rounded-full px-5 py-2.5">
-              <HelpCircle className="h-4 w-4" />
-              <span className="text-xs font-bold tracking-tighter uppercase">
-                Help Center
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-success/10 text-success flex items-center gap-2 rounded-full px-5 py-2.5">
-                <span className="bg-success h-2 w-2 animate-pulse rounded-full"></span>
-                <span className="text-xs font-bold tracking-tighter uppercase">
-                  Systems Synced
-                </span>
-              </div>
-            </div>
-          </div>
+          </section>
         </div>
       </div>
 
-      {/* Bottom Attribution */}
-      <footer className="flex h-20 items-center justify-center">
-        <p className="text-muted-foreground/40 text-[10px] tracking-[0.3em] uppercase">
-          © {new Date().getFullYear()} {publicEnv.appName} POS System
-        </p>
+      <footer className="auth-footer">
+        Copyright {new Date().getFullYear()} {publicEnv.appName}
       </footer>
     </main>
   )

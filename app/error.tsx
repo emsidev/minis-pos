@@ -16,7 +16,7 @@ export default function GlobalError({
           error={error}
           reset={reset}
           title="Something went wrong"
-          description="The app could not finish this screen. Try again or return to the main workspace."
+          description="This screen could not finish loading. Try again or go back."
           homeHref="/"
           homeLabel="Go to workspace"
         />

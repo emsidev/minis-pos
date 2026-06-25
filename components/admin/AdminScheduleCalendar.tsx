@@ -139,7 +139,6 @@ export function AdminScheduleCalendar({
     <div className="flex flex-col gap-5">
       <header className="flex items-center justify-between gap-4">
         <div>
-          <p className="app-kicker">Schedule Calendar</p>
           <h2 className="app-section-title">
             {monthName}{" "}
             <span className="text-muted-foreground font-normal">{year}</span>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -11,20 +11,37 @@ import {
   RotateCcw,
   Store,
   TableProperties,
+  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import {
   cancelBoothSchedule,
   deactivateBooth,
-  loadAdminShiftDetail,
+  deleteBoothCascade,
+  deleteBoothScheduleCascade,
   reactivateBooth,
+  type BoothFormInput,
+  type ScheduleFormInput,
 } from "@/app/actions/adminBooths"
+import { rejectShiftApproval, resolveShiftApproval } from "@/app/actions/shifts"
+import {
+  buildOptimisticBoothRecord,
+  buildOptimisticScheduleCalendarItems,
+} from "@/lib/adminOptimistic"
+import {
+  fetchAdminShiftDetail,
+  getPendingReopenApproval,
+  getPendingReopenApprovalCount,
+  runBooleanPendingApproval,
+  runIdPendingApproval,
+} from "@/components/admin/adminShiftDetailHelpers"
 import { AdminScheduleCalendar } from "@/components/admin/AdminScheduleCalendar"
 import { BoothFormSheet } from "@/components/admin/BoothFormSheet"
 import { ScheduleFormSheet } from "@/components/admin/ScheduleFormSheet"
 import { ShiftReopenSheet } from "@/components/admin/ShiftReopenSheet"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import { CashDeductionSheet } from "@/components/shifts/CashDeductionSheet"
 import { ShiftCloseoutSheet } from "@/components/shifts/ShiftCloseoutSheet"
 import { ShiftDetailSheet } from "@/components/shifts/ShiftDetailSheet"
 import { Badge } from "@/components/ui/badge"
@@ -45,7 +62,11 @@ import type {
   AdminShiftDetailData,
 } from "@/lib/adminBooths"
 import type { Booth } from "@/lib/shifts"
-import { hasBusinessShiftPassed } from "@/lib/utils"
+import {
+  getEmployeeDisplayName,
+  hasBusinessShiftPassed,
+  isCurrentBusinessShift,
+} from "@/lib/utils"
 import { joinSchedule } from "@/app/actions/shifts"
 
 type AdminBoothsClientProps = {
@@ -59,6 +80,27 @@ function sortBooths(rows: Booth[]) {
   return rows.slice().sort((left, right) => left.name.localeCompare(right.name))
 }
 
+function sortSchedules(rows: AdminScheduleCalendarItem[]) {
+  return rows
+    .slice()
+    .sort((left, right) =>
+      `${left.date} ${left.start_time}`.localeCompare(
+        `${right.date} ${right.start_time}`
+      )
+    )
+}
+
+function cancelScheduledBoothRows(
+  rows: AdminScheduleCalendarItem[],
+  boothId: string
+) {
+  return rows.map((schedule) =>
+    schedule.booth_id === boothId && schedule.status === "scheduled"
+      ? { ...schedule, status: "cancelled" as const }
+      : schedule
+  )
+}
+
 export function AdminBoothsClient({
   booths,
   schedules,
@@ -67,6 +109,7 @@ export function AdminBoothsClient({
 }: AdminBoothsClientProps) {
   const router = useRouter()
   const [displayBooths, setDisplayBooths] = useState(booths)
+  const [displaySchedules, setDisplaySchedules] = useState(schedules)
   const [formOpen, setFormOpen] = useState(false)
   const [scheduleFormOpen, setScheduleFormOpen] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState<AdminSchedule | null>(
@@ -76,6 +119,7 @@ export function AdminBoothsClient({
     useState<AdminShiftDetailData | null>(null)
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false)
   const [closeoutOpen, setCloseoutOpen] = useState(false)
+  const [cashDeductionOpen, setCashDeductionOpen] = useState(false)
   const [scheduleDetailLoading, setScheduleDetailLoading] = useState(false)
   const [scheduleDetailError, setScheduleDetailError] = useState<string | null>(
     null
@@ -85,15 +129,28 @@ export function AdminBoothsClient({
     useState<AdminSchedule | null>(null)
   const [reopeningSchedule, setReopeningSchedule] =
     useState<AdminSchedule | null>(null)
+  const [resolvingApproval, setResolvingApproval] = useState(false)
+  const [resolvingSaleApprovalId, setResolvingSaleApprovalId] = useState<
+    string | null
+  >(null)
   const [editingBooth, setEditingBooth] = useState<Booth | null>(null)
   const [deactivatingBooth, setDeactivatingBooth] = useState<Booth | null>(null)
+  const [deletingBooth, setDeletingBooth] = useState<Booth | null>(null)
+  const [deletingSchedule, setDeletingSchedule] =
+    useState<AdminSchedule | null>(null)
   const [reactivatingBoothId, setReactivatingBoothId] = useState<string | null>(
     null
   )
+  const optimisticBoothIdRef = useRef<string | null>(null)
+  const optimisticScheduleIdsRef = useRef<string[]>([])
 
   useEffect(() => {
     setDisplayBooths(booths)
   }, [booths])
+
+  useEffect(() => {
+    setDisplaySchedules(schedules)
+  }, [schedules])
 
   const openCreate = () => {
     setEditingBooth(null)
@@ -110,9 +167,80 @@ export function AdminBoothsClient({
     setFormOpen(true)
   }
 
+  const handleOptimisticBoothSave = useCallback(
+    (input: BoothFormInput) => {
+      const previousBooths = displayBooths
+      const optimisticId = input.id ?? `optimistic-booth-${crypto.randomUUID()}`
+
+      optimisticBoothIdRef.current = input.id ? null : optimisticId
+
+      const optimisticBooth = buildOptimisticBoothRecord(
+        input,
+        optimisticId,
+        editingBooth
+      )
+
+      setDisplayBooths((current) =>
+        sortBooths([
+          optimisticBooth,
+          ...current.filter(
+            (entry) =>
+              entry.id !== optimisticBooth.id && entry.id !== editingBooth?.id
+          ),
+        ])
+      )
+
+      return () => {
+        optimisticBoothIdRef.current = null
+        setDisplayBooths(previousBooths)
+      }
+    },
+    [displayBooths, editingBooth]
+  )
+
+  const handleOptimisticScheduleSave = useCallback(
+    (input: ScheduleFormInput) => {
+      const previousSchedules = displaySchedules
+      const optimisticSchedules = buildOptimisticScheduleCalendarItems(
+        input,
+        displayBooths,
+        employees
+      )
+
+      optimisticScheduleIdsRef.current =
+        "id" in input && input.id
+          ? []
+          : optimisticSchedules.map((schedule) => schedule.id)
+
+      setDisplaySchedules((current) => {
+        if ("id" in input && input.id) {
+          return sortSchedules(
+            current.map((schedule) =>
+              schedule.id === input.id ? optimisticSchedules[0] : schedule
+            )
+          )
+        }
+
+        return sortSchedules([
+          ...optimisticSchedules,
+          ...current.filter(
+            (schedule) =>
+              !optimisticScheduleIdsRef.current.includes(schedule.id)
+          ),
+        ])
+      })
+
+      return () => {
+        optimisticScheduleIdsRef.current = []
+        setDisplaySchedules(previousSchedules)
+      }
+    },
+    [displayBooths, displaySchedules, employees]
+  )
+
   const loadScheduleDetails = async (scheduleId: string) => {
     try {
-      const detail = await loadAdminShiftDetail(scheduleId)
+      const detail = await fetchAdminShiftDetail(scheduleId)
       if (!detail.schedule) {
         setSelectedDetail(null)
         setScheduleDetailError("This shift is no longer available.")
@@ -145,24 +273,50 @@ export function AdminBoothsClient({
       return
     }
 
+    const previousSchedules = displaySchedules
+    const previousDetail = selectedDetail
+    const scheduleId = cancellingSchedule.id
+    setDisplaySchedules((current) =>
+      current.map((schedule) =>
+        schedule.id === scheduleId
+          ? { ...schedule, status: "cancelled" }
+          : schedule
+      )
+    )
+    setSelectedDetail((current) =>
+      current?.schedule?.id === scheduleId
+        ? {
+            ...current,
+            schedule: { ...current.schedule, status: "cancelled" },
+          }
+        : current
+    )
+
     const result = await cancelBoothSchedule(
       cancellingSchedule.id,
       cancellingSchedule.booth_id
     )
     if (!result.ok) {
+      setDisplaySchedules(previousSchedules)
+      setSelectedDetail(previousDetail)
       toast.error(result.error ?? "Unable to cancel shift.")
       throw new Error(result.error ?? "Unable to cancel shift.")
     }
-
     toast.success(result.message)
     router.refresh()
   }
 
   const selectedSchedule = selectedDetail?.schedule ?? null
-  const selectedOperatorCanClose =
-    selectedSchedule?.operator_employee_id === currentEmployeeId &&
-    selectedSchedule.status === "scheduled" &&
-    hasBusinessShiftPassed(selectedSchedule.date, selectedSchedule.end_time)
+  const selectedCanClose =
+    selectedSchedule?.status === "scheduled" &&
+    (selectedDetail?.products.length ?? 0) > 0 &&
+    (hasBusinessShiftPassed(selectedSchedule.date, selectedSchedule.end_time) ||
+      isCurrentBusinessShift(
+        selectedSchedule.date,
+        selectedSchedule.start_time,
+        selectedSchedule.end_time
+      ) ||
+      (selectedDetail?.products.length ?? 0) > 0)
   const adminAssignedToSelected =
     selectedSchedule?.booth_schedule_assignments.some(
       (assignment) => assignment.employee_id === currentEmployeeId
@@ -171,6 +325,15 @@ export function AdminBoothsClient({
     selectedSchedule !== null &&
     selectedSchedule.status === "scheduled" &&
     !adminAssignedToSelected
+
+  const refreshSelectedDetail = () => {
+    if (!selectedSchedule) {
+      return
+    }
+
+    setScheduleDetailLoading(true)
+    void loadScheduleDetails(selectedSchedule.id)
+  }
 
   const handleJoinSelectedSchedule = async () => {
     if (!selectedSchedule) {
@@ -197,28 +360,46 @@ export function AdminBoothsClient({
       return
     }
 
-    const result = await deactivateBooth(deactivatingBooth.id)
-    if (!result.ok) {
-      toast.error(result.error ?? "Unable to deactivate booth.")
-      throw new Error(result.error ?? "Unable to deactivate booth.")
-    }
-
+    const boothToDeactivate = deactivatingBooth
+    const previousBooths = displayBooths
+    const previousSchedules = displaySchedules
     setDisplayBooths((current) =>
       current.map((booth) =>
-        booth.id === deactivatingBooth.id
+        booth.id === boothToDeactivate.id
           ? { ...booth, is_active: false }
           : booth
       )
     )
+    setDisplaySchedules((current) =>
+      cancelScheduledBoothRows(current, boothToDeactivate.id)
+    )
+
+    const result = await deactivateBooth(deactivatingBooth.id)
+    if (!result.ok) {
+      setDisplayBooths(previousBooths)
+      setDisplaySchedules(previousSchedules)
+      toast.error(result.error ?? "Unable to deactivate booth.")
+      throw new Error(result.error ?? "Unable to deactivate booth.")
+    }
+
     toast.success(result.message)
   }
 
   const handleReactivate = async (booth: Booth) => {
     setReactivatingBoothId(booth.id)
+    const previousBooths = displayBooths
+    setDisplayBooths((current) =>
+      sortBooths(
+        current.map((entry) =>
+          entry.id === booth.id ? { ...entry, is_active: true } : entry
+        )
+      )
+    )
 
     try {
       const result = await reactivateBooth(booth.id)
       if (!result.ok) {
+        setDisplayBooths(previousBooths)
         toast.error(result.error ?? "Unable to reactivate booth.")
         throw new Error(result.error ?? "Unable to reactivate booth.")
       }
@@ -236,6 +417,73 @@ export function AdminBoothsClient({
     } finally {
       setReactivatingBoothId(null)
     }
+  }
+
+  const handleDeleteSchedule = async () => {
+    if (!deletingSchedule) {
+      return
+    }
+
+    const scheduleId = deletingSchedule.id
+    const previousSchedules = displaySchedules
+    const previousDetail = selectedDetail
+    setDisplaySchedules((current) =>
+      current.filter((schedule) => schedule.id !== scheduleId)
+    )
+    setSelectedDetail((current) =>
+      current?.schedule?.id === scheduleId ? null : current
+    )
+
+    const result = await deleteBoothScheduleCascade(
+      deletingSchedule.id,
+      deletingSchedule.booth_id
+    )
+
+    if (!result.ok) {
+      setDisplaySchedules(previousSchedules)
+      setSelectedDetail(previousDetail)
+      toast.error(result.error ?? "Unable to delete shift.")
+      throw new Error(result.error ?? "Unable to delete shift.")
+    }
+
+    setScheduleDetailOpen(false)
+    setScheduleDetailError(null)
+    toast.success(result.message)
+    router.refresh()
+  }
+
+  const handleDeleteBooth = async () => {
+    if (!deletingBooth) {
+      return
+    }
+
+    const boothId = deletingBooth.id
+    const previousBooths = displayBooths
+    const previousSchedules = displaySchedules
+    const previousDetail = selectedDetail
+    setDisplayBooths((current) =>
+      current.filter((booth) => booth.id !== boothId)
+    )
+    setDisplaySchedules((current) =>
+      current.filter((schedule) => schedule.booth_id !== boothId)
+    )
+    setSelectedDetail((current) =>
+      current?.schedule?.booth_id === boothId ? null : current
+    )
+
+    const result = await deleteBoothCascade(boothId)
+    if (!result.ok) {
+      setDisplayBooths(previousBooths)
+      setDisplaySchedules(previousSchedules)
+      setSelectedDetail(previousDetail)
+      toast.error(result.error ?? "Unable to delete booth.")
+      throw new Error(result.error ?? "Unable to delete booth.")
+    }
+
+    setScheduleDetailOpen(false)
+    setScheduleDetailError(null)
+    toast.success(result.message)
+    router.refresh()
   }
 
   const handleCloseoutSaved = () => {
@@ -265,17 +513,88 @@ export function AdminBoothsClient({
     setReopeningSchedule(selectedSchedule)
   }
 
+  const pendingReopenApproval = getPendingReopenApproval(selectedDetail)
+  const pendingReopenApprovalCount =
+    getPendingReopenApprovalCount(selectedDetail)
+
+  const handleApproveReopenApproval = async () => {
+    if (!pendingReopenApproval || !selectedSchedule) {
+      return
+    }
+
+    await runBooleanPendingApproval({
+      action: resolveShiftApproval,
+      approvalId: pendingReopenApproval.id,
+      boothId: selectedSchedule.booth_id,
+      errorMessage: "Unable to approve this request.",
+      onSuccess: () => {
+        router.refresh()
+        refreshSelectedDetail()
+      },
+      scheduleId: selectedSchedule.id,
+      setPending: setResolvingApproval,
+    })
+  }
+
+  const handleRejectReopenApproval = async () => {
+    if (!pendingReopenApproval || !selectedSchedule) {
+      return
+    }
+
+    await runBooleanPendingApproval({
+      action: rejectShiftApproval,
+      approvalId: pendingReopenApproval.id,
+      boothId: selectedSchedule.booth_id,
+      errorMessage: "Unable to reject this request.",
+      onSuccess: refreshSelectedDetail,
+      scheduleId: selectedSchedule.id,
+      setPending: setResolvingApproval,
+    })
+  }
+
+  const handleApproveSaleApproval = async (approvalId: string) => {
+    if (!selectedSchedule) {
+      return
+    }
+
+    await runIdPendingApproval({
+      action: resolveShiftApproval,
+      approvalId,
+      boothId: selectedSchedule.booth_id,
+      errorMessage: "Unable to approve this request.",
+      onSuccess: () => {
+        router.refresh()
+        refreshSelectedDetail()
+      },
+      scheduleId: selectedSchedule.id,
+      setPendingId: setResolvingSaleApprovalId,
+    })
+  }
+
+  const handleRejectSaleApproval = async (approvalId: string) => {
+    if (!selectedSchedule) {
+      return
+    }
+
+    await runIdPendingApproval({
+      action: rejectShiftApproval,
+      approvalId,
+      boothId: selectedSchedule.booth_id,
+      errorMessage: "Unable to reject this request.",
+      onSuccess: refreshSelectedDetail,
+      scheduleId: selectedSchedule.id,
+      setPendingId: setResolvingSaleApprovalId,
+    })
+  }
+
   return (
     <div className="app-page flex flex-col gap-6">
-      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <p className="app-kicker">Admin Workspace</p>
-          <h1 className="text-3xl font-semibold">Booth Management</h1>
-          <p className="app-caption">
-            Manage sales locations and assign scheduled Counter shifts.
-          </p>
+      <header className="app-screen-header">
+        <div className="app-screen-copy">
+          <h1 className="app-screen-title">Booth Management</h1>
+          <p className="app-screen-description">Manage booths and shifts.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="app-screen-actions">
           <Button
             render={<Link href="/admin/booths/bulk" />}
             nativeButton={false}
@@ -315,7 +634,7 @@ export function AdminBoothsClient({
           ) : (
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
               {displayBooths.map((booth) => {
-                const scheduleCount = schedules.filter(
+                const scheduleCount = displaySchedules.filter(
                   (schedule) =>
                     schedule.booth_id === booth.id &&
                     schedule.status === "scheduled"
@@ -388,6 +707,14 @@ export function AdminBoothsClient({
                             Reactivate
                           </Button>
                         )}
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => setDeletingBooth(booth)}
+                        >
+                          <Trash2 data-icon="inline-start" />
+                          Delete
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -401,12 +728,12 @@ export function AdminBoothsClient({
             <CardHeader>
               <CardTitle>Unified Schedule</CardTitle>
               <CardDescription>
-                All booth assignments, including retained cancellation history.
+                All booth shifts in one calendar.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <AdminScheduleCalendar
-                schedules={schedules}
+                schedules={displaySchedules}
                 loadMonths
                 onSelectSchedule={openScheduleDetails}
                 enableTextExport
@@ -420,11 +747,16 @@ export function AdminBoothsClient({
         booth={editingBooth}
         open={formOpen}
         onOpenChange={setFormOpen}
+        onOptimisticSave={handleOptimisticBoothSave}
         onSaved={(booth) => {
+          const optimisticId = optimisticBoothIdRef.current
+          optimisticBoothIdRef.current = null
           setDisplayBooths((current) =>
             sortBooths([
               booth,
-              ...current.filter((entry) => entry.id !== booth.id),
+              ...current.filter(
+                (entry) => entry.id !== booth.id && entry.id !== optimisticId
+              ),
             ])
           )
         }}
@@ -436,7 +768,9 @@ export function AdminBoothsClient({
         initialBoothId={editingSchedule?.booth_id ?? ""}
         booths={displayBooths.filter((booth) => booth.is_active)}
         employees={employees}
+        onOptimisticSave={handleOptimisticScheduleSave}
         onSaved={() => {
+          optimisticScheduleIdsRef.current = []
           setEditingSchedule(null)
           router.refresh()
         }}
@@ -449,12 +783,14 @@ export function AdminBoothsClient({
         loadError={scheduleDetailError}
         assignedEmployeeNames={
           selectedSchedule?.booth_schedule_assignments
-            .map(
-              (assignment) => assignment.employees?.name ?? "Unknown employee"
-            )
+            .map((assignment) => getEmployeeDisplayName(assignment.employees))
             .filter(Boolean) ?? []
         }
-        operatorName={selectedSchedule?.operator?.name ?? null}
+        operatorName={
+          selectedSchedule?.operator
+            ? getEmployeeDisplayName(selectedSchedule.operator)
+            : null
+        }
         canEditReceipts={selectedSchedule?.status === "scheduled"}
         canJoin={canJoinSelectedSchedule}
         joinPending={joiningSchedule}
@@ -467,10 +803,24 @@ export function AdminBoothsClient({
           selectedSchedule?.booth_schedule_operator_periods ?? []
         }
         closeouts={selectedSchedule?.shift_closeouts ?? []}
+        approvalHistory={selectedDetail?.approvalHistory ?? []}
+        approvalProducts={selectedDetail?.products ?? []}
+        pendingRevenueIncrease={selectedDetail?.pendingRevenueIncrease ?? 0}
+        pendingRevenueDecrease={selectedDetail?.pendingRevenueDecrease ?? 0}
+        saleActionMode="direct"
+        onSalesChanged={refreshSelectedDetail}
+        onAddCashDeduction={
+          selectedSchedule?.status === "scheduled"
+            ? () => {
+                setScheduleDetailOpen(false)
+                setCashDeductionOpen(true)
+              }
+            : undefined
+        }
         allowOfflineSaleCache={false}
-        canCloseShift={selectedOperatorCanClose}
+        canCloseShift={selectedCanClose}
         onCloseShift={
-          selectedOperatorCanClose
+          selectedCanClose
             ? () => {
                 setScheduleDetailOpen(false)
                 setCloseoutOpen(true)
@@ -478,11 +828,7 @@ export function AdminBoothsClient({
             : undefined
         }
         onEdit={
-          selectedSchedule &&
-          !hasBusinessShiftPassed(
-            selectedSchedule.date,
-            selectedSchedule.end_time
-          )
+          selectedSchedule
             ? () => {
                 setScheduleDetailOpen(false)
                 setEditingSchedule(selectedSchedule)
@@ -502,12 +848,31 @@ export function AdminBoothsClient({
               }
             : undefined
         }
+        onDelete={
+          selectedSchedule
+            ? () => {
+                setScheduleDetailOpen(false)
+                setDeletingSchedule(selectedSchedule)
+              }
+            : undefined
+        }
         onOverride={undefined}
         onReopen={
           selectedSchedule?.status === "closed"
             ? openReopenFromDetails
             : undefined
         }
+        pendingReopenApprovalCount={pendingReopenApprovalCount}
+        onApproveReopenApproval={
+          pendingReopenApproval ? handleApproveReopenApproval : undefined
+        }
+        onRejectReopenApproval={
+          pendingReopenApproval ? handleRejectReopenApproval : undefined
+        }
+        resolveReopenApprovalPending={resolvingApproval}
+        onApproveSaleApproval={handleApproveSaleApproval}
+        onRejectSaleApproval={handleRejectSaleApproval}
+        resolvingSaleApprovalId={resolvingSaleApprovalId}
       />
       {selectedSchedule ? (
         <ShiftCloseoutSheet
@@ -516,7 +881,24 @@ export function AdminBoothsClient({
           schedule={selectedSchedule}
           products={selectedDetail?.products ?? []}
           sales={selectedDetail?.sales ?? []}
+          approvalHistory={selectedDetail?.approvalHistory ?? []}
           onSaved={handleCloseoutSaved}
+        />
+      ) : null}
+      {selectedSchedule ? (
+        <CashDeductionSheet
+          open={cashDeductionOpen}
+          onOpenChange={(open) => {
+            setCashDeductionOpen(open)
+            if (!open) {
+              setScheduleDetailOpen(true)
+            }
+          }}
+          schedule={selectedSchedule}
+          onSaved={() => {
+            setScheduleDetailOpen(true)
+            refreshSelectedDetail()
+          }}
         />
       ) : null}
       {reopeningSchedule ? (
@@ -553,6 +935,21 @@ export function AdminBoothsClient({
         onConfirm={handleDeactivate}
       />
       <ConfirmDialog
+        open={Boolean(deletingBooth)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeletingBooth(null)
+          }
+        }}
+        title="Delete this booth?"
+        description="This permanently removes the booth, all of its shifts, all related sales, and receipt history."
+        confirmLabel="Delete Booth"
+        pendingLabel="Deleting..."
+        cancelLabel="Keep Booth"
+        variant="destructive"
+        onConfirm={handleDeleteBooth}
+      />
+      <ConfirmDialog
         open={Boolean(cancellingSchedule)}
         onOpenChange={(open) => {
           if (!open) {
@@ -566,6 +963,21 @@ export function AdminBoothsClient({
         cancelLabel="Keep Shift"
         variant="destructive"
         onConfirm={handleCancelSchedule}
+      />
+      <ConfirmDialog
+        open={Boolean(deletingSchedule)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeletingSchedule(null)
+          }
+        }}
+        title="Delete this shift?"
+        description="This permanently removes the shift, its inventory records, approvals, sales, and receipt history."
+        confirmLabel="Delete Shift"
+        pendingLabel="Deleting..."
+        cancelLabel="Keep Shift"
+        variant="destructive"
+        onConfirm={handleDeleteSchedule}
       />
     </div>
   )

@@ -9,6 +9,7 @@ import {
   Receipt,
   UserRound,
   Users,
+  Wallet,
 } from "lucide-react"
 
 import type {
@@ -17,7 +18,18 @@ import type {
   AdminShiftCloseout,
 } from "@/lib/adminBooths"
 import { buildBoothMapLink } from "@/lib/boothMaps"
-import { cn, formatCurrency, hasBusinessShiftPassed } from "@/lib/utils"
+import type { ApprovalProduct, ShiftApprovalRecord } from "@/lib/shiftApprovals"
+import {
+  getApprovedCashDeductionTotal,
+  getPendingCashDeductionCount,
+  getPendingCashDeductionTotal,
+} from "@/lib/shiftApprovals"
+import {
+  cn,
+  formatCurrency,
+  getBoothDisplayName,
+  hasBusinessShiftPassed,
+} from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,14 +40,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import type { Product, SaleWithJoins, SharedBoothSchedule } from "@/lib/shifts"
+import type {
+  Product,
+  SaleItemWithProduct,
+  SaleWithJoins,
+  SharedBoothSchedule,
+} from "@/lib/shifts"
+import { ShiftApprovalCard } from "./ShiftApprovalCard"
 import { SalesTable } from "./SalesTable"
 import { ShiftInventoryEditor } from "./ShiftInventoryEditor"
+
+const paymentMethodLabels = {
+  cash: "Cash",
+  gcash: "GCash",
+  maya: "Maya",
+  maribank: "Maribank",
+  unionbank: "UnionBank",
+  other: "Other",
+} as const
 
 type ShiftDetailViewProps = {
   schedule: SharedBoothSchedule
   products: Product[]
   sales: SaleWithJoins[]
+  saleItems: SaleItemWithProduct[]
   isFuture?: boolean
   className?: string
   assignedEmployeeNames?: string[]
@@ -44,6 +72,9 @@ type ShiftDetailViewProps = {
   inventoryEmployeeId?: string
   canManageInventory?: boolean
   preferCachedInventoryData?: boolean
+  onInventorySavePhaseChange?: (
+    phase: "started" | "queued" | "reconciled"
+  ) => Promise<void> | void
   canEditReceipts?: boolean
   readOnly?: boolean
   canJoin?: boolean
@@ -52,16 +83,35 @@ type ShiftDetailViewProps = {
   canTakeOver?: boolean
   takeoverPending?: boolean
   onTakeOver?: () => void
+  operatorActionLabel?: "Start Shift" | "Take Over POS"
   canCloseShift?: boolean
   onCloseShift?: () => void
   showAdminAudit?: boolean
   inventoryEvents?: AdminInventoryEvent[]
   operatorPeriods?: AdminOperatorPeriod[]
   closeouts?: AdminShiftCloseout[]
+  approvalHistory?: ShiftApprovalRecord[]
+  approvalProducts?: ApprovalProduct[]
+  pendingRevenueIncrease?: number
+  pendingRevenueDecrease?: number
+  saleActionMode?: "none" | "direct" | "request"
+  onSalesChanged?: () => void
   onEdit?: () => void
   onCancel?: () => void
+  onDelete?: () => void
   onOverride?: () => void
   onReopen?: () => void
+  onAddCashDeduction?: () => void
+  cashDeductionPending?: boolean
+  onRequestReopenApproval?: () => void
+  requestReopenApprovalPending?: boolean
+  pendingReopenApprovalCount?: number
+  onApproveReopenApproval?: () => void
+  onRejectReopenApproval?: () => void
+  resolveReopenApprovalPending?: boolean
+  onApproveSaleApproval?: (approvalId: string) => void
+  onRejectSaleApproval?: (approvalId: string) => void
+  resolvingSaleApprovalId?: string | null
   allowOfflineSaleCache?: boolean
 }
 
@@ -78,6 +128,26 @@ function formatShiftTimestamp(value: string) {
   return new Date(value).toLocaleString("en-PH", {
     timeZone: "Asia/Manila",
   })
+}
+
+function getApprovalPayloadValue(
+  approval: ShiftApprovalRecord,
+  key: string
+): unknown {
+  if (
+    typeof approval.payload !== "object" ||
+    approval.payload === null ||
+    Array.isArray(approval.payload)
+  ) {
+    return undefined
+  }
+
+  return (approval.payload as Record<string, unknown>)[key]
+}
+
+function getApprovalSaleId(approval: ShiftApprovalRecord) {
+  const saleId = getApprovalPayloadValue(approval, "sale_id")
+  return typeof saleId === "string" ? saleId : null
 }
 
 function getStatusBadge(
@@ -148,6 +218,7 @@ export function ShiftDetailView({
   schedule,
   products,
   sales,
+  saleItems,
   isFuture = false,
   className,
   assignedEmployeeNames = [],
@@ -156,6 +227,7 @@ export function ShiftDetailView({
   inventoryEmployeeId,
   canManageInventory = false,
   preferCachedInventoryData = false,
+  onInventorySavePhaseChange,
   canEditReceipts = false,
   readOnly = false,
   canJoin = false,
@@ -164,16 +236,35 @@ export function ShiftDetailView({
   canTakeOver = false,
   takeoverPending = false,
   onTakeOver,
+  operatorActionLabel = "Take Over POS",
   canCloseShift = false,
   onCloseShift,
   showAdminAudit = false,
   inventoryEvents = [],
   operatorPeriods = [],
   closeouts = [],
+  approvalHistory = [],
+  approvalProducts = [],
+  pendingRevenueIncrease = 0,
+  pendingRevenueDecrease = 0,
+  saleActionMode = "none",
+  onSalesChanged,
   onEdit,
   onCancel,
+  onDelete,
   onOverride,
   onReopen,
+  onAddCashDeduction,
+  cashDeductionPending = false,
+  onRequestReopenApproval,
+  requestReopenApprovalPending = false,
+  pendingReopenApprovalCount = 0,
+  onApproveReopenApproval,
+  onRejectReopenApproval,
+  resolveReopenApprovalPending = false,
+  onApproveSaleApproval,
+  onRejectSaleApproval,
+  resolvingSaleApprovalId = null,
   allowOfflineSaleCache,
 }: ShiftDetailViewProps) {
   const totalRevenue = sales.reduce(
@@ -184,43 +275,150 @@ export function ShiftDetailView({
     (acc, product) => acc + (product.stock ?? 0),
     0
   )
+  const paymentBreakdown = Object.entries(paymentMethodLabels).map(
+    ([method, label]) => {
+      const methodSales = sales.filter((sale) => sale.payment_method === method)
+
+      return {
+        method,
+        label,
+        count: methodSales.length,
+        revenue: methodSales.reduce(
+          (acc, sale) => acc + Number(sale.total_amount),
+          0
+        ),
+      }
+    }
+  )
+  const productRevenueBreakdown = Array.from(
+    saleItems
+      .reduce(
+        (acc, item) => {
+          const current = acc.get(item.product_id) ?? {
+            productId: item.product_id,
+            productName:
+              item.products?.name ??
+              products.find((product) => product.id === item.product_id)
+                ?.name ??
+              "Unknown Product",
+            quantitySold: 0,
+            revenue: 0,
+          }
+
+          current.quantitySold += item.quantity
+          current.revenue += Number(item.subtotal)
+          acc.set(item.product_id, current)
+          return acc
+        },
+        new Map<
+          string,
+          {
+            productId: string
+            productName: string
+            quantitySold: number
+            revenue: number
+          }
+        >()
+      )
+      .values()
+  ).sort((left, right) => {
+    if (right.revenue !== left.revenue) {
+      return right.revenue - left.revenue
+    }
+
+    if (right.quantitySold !== left.quantitySold) {
+      return right.quantitySold - left.quantitySold
+    }
+
+    return left.productName.localeCompare(right.productName)
+  })
   const hasLowStock = products.some((product) => (product.stock ?? 0) <= 5)
   const isCancelled = schedule.status === "cancelled"
   const isClosed = schedule.status === "closed"
   const hasPassed = hasBusinessShiftPassed(schedule.date, schedule.end_time)
+  const saleApprovalHistory = approvalHistory.filter(
+    (approval) =>
+      approval.action_type === "edit_sale" ||
+      approval.action_type === "delete_sale" ||
+      approval.action_type === "apply_promo"
+  )
+  const pendingSaleApprovalHistory = saleApprovalHistory.filter(
+    (approval) => approval.status === "pending"
+  )
+  const resolvedSaleApprovalHistory = saleApprovalHistory.filter(
+    (approval) => approval.status !== "pending"
+  )
+  const pendingReopenApproval =
+    approvalHistory.find(
+      (approval) =>
+        approval.action_type === "reopen_shift" && approval.status === "pending"
+    ) ?? null
+  const pendingSaleChangeSaleIds = saleApprovalHistory
+    .filter((approval) => approval.status === "pending")
+    .map((approval) => getApprovalSaleId(approval))
+    .filter((saleId): saleId is string => Boolean(saleId))
   const mapLink = buildBoothMapLink(schedule.booths)
+  const approvedCashDeductionTotal =
+    getApprovedCashDeductionTotal(approvalHistory)
+  const pendingCashDeductionTotal =
+    getPendingCashDeductionTotal(approvalHistory)
+  const pendingCashDeductionCount =
+    getPendingCashDeductionCount(approvalHistory)
+  const cashDeductionHistory = approvalHistory.filter(
+    (approval) => approval.action_type === "cash_deduction"
+  )
+  const pendingCashDeductionHistory = cashDeductionHistory.filter(
+    (approval) => approval.status === "pending"
+  )
+  const resolvedCashDeductionHistory = cashDeductionHistory.filter(
+    (approval) => approval.status !== "pending"
+  )
   const inventorySetupCount = products.length
   const openingStock = products.reduce(
     (acc, product) => acc + (product.quantity ?? 0),
     0
   )
+  const scheduleCloseouts = schedule.shift_closeouts ?? []
   const latestCloseout =
-    closeouts.length > 0
-      ? closeouts
-          .slice()
-          .sort((left, right) =>
-            right.closed_at.localeCompare(left.closed_at)
-          )[0]
-      : (schedule.shift_closeouts
-          ?.slice()
-          .sort((left, right) =>
-            right.closed_at.localeCompare(left.closed_at)
-          )[0] ?? null)
+    (closeouts.length > 0 ? closeouts : scheduleCloseouts)
+      .slice()
+      .sort((left, right) =>
+        right.closed_at.localeCompare(left.closed_at)
+      )[0] ?? null
   const showCloseShiftAction =
     !isCancelled && !isClosed && Boolean(canCloseShift && onCloseShift)
-  const showEditAction =
-    !isCancelled && !isClosed && !hasPassed && Boolean(onEdit)
+  const showEditAction = !isCancelled && !isClosed && Boolean(onEdit)
   const showCancelAction =
     !isCancelled && !isClosed && !hasPassed && Boolean(onCancel)
+  const showDeleteAction = Boolean(onDelete)
+  const showCashDeductionAction =
+    !isCancelled && !isClosed && Boolean(onAddCashDeduction)
   const hasPrimaryActions =
     Boolean(mapLink) ||
     Boolean(canJoin && onJoin) ||
     Boolean(canTakeOver && onTakeOver) ||
+    showCashDeductionAction ||
     showCloseShiftAction ||
     showEditAction ||
     showCancelAction ||
+    showDeleteAction ||
     Boolean(onOverride) ||
-    Boolean(onReopen)
+    Boolean(onReopen) ||
+    Boolean(onRequestReopenApproval) ||
+    Boolean(onApproveReopenApproval) ||
+    Boolean(onRejectReopenApproval)
+  const showApprovalSummary =
+    pendingCashDeductionCount > 0 ||
+    pendingSaleApprovalHistory.length > 0 ||
+    Boolean(pendingReopenApproval) ||
+    pendingRevenueIncrease !== 0 ||
+    pendingRevenueDecrease !== 0
+  const showPendingRevenueCards =
+    showAdminAudit ||
+    pendingSaleApprovalHistory.length > 0 ||
+    Boolean(pendingReopenApproval) ||
+    pendingRevenueIncrease !== 0 ||
+    pendingRevenueDecrease !== 0
 
   return (
     <div className={cn("app-page flex min-h-full flex-col", className)}>
@@ -231,7 +429,7 @@ export function ShiftDetailView({
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-foreground truncate text-xl font-semibold tracking-tight">
-                    {schedule.booths.name}
+                    {getBoothDisplayName(schedule.booths)}
                   </h1>
                   {getStatusBadge(isFuture, isCancelled, isClosed)}
                 </div>
@@ -290,6 +488,13 @@ export function ShiftDetailView({
                     {latestCloseout.stock_variance}
                   </p>
                 ) : null}
+                {pendingReopenApprovalCount > 0 ? (
+                  <p className="mt-1 text-xs sm:text-sm">
+                    {pendingReopenApprovalCount} reopen request
+                    {pendingReopenApprovalCount === 1 ? "" : "s"} waiting for
+                    admin approval.
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -335,7 +540,12 @@ export function ShiftDetailView({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div
+                className={cn(
+                  "grid gap-2",
+                  showAdminAudit ? "grid-cols-2 xl:grid-cols-3" : "grid-cols-2"
+                )}
+              >
                 <div className="border-border/60 bg-card rounded-[var(--radius)] border px-3 py-3">
                   <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
                     Revenue
@@ -377,6 +587,43 @@ export function ShiftDetailView({
                     {isFuture ? "Pending" : hasLowStock ? "Low" : "Healthy"}
                   </p>
                 </div>
+                {approvedCashDeductionTotal > 0 ||
+                pendingCashDeductionTotal > 0 ? (
+                  <div className="border-border/60 bg-card rounded-[var(--radius)] border px-3 py-3">
+                    <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
+                      Cash Out
+                    </p>
+                    <p className="text-foreground mt-2 text-lg font-semibold">
+                      {formatCurrency(approvedCashDeductionTotal)}
+                    </p>
+                    {pendingCashDeductionTotal > 0 ? (
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        {pendingCashDeductionCount} pending /{" "}
+                        {formatCurrency(pendingCashDeductionTotal)}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {showPendingRevenueCards ? (
+                  <div className="border-border/60 bg-card rounded-[var(--radius)] border px-3 py-3">
+                    <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
+                      Pending +
+                    </p>
+                    <p className="mt-2 text-lg font-semibold text-emerald-600">
+                      {formatSignedCurrency(pendingRevenueIncrease)}
+                    </p>
+                  </div>
+                ) : null}
+                {showPendingRevenueCards ? (
+                  <div className="border-border/60 bg-card rounded-[var(--radius)] border px-3 py-3">
+                    <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
+                      Pending -
+                    </p>
+                    <p className="text-destructive mt-2 text-lg font-semibold">
+                      {formatSignedCurrency(pendingRevenueDecrease)}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -405,7 +652,9 @@ export function ShiftDetailView({
             {canTakeOver && onTakeOver ? (
               <div className="border-primary/10 bg-primary/5 text-muted-foreground rounded-[var(--radius)] border px-3 py-3 text-sm">
                 <p>
-                  You can view this shared shift. Take over POS to enter sales.
+                  {operatorActionLabel === "Start Shift"
+                    ? "Start this shift to enter opening inventory and use Counter."
+                    : "You can view this shared shift. Take over POS to enter sales."}
                 </p>
               </div>
             ) : null}
@@ -429,6 +678,7 @@ export function ShiftDetailView({
               employeeId={inventoryEmployeeId}
               compact
               preferCachedData={preferCachedInventoryData}
+              onSavePhaseChange={onInventorySavePhaseChange}
             />
           </section>
         ) : null}
@@ -563,13 +813,141 @@ export function ShiftDetailView({
               </p>
             </div>
           ) : (
-            <SalesTable
-              sales={sales}
-              allowOfflineCache={allowOfflineSaleCache ?? !readOnly}
-              canEditReceipts={canEditReceipts}
-            />
+            <div className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="border-border/60 rounded-[var(--radius)] border">
+                  <div className="border-border/60 bg-surface-container-low/45 border-b px-3 py-2">
+                    <h3 className="text-foreground text-sm font-semibold">
+                      Revenue By Payment
+                    </h3>
+                  </div>
+                  <div className="divide-border/60 divide-y">
+                    {paymentBreakdown.map((entry) => (
+                      <div
+                        key={entry.method}
+                        className="flex items-center justify-between gap-3 px-3 py-2.5"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-foreground text-sm font-medium">
+                            {entry.label}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            {entry.count} sale
+                            {entry.count === 1 ? "" : "s"}
+                          </p>
+                        </div>
+                        <p className="text-foreground text-sm font-semibold">
+                          {formatCurrency(entry.revenue)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-border/60 rounded-[var(--radius)] border">
+                  <div className="border-border/60 bg-surface-container-low/45 border-b px-3 py-2">
+                    <h3 className="text-foreground text-sm font-semibold">
+                      Revenue By Product
+                    </h3>
+                  </div>
+                  {productRevenueBreakdown.length === 0 ? (
+                    <div className="px-3 py-6 text-center">
+                      <p className="text-muted-foreground text-sm">
+                        No product sales recorded yet.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-border/60 divide-y">
+                      {productRevenueBreakdown.map((entry) => (
+                        <div
+                          key={entry.productId}
+                          className="flex items-center justify-between gap-3 px-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-foreground truncate text-sm font-medium">
+                              {entry.productName}
+                            </p>
+                            <p className="text-muted-foreground text-xs">
+                              {entry.quantitySold} sold
+                            </p>
+                          </div>
+                          <p className="text-foreground text-sm font-semibold">
+                            {formatCurrency(entry.revenue)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <SalesTable
+                sales={sales}
+                products={products}
+                allowOfflineCache={allowOfflineSaleCache ?? !readOnly}
+                canEditReceipts={canEditReceipts}
+                saleActionMode={saleActionMode}
+                pendingSaleChangeSaleIds={pendingSaleChangeSaleIds}
+                onSalesChanged={onSalesChanged}
+              />
+            </div>
           )}
         </section>
+
+        {showApprovalSummary ? (
+          <section className="border-border/60 bg-card space-y-3 rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
+            <div>
+              <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
+                Approval Requests
+              </p>
+              <h2 className="text-foreground mt-1 text-base font-semibold">
+                Pending Changes
+              </h2>
+            </div>
+
+            {pendingReopenApproval ? (
+              <ShiftApprovalCard
+                approval={pendingReopenApproval}
+                resolving={resolveReopenApprovalPending}
+                onApprove={
+                  onApproveReopenApproval
+                    ? () => {
+                        onApproveReopenApproval()
+                      }
+                    : undefined
+                }
+                onReject={
+                  onRejectReopenApproval
+                    ? () => {
+                        onRejectReopenApproval()
+                      }
+                    : undefined
+                }
+              />
+            ) : null}
+
+            {pendingCashDeductionHistory.map((approval) => (
+              <ShiftApprovalCard
+                key={approval.id}
+                approval={approval}
+                resolving={resolvingSaleApprovalId === approval.id}
+                onApprove={onApproveSaleApproval}
+                onReject={onRejectSaleApproval}
+              />
+            ))}
+
+            {pendingSaleApprovalHistory.map((approval) => (
+              <ShiftApprovalCard
+                key={approval.id}
+                approval={approval}
+                products={approvalProducts}
+                resolving={resolvingSaleApprovalId === approval.id}
+                onApprove={onApproveSaleApproval}
+                onReject={onRejectSaleApproval}
+              />
+            ))}
+          </section>
+        ) : null}
 
         {showAdminAudit ? (
           <section className="border-border/60 bg-card space-y-3 rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
@@ -635,6 +1013,63 @@ export function ShiftDetailView({
                 <p className="text-muted-foreground text-sm">
                   Activity will appear here once opening inventory or overrides
                   are recorded.
+                </p>
+              )}
+            </AuditDisclosure>
+
+            <AuditDisclosure
+              title="Sales Activity"
+              summary={
+                resolvedSaleApprovalHistory.length > 0
+                  ? `${resolvedSaleApprovalHistory.length} resolved request${resolvedSaleApprovalHistory.length === 1 ? "" : "s"}`
+                  : "No sale or promo requests recorded yet"
+              }
+            >
+              {resolvedSaleApprovalHistory.length > 0 ? (
+                <div className="space-y-3">
+                  {resolvedSaleApprovalHistory.map((approval) => (
+                    <ShiftApprovalCard
+                      key={approval.id}
+                      approval={approval}
+                      products={approvalProducts}
+                      resolving={resolvingSaleApprovalId === approval.id}
+                      onApprove={onApproveSaleApproval}
+                      onReject={onRejectSaleApproval}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm">
+                  Sale edits, promo requests, approvals, and rejections will
+                  appear here after the first request is submitted.
+                </p>
+              )}
+            </AuditDisclosure>
+
+            <AuditDisclosure
+              title="Cash Deductions"
+              summary={
+                resolvedCashDeductionHistory.length > 0
+                  ? `${resolvedCashDeductionHistory.length} resolved cash deduction${resolvedCashDeductionHistory.length === 1 ? "" : "s"}`
+                  : "No cash deductions recorded yet"
+              }
+            >
+              {resolvedCashDeductionHistory.length > 0 ? (
+                <div className="space-y-3">
+                  {resolvedCashDeductionHistory.map((approval) => (
+                    <ShiftApprovalCard
+                      key={approval.id}
+                      approval={approval}
+                      resolving={resolvingSaleApprovalId === approval.id}
+                      onApprove={onApproveSaleApproval}
+                      onReject={onRejectSaleApproval}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm">
+                  Approved and rejected shift expense deductions will appear
+                  here after the first request is submitted.
                 </p>
               )}
             </AuditDisclosure>
@@ -720,7 +1155,16 @@ export function ShiftDetailView({
                         <p className="mt-2">
                           Cash:{" "}
                           {formatCurrency(Number(closeout.system_cash_sales))}{" "}
-                          system /{" "}
+                          gross /{" "}
+                          {formatCurrency(
+                            Number(closeout.cash_deductions_total)
+                          )}{" "}
+                          deductions /{" "}
+                          {formatCurrency(
+                            Number(closeout.system_cash_sales) -
+                              Number(closeout.cash_deductions_total)
+                          )}{" "}
+                          expected /{" "}
                           {formatCurrency(Number(closeout.counted_cash_sales))}{" "}
                           counted /{" "}
                           {formatSignedCurrency(Number(closeout.cash_variance))}{" "}
@@ -787,7 +1231,20 @@ export function ShiftDetailView({
                 disabled={takeoverPending}
                 onClick={onTakeOver}
               >
-                Take Over POS
+                {operatorActionLabel}
+              </Button>
+            ) : null}
+
+            {showCashDeductionAction ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={cashDeductionPending}
+                onClick={onAddCashDeduction}
+              >
+                <Wallet data-icon="inline-start" />
+                Cash Deduction
               </Button>
             ) : null}
 
@@ -830,6 +1287,20 @@ export function ShiftDetailView({
               </Button>
             ) : null}
 
+            {onRequestReopenApproval ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={
+                  requestReopenApprovalPending || pendingReopenApprovalCount > 0
+                }
+                onClick={onRequestReopenApproval}
+              >
+                Request Reopen
+              </Button>
+            ) : null}
+
             {showCancelAction ? (
               <Button
                 type="button"
@@ -838,6 +1309,17 @@ export function ShiftDetailView({
                 onClick={onCancel}
               >
                 Cancel Shift
+              </Button>
+            ) : null}
+
+            {showDeleteAction ? (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={onDelete}
+              >
+                Delete Shift
               </Button>
             ) : null}
           </div>

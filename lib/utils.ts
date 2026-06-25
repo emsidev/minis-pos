@@ -95,6 +95,45 @@ export function getBusinessTime(date: Date = new Date()) {
   }).format(date)
 }
 
+type BusinessShiftLike = {
+  date: string
+  start_time: string
+  end_time: string
+  status: string | null
+}
+
+type ShiftStateOptions = {
+  inventoryReady?: boolean
+  manuallyStarted?: boolean
+  now?: Date
+}
+
+type BoothLike = {
+  name?: string | null
+  location_text?: string | null
+}
+
+type EmployeeLike = {
+  name?: string | null
+  email?: string | null
+}
+
+type ProductLike = {
+  name?: string | null
+}
+
+export function hasStartedOperatorPeriod(
+  periods: Array<{ starts_at: string; ends_at: string | null }>,
+  now: Date = new Date()
+) {
+  const currentTime = now.getTime()
+  return periods.some(
+    (period) =>
+      period.ends_at === null &&
+      new Date(period.starts_at).getTime() <= currentTime
+  )
+}
+
 export function hasBusinessShiftStarted(
   date: string,
   startTime: string,
@@ -106,6 +145,44 @@ export function hasBusinessShiftStarted(
   return (
     date < currentDate || (date === currentDate && startTime <= currentTime)
   )
+}
+
+export function getBusinessShiftState(
+  schedule: BusinessShiftLike,
+  {
+    inventoryReady = false,
+    manuallyStarted = false,
+    now = new Date(),
+  }: ShiftStateOptions = {}
+) {
+  const currentDate = getBusinessDate(now)
+  const currentTime = getBusinessTime(now)
+  const isStartWindowOpen =
+    schedule.status === "scheduled" &&
+    schedule.date === currentDate &&
+    schedule.end_time > currentTime
+  const isClockActive =
+    schedule.status === "scheduled" &&
+    schedule.date === currentDate &&
+    schedule.start_time <= currentTime &&
+    schedule.end_time > currentTime
+  const hasOperationalStart = inventoryReady || manuallyStarted
+
+  return {
+    currentDate,
+    currentTime,
+    isStartWindowOpen,
+    isClockActive,
+    hasOperationalStart,
+    isOperational: isStartWindowOpen && (isClockActive || hasOperationalStart),
+    canManuallyStart: isStartWindowOpen && !hasOperationalStart,
+    canManageInventory: isStartWindowOpen,
+    canRecordSales: isStartWindowOpen && inventoryReady,
+    isFuture:
+      schedule.status === "scheduled" &&
+      !hasOperationalStart &&
+      !hasBusinessShiftStarted(schedule.date, schedule.start_time, now),
+  }
 }
 
 export function isCurrentBusinessShift(
@@ -131,4 +208,16 @@ export function hasBusinessShiftPassed(
   const currentTime = getBusinessTime(now)
 
   return date < currentDate || (date === currentDate && endTime <= currentTime)
+}
+
+export function getBoothDisplayName(booth?: BoothLike | null) {
+  return booth?.name?.trim() || booth?.location_text?.trim() || "Unnamed booth"
+}
+
+export function getEmployeeDisplayName(employee?: EmployeeLike | null) {
+  return employee?.name?.trim() || employee?.email?.trim() || "Unknown employee"
+}
+
+export function getProductDisplayName(product?: ProductLike | null) {
+  return product?.name?.trim() || "Unknown product"
 }

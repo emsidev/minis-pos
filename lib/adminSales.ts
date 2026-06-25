@@ -5,7 +5,11 @@ import type {
   ScheduleStatus,
 } from "@/lib/database.types"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
-import { getBusinessDate } from "@/lib/utils"
+import {
+  getBoothDisplayName,
+  getBusinessDate,
+  getEmployeeDisplayName,
+} from "@/lib/utils"
 
 type SalesRow = Pick<
   Database["public"]["Tables"]["sales"]["Row"],
@@ -18,6 +22,7 @@ type SalesRow = Pick<
   | "status"
   | "total_amount"
   | "created_at"
+  | "updated_at"
 > & {
   booths: Pick<
     Database["public"]["Tables"]["booths"]["Row"],
@@ -38,6 +43,8 @@ export type AdminSalesDateRange = {
   endDate: string
 }
 
+export type AdminSalesLedgerView = "active" | "trash"
+
 export type AdminSalesLedgerRow = {
   id: string
   boothId: string
@@ -48,6 +55,7 @@ export type AdminSalesLedgerRow = {
   scheduleDate: string
   shiftLabel: string
   createdAt: string
+  updatedAt: string
   paymentMethod: PaymentMethod
   receiptPhotoPath: string | null
   hasReceipt: boolean
@@ -59,6 +67,7 @@ export type AdminSalesLedgerRow = {
 export type AdminSalesLedgerData = AdminSalesDateRange & {
   rows: AdminSalesLedgerRow[]
   nextCursor: string | null
+  view: AdminSalesLedgerView
 }
 
 const ADMIN_SALES_PAGE_SIZE = 100
@@ -154,19 +163,26 @@ function formatShiftLabel(
 function canEditReceipt(
   paymentMethod: PaymentMethod,
   receiptPhotoPath: string | null,
-  scheduleStatus: ScheduleStatus | undefined
+  scheduleStatus: ScheduleStatus | undefined,
+  saleStatus: string
 ) {
   return (
+    saleStatus === "completed" &&
     paymentMethod !== "cash" &&
     Boolean(receiptPhotoPath) &&
     scheduleStatus === "scheduled"
   )
 }
 
+export function normalizeAdminSalesView(value?: string): AdminSalesLedgerView {
+  return value === "trash" ? "trash" : "active"
+}
+
 export async function getAdminSalesLedger(
   startDate?: string,
   endDate?: string,
-  cursorValue?: string
+  cursorValue?: string,
+  view: AdminSalesLedgerView = "active"
 ): Promise<AdminSalesLedgerData> {
   await requireEmployeeRole("admin")
 
@@ -177,8 +193,9 @@ export async function getAdminSalesLedger(
   let query = supabase
     .from("sales")
     .select(
-      "id, booth_id, employee_id, schedule_id, payment_method, receipt_photo_path, status, total_amount, created_at, booths(id, name), employees(id, name), booth_schedules(date, start_time, end_time, status)"
+      "id, booth_id, employee_id, schedule_id, payment_method, receipt_photo_path, status, total_amount, created_at, updated_at, booths(id, name), employees(id, name), booth_schedules(date, start_time, end_time, status)"
     )
+    .eq("status", view === "trash" ? "deleted" : "completed")
     .gte("created_at", startIso)
     .lt("created_at", endIso)
     .order("created_at", { ascending: false })
@@ -201,20 +218,22 @@ export async function getAdminSalesLedger(
   const rows = pageRows.map((sale) => ({
     id: sale.id,
     boothId: sale.booth_id,
-    boothName: sale.booths?.name ?? "Unknown booth",
+    boothName: getBoothDisplayName(sale.booths),
     employeeId: sale.employee_id,
-    employeeName: sale.employees?.name ?? "Unknown employee",
+    employeeName: getEmployeeDisplayName(sale.employees),
     scheduleId: sale.schedule_id,
     scheduleDate: sale.booth_schedules?.date ?? sale.created_at.slice(0, 10),
     shiftLabel: formatShiftLabel(sale.booth_schedules),
     createdAt: sale.created_at,
+    updatedAt: sale.updated_at,
     paymentMethod: sale.payment_method,
     receiptPhotoPath: sale.receipt_photo_path,
     hasReceipt: Boolean(sale.receipt_photo_path),
     canEditReceipt: canEditReceipt(
       sale.payment_method,
       sale.receipt_photo_path,
-      sale.booth_schedules?.status
+      sale.booth_schedules?.status,
+      sale.status
     ),
     status: sale.status,
     totalAmount: Number(sale.total_amount),
@@ -223,6 +242,7 @@ export async function getAdminSalesLedger(
   return {
     ...range,
     rows,
+    view,
     nextCursor:
       (data?.length ?? 0) > ADMIN_SALES_PAGE_SIZE && pageRows.length > 0
         ? encodeCursor({

@@ -36,6 +36,7 @@ export default async function SchedulePage() {
     <div className="app-page">
       <ScheduleCalendar
         employeeId={employee.id}
+        employeeRole={employee.role}
         browseSchedules={browseSchedules}
         preferCachedData={profileSource === "snapshot"}
       />

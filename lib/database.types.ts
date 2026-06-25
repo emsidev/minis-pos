@@ -383,8 +383,106 @@ export interface Database {
         }
         Relationships: []
       }
+      promo_products: {
+        Row: {
+          created_at: string
+          product_id: string
+          promo_id: string
+          role: "qualifying" | "reward"
+        }
+        Insert: {
+          created_at?: string
+          product_id: string
+          promo_id: string
+          role?: "qualifying" | "reward"
+        }
+        Update: {
+          created_at?: string
+          product_id?: string
+          promo_id?: string
+          role?: "qualifying" | "reward"
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promo_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promo_products_promo_id_fkey"
+            columns: ["promo_id"]
+            isOneToOne: false
+            referencedRelation: "promos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promos: {
+        Row: {
+          benefit: Json
+          created_at: string
+          criteria: Json
+          ends_on: string
+          id: string
+          is_active: boolean
+          name: string
+          promo_type:
+            | "percent_off"
+            | "fixed_amount_off"
+            | "special_price"
+            | "buy_x_get_y"
+            | "bundle_price"
+            | "free_item"
+          requires_admin_approval: boolean
+          starts_on: string
+          updated_at: string
+        }
+        Insert: {
+          benefit?: Json
+          created_at?: string
+          criteria?: Json
+          ends_on: string
+          id?: string
+          is_active?: boolean
+          name: string
+          promo_type:
+            | "percent_off"
+            | "fixed_amount_off"
+            | "special_price"
+            | "buy_x_get_y"
+            | "bundle_price"
+            | "free_item"
+          requires_admin_approval?: boolean
+          starts_on: string
+          updated_at?: string
+        }
+        Update: {
+          benefit?: Json
+          created_at?: string
+          criteria?: Json
+          ends_on?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          promo_type?:
+            | "percent_off"
+            | "fixed_amount_off"
+            | "special_price"
+            | "buy_x_get_y"
+            | "bundle_price"
+            | "free_item"
+          requires_admin_approval?: boolean
+          starts_on?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sale_items: {
         Row: {
+          base_unit_price: string
+          discount_amount: string
           id: string
           product_id: string
           quantity: number
@@ -393,6 +491,8 @@ export interface Database {
           unit_price: string
         }
         Insert: {
+          base_unit_price?: string
+          discount_amount?: string
           id?: string
           product_id: string
           quantity: number
@@ -401,6 +501,8 @@ export interface Database {
           unit_price: string
         }
         Update: {
+          base_unit_price?: string
+          discount_amount?: string
           id?: string
           product_id?: string
           quantity?: number
@@ -432,10 +534,16 @@ export interface Database {
           employee_id: string
           id: string
           payment_method: PaymentMethod
+          promo_approval_id: string | null
+          promo_discount_total: string
+          promo_id: string | null
+          promo_name: string | null
+          promo_type: string | null
           receipt_photo_path: string | null
           schedule_id: string
           status: string
           total_amount: string
+          updated_at: string
         }
         Insert: {
           booth_id: string
@@ -443,10 +551,16 @@ export interface Database {
           employee_id: string
           id?: string
           payment_method?: PaymentMethod
+          promo_approval_id?: string | null
+          promo_discount_total?: string
+          promo_id?: string | null
+          promo_name?: string | null
+          promo_type?: string | null
           receipt_photo_path?: string | null
           schedule_id: string
           status?: string
           total_amount: string
+          updated_at?: string
         }
         Update: {
           booth_id?: string
@@ -454,10 +568,16 @@ export interface Database {
           employee_id?: string
           id?: string
           payment_method?: PaymentMethod
+          promo_approval_id?: string | null
+          promo_discount_total?: string
+          promo_id?: string | null
+          promo_name?: string | null
+          promo_type?: string | null
           receipt_photo_path?: string | null
           schedule_id?: string
           status?: string
           total_amount?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -475,6 +595,20 @@ export interface Database {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sales_promo_approval_id_fkey"
+            columns: ["promo_approval_id"]
+            isOneToOne: false
+            referencedRelation: "shift_action_approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_promo_id_fkey"
+            columns: ["promo_id"]
+            isOneToOne: false
+            referencedRelation: "promos"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "sales_schedule_id_fkey"
             columns: ["schedule_id"]
             isOneToOne: false
@@ -485,6 +619,7 @@ export interface Database {
       }
       shift_closeouts: {
         Row: {
+          cash_deductions_total: string
           cash_variance: string
           closed_at: string
           closed_by_employee_id: string
@@ -500,6 +635,7 @@ export interface Database {
           system_stock_total: number
         }
         Insert: {
+          cash_deductions_total?: string
           cash_variance: string
           closed_at?: string
           closed_by_employee_id: string
@@ -515,6 +651,7 @@ export interface Database {
           system_stock_total: number
         }
         Update: {
+          cash_deductions_total?: string
           cash_variance?: string
           closed_at?: string
           closed_by_employee_id?: string
@@ -546,6 +683,140 @@ export interface Database {
           },
           {
             foreignKeyName: "shift_closeouts_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "booth_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sale_promos: {
+        Row: {
+          created_at: string
+          discount_total: string
+          id: string
+          promo_approval_id: string | null
+          promo_id: string | null
+          promo_name: string
+          promo_type: string
+          sale_id: string
+          snapshot: Json
+        }
+        Insert: {
+          created_at?: string
+          discount_total?: string
+          id?: string
+          promo_approval_id?: string | null
+          promo_id?: string | null
+          promo_name: string
+          promo_type: string
+          sale_id: string
+          snapshot?: Json
+        }
+        Update: {
+          created_at?: string
+          discount_total?: string
+          id?: string
+          promo_approval_id?: string | null
+          promo_id?: string | null
+          promo_name?: string
+          promo_type?: string
+          sale_id?: string
+          snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_promos_promo_approval_id_fkey"
+            columns: ["promo_approval_id"]
+            isOneToOne: false
+            referencedRelation: "shift_action_approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_promos_promo_id_fkey"
+            columns: ["promo_id"]
+            isOneToOne: false
+            referencedRelation: "promos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_promos_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_action_approvals: {
+        Row: {
+          action_type:
+            | "reopen_shift"
+            | "edit_sale"
+            | "delete_sale"
+            | "apply_promo"
+            | "cash_deduction"
+          created_at: string
+          id: string
+          payload: Json
+          requested_by_employee_id: string
+          resolved_at: string | null
+          resolved_by_employee_id: string | null
+          schedule_id: string
+          status: "pending" | "approved" | "rejected"
+          updated_at: string
+        }
+        Insert: {
+          action_type:
+            | "reopen_shift"
+            | "edit_sale"
+            | "delete_sale"
+            | "apply_promo"
+            | "cash_deduction"
+          created_at?: string
+          id?: string
+          payload?: Json
+          requested_by_employee_id: string
+          resolved_at?: string | null
+          resolved_by_employee_id?: string | null
+          schedule_id: string
+          status?: "pending" | "approved" | "rejected"
+          updated_at?: string
+        }
+        Update: {
+          action_type?:
+            | "reopen_shift"
+            | "edit_sale"
+            | "delete_sale"
+            | "apply_promo"
+            | "cash_deduction"
+          created_at?: string
+          id?: string
+          payload?: Json
+          requested_by_employee_id?: string
+          resolved_at?: string | null
+          resolved_by_employee_id?: string | null
+          schedule_id?: string
+          status?: "pending" | "approved" | "rejected"
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_action_approvals_requested_by_employee_id_fkey"
+            columns: ["requested_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_action_approvals_resolved_by_employee_id_fkey"
+            columns: ["resolved_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_action_approvals_schedule_id_fkey"
             columns: ["schedule_id"]
             isOneToOne: false
             referencedRelation: "booth_schedules"
@@ -657,12 +928,69 @@ export interface Database {
         }
         Returns: string
       }
+      cancel_booth_schedule: {
+        Args: {
+          p_schedule_id: string
+          p_current_date: string
+          p_current_time: string
+        }
+        Returns: string
+      }
+      delete_booth_schedule_cascade: {
+        Args: {
+          p_schedule_id: string
+        }
+        Returns: string
+      }
       reopen_shift: {
         Args: {
           p_schedule_id: string
           p_reason: string
         }
         Returns: string
+      }
+      request_shift_action_approval: {
+        Args: {
+          p_schedule_id: string
+          p_action_type: string
+          p_payload?: Json
+        }
+        Returns: string
+      }
+      request_shift_cash_deduction: {
+        Args: {
+          p_schedule_id: string
+          p_amount: number
+          p_reason: string
+        }
+        Returns: string
+      }
+      get_pending_shift_action_approvals: {
+        Args: {
+          p_schedule_id?: string | null
+        }
+        Returns: Json
+      }
+      resolve_shift_action_approval: {
+        Args: {
+          p_approval_id: string
+          p_decision: string
+        }
+        Returns: string
+      }
+      submit_sale_change: {
+        Args: {
+          p_action_type: string
+          p_payload?: Json
+          p_sale_id: string
+        }
+        Returns: Json
+      }
+      delete_booth_cascade: {
+        Args: {
+          p_booth_id: string
+        }
+        Returns: Json
       }
       finalize_pos_sale: {
         Args: {
@@ -674,6 +1002,12 @@ export interface Database {
           p_receipt_photo_path: string | null
           p_created_at: string
           p_items: Json
+          p_promo_id?: string | null
+          p_promo_name?: string | null
+          p_promo_type?: string | null
+          p_promo_discount_total?: number | null
+          p_promo_approval_id?: string | null
+          p_promo_snapshot?: Json | null
         }
         Returns: string
       }

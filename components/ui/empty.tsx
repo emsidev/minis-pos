@@ -7,7 +7,7 @@ function Empty({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="empty"
       className={cn(
-        "app-panel animate-in fade-in flex flex-col items-center justify-center gap-6 px-6 py-12 text-center duration-500 sm:px-10 sm:py-16",
+        "app-panel flex flex-col items-center justify-center gap-6 px-6 py-12 text-center sm:px-10 sm:py-16",
         className
       )}
       {...props}
@@ -20,7 +20,7 @@ function EmptyImage({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="empty-image"
       className={cn(
-        "bg-primary/10 animate-in zoom-in-75 text-primary flex h-20 w-20 items-center justify-center rounded-full shadow-[0_8px_16px_-6px_rgba(224,64,160,0.4)] duration-700",
+        "bg-primary/10 text-primary flex h-18 w-18 items-center justify-center rounded-full shadow-[0_8px_16px_-6px_rgba(224,64,160,0.3)]",
         className
       )}
       {...props}
@@ -56,7 +56,7 @@ function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
     <p
       data-slot="empty-description"
       className={cn(
-        "app-caption mx-auto max-w-sm text-base leading-relaxed",
+        "app-caption mx-auto max-w-sm text-sm leading-6",
         className
       )}
       {...props}

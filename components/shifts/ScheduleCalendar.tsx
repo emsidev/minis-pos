@@ -7,10 +7,12 @@ import { ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 
 import {
+  claimShiftOperator,
   getShiftDetails,
   joinSchedule,
   loadEmployeeScheduleBrowserItems,
 } from "@/app/actions/shifts"
+import { CashDeductionSheet } from "@/components/shifts/CashDeductionSheet"
 import { LoadingBanner } from "@/components/shared/LoadingSkeletons"
 import { AllBoothsBrowseCalendar } from "@/components/shifts/AllBoothsBrowseCalendar"
 import { ShiftCloseoutSheet } from "@/components/shifts/ShiftCloseoutSheet"
@@ -31,10 +33,17 @@ import type {
   ShiftDetailData,
   SharedBoothSchedule,
 } from "@/lib/shifts"
-import { getBusinessDate, hasBusinessShiftPassed } from "@/lib/utils"
+import { syncActiveShiftProducts } from "@/lib/sync"
+import {
+  getBusinessDate,
+  getBusinessShiftState,
+  hasBusinessShiftPassed,
+  hasStartedOperatorPeriod,
+} from "@/lib/utils"
 
 type ScheduleCalendarProps = {
   employeeId: string
+  employeeRole: string | null
   browseSchedules: ScheduleBrowserItem[]
   preferCachedData?: boolean
 }
@@ -109,11 +118,13 @@ function emptyShiftDetail(): ShiftDetailData {
     schedule: null,
     products: [],
     sales: [],
+    saleItems: [],
   }
 }
 
 export function ScheduleCalendar({
   employeeId,
+  employeeRole,
   browseSchedules,
   preferCachedData = false,
 }: ScheduleCalendarProps) {
@@ -131,6 +142,7 @@ export function ScheduleCalendar({
   const [shiftData, setShiftData] = useState<ShiftDetailData>(emptyShiftDetail)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [closeoutOpen, setCloseoutOpen] = useState(false)
+  const [cashDeductionOpen, setCashDeductionOpen] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isOnline, setIsOnline] = useState(() =>
     typeof window === "undefined" ? true : window.navigator.onLine
@@ -138,6 +150,7 @@ export function ScheduleCalendar({
   const [isPending, startTransition] = useTransition()
   const [isMonthPending, startMonthTransition] = useTransition()
   const [isJoiningShift, startJoinTransition] = useTransition()
+  const [isStartingShift, startShiftTransition] = useTransition()
   const monthRequestRef = useRef(0)
   const cachedSchedules = useLiveQuery(
     () => getCachedSchedulesForEmployee(employeeId),
@@ -204,7 +217,7 @@ export function ScheduleCalendar({
         }
         setCurrentMonthSchedules([])
         setMonthLoadError(
-          "Could not load the All Booths calendar. Showing cached joined shifts instead."
+          "Could not load the full calendar. Showing joined shifts instead."
         )
       }
     })
@@ -306,7 +319,6 @@ export function ScheduleCalendar({
             : schedule
         )
       )
-      toast.success(result.message)
 
       try {
         const data = await getShiftDetails(joinedSchedule.id)
@@ -338,6 +350,65 @@ export function ScheduleCalendar({
     !isAssignedToSelected &&
     selectedScheduleStatus === "scheduled" &&
     isOnline
+  const selectedShiftState =
+    selectedDetailSchedule !== null
+      ? getBusinessShiftState(selectedDetailSchedule, {
+          inventoryReady: shiftData.products.length > 0,
+          manuallyStarted: hasStartedOperatorPeriod(
+            selectedDetailSchedule.booth_schedule_operator_periods
+          ),
+        })
+      : null
+  const canStartSelectedSchedule =
+    selectedDetailSchedule !== null &&
+    isAssignedToSelected &&
+    Boolean(selectedShiftState?.canManuallyStart) &&
+    isOnline
+  const canManageSelectedSales =
+    employeeRole === "admin" ||
+    (selectedDetailSchedule?.operator_employee_id === employeeId &&
+      isAssignedToSelected)
+  const canAddCashDeduction =
+    selectedDetailSchedule?.status === "scheduled" &&
+    (employeeRole === "admin" ||
+      selectedDetailSchedule?.operator_employee_id === employeeId)
+  const saleActionMode =
+    employeeRole === "admin"
+      ? "direct"
+      : canManageSelectedSales
+        ? "request"
+        : "none"
+
+  const refreshSelectedDetail = async () => {
+    if (!selectedSchedule || !window.navigator.onLine) {
+      return
+    }
+
+    try {
+      const data = await getShiftDetails(selectedSchedule.id)
+      setShiftData(data)
+    } catch {
+      toast.error("Unable to refresh shift details.")
+    }
+  }
+
+  const handleStartSelectedSchedule = () => {
+    if (!selectedDetailSchedule) {
+      return
+    }
+
+    startShiftTransition(async () => {
+      const result = await claimShiftOperator(selectedDetailSchedule.id)
+      if (!result.ok) {
+        toast.error(result.error ?? "Unable to start this shift.")
+        return
+      }
+
+      await syncActiveShiftProducts(employeeId)
+      await refreshSelectedDetail()
+      router.refresh()
+    })
+  }
 
   const handleCloseoutSaved = () => {
     if (!selectedDetailSchedule) {
@@ -372,20 +443,18 @@ export function ScheduleCalendar({
   return (
     <>
       <section className="app-panel space-y-4 p-4 sm:p-5">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <p className="app-kicker">All Booths</p>
-            <h2 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
+        <header className="app-screen-header sm:items-start">
+          <div className="app-screen-copy">
+            <h2 className="app-screen-title">
               {monthName}{" "}
               <span className="text-muted-foreground font-medium">{year}</span>
             </h2>
-            <p className="text-muted-foreground text-sm">
-              Tap any shift to view details. Joined shifts open in normal mode,
-              and available shifts can be joined from the same sheet.
+            <p className="app-screen-description max-w-xl">
+              Tap a shift to open it.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <div className="app-screen-actions sm:justify-end">
             <DateRangePicker
               mode="single"
               value={selectedCalendarDate}
@@ -431,13 +500,13 @@ export function ScheduleCalendar({
         </header>
 
         {isMonthPending && !usingFallbackCalendar ? (
-          <LoadingBanner label="Loading the All Booths calendar..." />
+          <LoadingBanner label="Loading calendar..." />
         ) : null}
 
         {usingFallbackCalendar ? (
           <div className="border-border text-muted-foreground rounded-[var(--radius)] border px-4 py-3 text-sm">
             {preferCachedData || !isOnline
-              ? "Offline view is limited to your cached joined shifts. Reconnect once to browse the full All Booths calendar."
+              ? "Offline view is limited to joined shifts saved on this device."
               : monthLoadError}
           </div>
         ) : monthLoadError ? (
@@ -455,7 +524,7 @@ export function ScheduleCalendar({
 
         {visibleMonthSchedules.length === 0 ? (
           <div className="border-border text-muted-foreground rounded-[var(--radius)] border border-dashed px-4 py-6 text-center text-sm">
-            No booth shifts are visible for this month.
+            No shifts this month.
           </div>
         ) : null}
       </section>
@@ -468,11 +537,33 @@ export function ScheduleCalendar({
         loadError={loadError}
         assignedEmployeeNames={selectedSchedule?.assigned_employee_names ?? []}
         operatorName={selectedSchedule?.operator_name ?? null}
-        readOnly={!isAssignedToSelected}
+        readOnly={employeeRole !== "admin" && !isAssignedToSelected}
         canJoin={canJoinSelectedSchedule}
         joinPending={isJoiningShift}
         onJoin={
           canJoinSelectedSchedule ? handleJoinSelectedSchedule : undefined
+        }
+        canTakeOver={canStartSelectedSchedule}
+        takeoverPending={isStartingShift}
+        onTakeOver={
+          canStartSelectedSchedule ? handleStartSelectedSchedule : undefined
+        }
+        operatorActionLabel="Start Shift"
+        saleActionMode={saleActionMode}
+        approvalHistory={shiftData.approvalHistory ?? []}
+        approvalProducts={shiftData.products}
+        pendingRevenueIncrease={shiftData.pendingRevenueIncrease ?? 0}
+        pendingRevenueDecrease={shiftData.pendingRevenueDecrease ?? 0}
+        onSalesChanged={() => {
+          void refreshSelectedDetail()
+        }}
+        onAddCashDeduction={
+          canAddCashDeduction
+            ? () => {
+                setSheetOpen(false)
+                setCashDeductionOpen(true)
+              }
+            : undefined
         }
         canCloseShift={selectedOperatorCanClose}
         onCloseShift={
@@ -491,7 +582,24 @@ export function ScheduleCalendar({
           schedule={selectedDetailSchedule}
           products={shiftData.products}
           sales={shiftData.sales}
+          approvalHistory={shiftData.approvalHistory ?? []}
           onSaved={handleCloseoutSaved}
+        />
+      ) : null}
+      {selectedDetailSchedule ? (
+        <CashDeductionSheet
+          open={cashDeductionOpen}
+          onOpenChange={(open) => {
+            setCashDeductionOpen(open)
+            if (!open) {
+              setSheetOpen(true)
+            }
+          }}
+          schedule={selectedDetailSchedule}
+          onSaved={() => {
+            setSheetOpen(true)
+            void refreshSelectedDetail()
+          }}
         />
       ) : null}
     </>

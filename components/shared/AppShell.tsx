@@ -104,18 +104,8 @@ function showSyncSummary(
 ) {
   const syncedCount = result.sales + result.inventory
 
-  if (syncedCount > 0) {
-    toast.success(
-      source === "reconnect"
-        ? `Back online - ${syncedCount} operation${syncedCount !== 1 ? "s" : ""} synced.`
-        : `${syncedCount} operation${syncedCount !== 1 ? "s" : ""} synced.`
-    )
-  } else if (
-    source === "manual" &&
-    result.failed === 0 &&
-    result.conflicts === 0
-  ) {
-    toast.success("No failed local records were left to sync.")
+  if (source === "manual" && syncedCount > 0) {
+    toast.success(`${syncedCount} item${syncedCount === 1 ? "" : "s"} synced.`)
   }
 
   if (result.conflicts > 0) {
@@ -347,10 +337,6 @@ export function AppShell({
         }
 
         router.refresh()
-
-        if (source === "manual") {
-          toast.success("Live data refreshed.")
-        }
       } catch (error) {
         console.error("Reconnect refresh failed:", error)
         toast.error("Unable to refresh live data right now.")
@@ -401,7 +387,6 @@ export function AppShell({
       }
 
       router.refresh()
-      toast.success("Failed local sale cancelled.")
       setCancelTarget(null)
     } catch (error) {
       console.error("Cancel failed sale failed:", error)

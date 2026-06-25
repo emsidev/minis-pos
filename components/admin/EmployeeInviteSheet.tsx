@@ -9,7 +9,6 @@ import {
   type EmployeeInviteInput,
 } from "@/app/actions/adminEmployees"
 import { EmployeeProfileFields } from "@/components/admin/EmployeeProfileFields"
-import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
@@ -19,12 +18,17 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet"
+import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
+import {
+  extractOptimisticRollback,
+  type OptimisticMutationHandler,
+} from "@/lib/optimistic"
 
 type EmployeeInviteSheetProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  magicLinkEnabled: boolean
   onSaved: (employee: AdminEmployeeRecord) => void
+  onOptimisticSave?: OptimisticMutationHandler<EmployeeInviteInput>
 }
 
 const blankForm: EmployeeInviteInput = {
@@ -36,8 +40,8 @@ const blankForm: EmployeeInviteInput = {
 export function EmployeeInviteSheet({
   open,
   onOpenChange,
-  magicLinkEnabled,
   onSaved,
+  onOptimisticSave,
 }: EmployeeInviteSheetProps) {
   const [form, setForm] = useState<EmployeeInviteInput>(blankForm)
   const [inviteLink, setInviteLink] = useState("")
@@ -65,12 +69,24 @@ export function EmployeeInviteSheet({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const rollback = extractOptimisticRollback(onOptimisticSave?.(form))
     setPending(true)
 
     const result = await inviteEmployee(form)
     setPending(false)
 
     if (!result.ok) {
+      if (result.employee) {
+        onSaved(result.employee)
+        toast.error(
+          result.error ??
+            "Employee saved, but the invite could not be delivered yet."
+        )
+        onOpenChange(false)
+        return
+      }
+
+      rollback?.()
       toast.error(result.error ?? "Unable to send the invite.")
       return
     }
@@ -86,9 +102,7 @@ export function EmployeeInviteSheet({
     if (result.employee) {
       onSaved(result.employee)
     }
-    if (magicLinkEnabled) {
-      onOpenChange(false)
-    }
+    onOpenChange(false)
   }
 
   return (
@@ -115,11 +129,7 @@ export function EmployeeInviteSheet({
               email={form.email}
               role={form.role}
               disabled={pending}
-              emailDescription={
-                magicLinkEnabled
-                  ? "The employee will receive a sign-in link."
-                  : "The employee will receive a password setup email."
-              }
+              emailDescription="The employee will receive a password setup email."
               onNameChange={(value) => setValue("name", value)}
               onEmailChange={(value) => setValue("email", value)}
               onRoleChange={(value) =>

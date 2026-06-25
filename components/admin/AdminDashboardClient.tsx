@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
-import { Bar, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts"
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts"
 import {
   CalendarDays,
   CreditCard,
@@ -24,14 +34,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
-import {
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@/components/ui/chart"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import type {
   AdminDashboardData,
@@ -63,7 +65,7 @@ const chartConfig = {
     label: "Transactions",
     color: "color-mix(in oklab, var(--secondary) 72%, white 12%)",
   },
-} satisfies ChartConfig
+} as const
 
 const trendDateFormatter = new Intl.DateTimeFormat("en-PH", {
   day: "numeric",
@@ -149,6 +151,104 @@ function KpiCard({
         <p className="text-muted-foreground text-sm">{footer}</p>
       </CardContent>
     </Card>
+  )
+}
+
+type TrendTooltipRow = {
+  color?: string
+  dataKey?: string | number
+  name?: string | number
+  value?: unknown
+  payload?: {
+    fill?: string
+  }
+}
+
+function TrendChartTooltip({
+  active,
+  label,
+  payload,
+}: {
+  active?: boolean
+  label?: unknown
+  payload?: TrendTooltipRow[]
+}) {
+  if (!active || !payload?.length) {
+    return null
+  }
+
+  return (
+    <div className="border-border/50 bg-background grid min-w-32 gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl">
+      <div className="font-medium">{formatTrendDateLabel(String(label))}</div>
+      <div className="grid gap-1.5">
+        {payload
+          .filter((item) => item.value != null && item.name)
+          .map((item, index) => (
+            <div
+              key={index}
+              className="flex w-full items-center justify-between gap-4"
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className="h-2.5 w-2.5 rounded-[2px]"
+                  style={{ backgroundColor: item.color ?? item.payload?.fill }}
+                />
+                <span className="text-muted-foreground">
+                  {item.name === "revenue"
+                    ? chartConfig.revenue.label
+                    : chartConfig.transactions.label}
+                </span>
+              </div>
+              <span className="text-foreground font-medium">
+                {item.name === "revenue"
+                  ? formatCurrency(Number(item.value))
+                  : Number(item.value)}
+              </span>
+            </div>
+          ))}
+      </div>
+    </div>
+  )
+}
+
+function TrendChartLegend({
+  payload,
+}: {
+  payload?: Array<{
+    color?: string
+    dataKey?: string | number
+    type?: string
+  }>
+}) {
+  if (!payload?.length) {
+    return null
+  }
+
+  return (
+    <div className="flex items-center justify-center gap-4 pb-3">
+      {payload
+        .filter((item) => item.type !== "none")
+        .map((item, index) => {
+          const dataKey = String(item.dataKey ?? "value")
+          const label =
+            dataKey === "revenue"
+              ? chartConfig.revenue.label
+              : chartConfig.transactions.label
+
+          return (
+            <div
+              key={index}
+              className="text-muted-foreground flex items-center gap-1.5"
+            >
+              <div
+                className="h-2 w-2 shrink-0 rounded-[2px]"
+                style={{ backgroundColor: item.color }}
+              />
+              <span>{label}</span>
+            </div>
+          )
+        })}
+    </div>
   )
 }
 
@@ -469,21 +569,15 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
 
   return (
     <div className="app-page flex flex-col gap-6">
-      <header className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div className="flex flex-col gap-2">
-          <p className="app-kicker">Admin Workspace</p>
-          <div className="flex flex-col gap-2">
-            <h1 className="text-3xl font-semibold tracking-tight">
-              Performance dashboard
-            </h1>
-            <p className="app-caption max-w-2xl">
-              Daily revenue, product velocity, and booth activity grounded in
-              the selected business date.
-            </p>
-          </div>
+      <header className="app-screen-header">
+        <div className="app-screen-copy">
+          <h1 className="app-screen-title">Performance dashboard</h1>
+          <p className="app-screen-description">
+            Daily sales for the selected date.
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="app-screen-actions">
           <DateRangePicker
             mode="single"
             value={selectedDate}
@@ -506,7 +600,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
       </header>
 
       {isPending ? (
-        <div className="border-border bg-card text-muted-foreground flex items-center gap-2 rounded-xl border px-4 py-3 text-sm">
+        <div className="app-banner">
           <Loader2 className="text-primary size-4 animate-spin" />
           Loading dashboard data...
         </div>
@@ -557,86 +651,61 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
             </div>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="min-h-72 w-full">
-              <ComposedChart data={data.trendSeries}>
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  axisLine={false}
-                  dataKey="date"
-                  minTickGap={24}
-                  tickFormatter={formatTrendDateLabel}
-                  tickLine={false}
-                  tickMargin={10}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickFormatter={(value) => formatCurrency(Number(value))}
-                  tickLine={false}
-                  tickMargin={12}
-                  yAxisId="revenue"
-                  width={96}
-                />
-                <YAxis
-                  hide
-                  yAxisId="transactions"
-                  orientation="right"
-                  width={0}
-                />
-                <ChartTooltip
-                  content={
-                    <ChartTooltipContent
-                      formatter={(value, name) => {
-                        if (name === "Revenue") {
-                          return (
-                            <div className="flex w-full items-center justify-between gap-4">
-                              <span className="text-muted-foreground">
-                                Revenue
-                              </span>
-                              <span className="text-foreground font-medium">
-                                {formatCurrency(Number(value))}
-                              </span>
-                            </div>
-                          )
-                        }
-
-                        return (
-                          <div className="flex w-full items-center justify-between gap-4">
-                            <span className="text-muted-foreground">
-                              Transactions
-                            </span>
-                            <span className="text-foreground font-medium">
-                              {Number(value)}
-                            </span>
-                          </div>
-                        )
-                      }}
-                      indicator="line"
-                      labelFormatter={(label) =>
-                        formatTrendDateLabel(String(label))
-                      }
-                    />
-                  }
-                />
-                <ChartLegend
-                  content={<ChartLegendContent />}
-                  verticalAlign="top"
-                />
-                <Bar
-                  dataKey="transactions"
-                  fill="var(--color-transactions)"
-                  radius={[12, 12, 0, 0]}
-                  yAxisId="transactions"
-                />
-                <Line
-                  dataKey="revenue"
-                  dot={false}
-                  stroke="var(--color-revenue)"
-                  strokeWidth={3}
-                  type="monotone"
-                  yAxisId="revenue"
-                />
-              </ComposedChart>
-            </ChartContainer>
+            <div
+              className="[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted min-h-72 w-full [&_.recharts-surface]:outline-hidden"
+              style={
+                {
+                  "--color-revenue": chartConfig.revenue.color,
+                  "--color-transactions": chartConfig.transactions.color,
+                } as React.CSSProperties
+              }
+            >
+              <ResponsiveContainer
+                initialDimension={{ width: 320, height: 200 }}
+              >
+                <ComposedChart data={data.trendSeries}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    axisLine={false}
+                    dataKey="date"
+                    minTickGap={24}
+                    tickFormatter={formatTrendDateLabel}
+                    tickLine={false}
+                    tickMargin={10}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickFormatter={(value) => formatCurrency(Number(value))}
+                    tickLine={false}
+                    tickMargin={12}
+                    yAxisId="revenue"
+                    width={96}
+                  />
+                  <YAxis
+                    hide
+                    yAxisId="transactions"
+                    orientation="right"
+                    width={0}
+                  />
+                  <Tooltip content={<TrendChartTooltip />} />
+                  <Legend content={<TrendChartLegend />} verticalAlign="top" />
+                  <Bar
+                    dataKey="transactions"
+                    fill="var(--color-transactions)"
+                    radius={[12, 12, 0, 0]}
+                    yAxisId="transactions"
+                  />
+                  <Line
+                    dataKey="revenue"
+                    dot={false}
+                    stroke="var(--color-revenue)"
+                    strokeWidth={3}
+                    type="monotone"
+                    yAxisId="revenue"
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 

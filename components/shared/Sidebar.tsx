@@ -40,6 +40,14 @@ export function Sidebar({ role, className, onNavigate }: SidebarProps) {
         className
       )}
     >
+      <div className="border-border/70 mb-3 border-b pb-3">
+        <div className="min-w-0">
+          <p className="text-primary text-lg font-semibold tracking-tight">
+            Mini&apos;s Pastries
+          </p>
+        </div>
+      </div>
+
       <nav className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         {items.map((item) => {
           const active = isActiveItem(pathname, item)

@@ -5,7 +5,12 @@ import type {
   PaymentMethod,
   ScheduleStatus,
 } from "@/lib/database.types"
-import { getBusinessDate } from "@/lib/utils"
+import {
+  getBoothDisplayName,
+  getBusinessDate,
+  getEmployeeDisplayName,
+  getProductDisplayName,
+} from "@/lib/utils"
 
 type BoothRow = Pick<
   Database["public"]["Tables"]["booths"]["Row"],
@@ -482,7 +487,7 @@ function buildTopProducts(saleItems: SaleItemRow[]) {
   for (const item of saleItems) {
     const current = topProductMap.get(item.product_id)
     const revenue = toNumber(item.subtotal)
-    const productName = item.products?.name ?? "Unknown Product"
+    const productName = getProductDisplayName(item.products)
 
     if (current) {
       current.quantitySold += item.quantity
@@ -518,8 +523,8 @@ function buildRecentTransactions(sales: SelectedSaleRow[]) {
     .map<DashboardRecentTransaction>((sale) => ({
       id: sale.id,
       createdAt: sale.created_at,
-      boothName: sale.booths?.name ?? "Unknown booth",
-      employeeName: sale.employees?.name ?? "Unknown employee",
+      boothName: getBoothDisplayName(sale.booths),
+      employeeName: getEmployeeDisplayName(sale.employees),
       paymentMethod: sale.payment_method,
       totalAmount: toNumber(sale.total_amount),
       hasReceipt: Boolean(sale.receipt_photo_path),
@@ -582,11 +587,13 @@ export async function getAdminDashboardData(requestedDate?: string) {
         .select(
           "id, booth_id, employee_id, payment_method, receipt_photo_path, schedule_id, status, total_amount, created_at, booths(name), employees(name), booth_schedules(status)"
         )
+        .eq("status", "completed")
         .gte("created_at", startIso)
         .lt("created_at", endIso),
       supabase
         .from("sales")
         .select("created_at, total_amount")
+        .eq("status", "completed")
         .gte("created_at", trendStartIso)
         .lt("created_at", endIso),
     ])

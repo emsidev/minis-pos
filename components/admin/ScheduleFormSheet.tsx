@@ -10,8 +10,17 @@ import {
 } from "@/app/actions/adminBooths"
 import { EmployeeChipSelect } from "@/components/admin/EmployeeChipSelect"
 import type { AdminEmployeeOption, AdminSchedule } from "@/lib/adminBooths"
+import {
+  extractOptimisticRollback,
+  type OptimisticMutationHandler,
+} from "@/lib/optimistic"
 import type { Booth } from "@/lib/shifts"
-import { getBusinessDate, hasBusinessShiftStarted } from "@/lib/utils"
+import {
+  getBoothDisplayName,
+  getBusinessDate,
+  getEmployeeDisplayName,
+  hasBusinessShiftStarted,
+} from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -29,7 +38,7 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet"
-import { TimeSelect } from "@/components/ui/time-select"
+import { Input } from "@/components/ui/input"
 
 type ScheduleFormSheetProps = {
   open: boolean
@@ -40,6 +49,7 @@ type ScheduleFormSheetProps = {
   booths: Booth[]
   employees: AdminEmployeeOption[]
   onSaved: () => void
+  onOptimisticSave?: OptimisticMutationHandler<ScheduleFormInput>
 }
 
 export function ScheduleFormSheet({
@@ -51,6 +61,7 @@ export function ScheduleFormSheet({
   booths,
   employees,
   onSaved,
+  onOptimisticSave,
 }: ScheduleFormSheetProps) {
   const businessDate = getBusinessDate()
   const [boothId, setBoothId] = useState(initialBoothId)
@@ -70,14 +81,15 @@ export function ScheduleFormSheet({
     ? hasBusinessShiftStarted(schedule.date, schedule.start_time)
     : false
 
-  const lockedBoothName =
-    booths.find((booth) => booth.id === boothId)?.name ?? "Unknown booth"
+  const lockedBoothName = getBoothDisplayName(
+    booths.find((booth) => booth.id === boothId) ?? null
+  )
 
   const employeeOptions = useMemo(
     () =>
       employees.map((employee) => ({
         value: employee.id,
-        label: employee.name,
+        label: getEmployeeDisplayName(employee),
         description: employee.email,
       })),
     [employees]
@@ -86,7 +98,7 @@ export function ScheduleFormSheet({
     () =>
       booths.map((booth) => ({
         value: booth.id,
-        label: booth.name,
+        label: getBoothDisplayName(booth),
         description: booth.location_text ?? undefined,
       })),
     [booths]
@@ -98,7 +110,7 @@ export function ScheduleFormSheet({
         .filter((employee) => employeeIds.includes(employee.id))
         .map((employee) => ({
           value: employee.id,
-          label: employee.name,
+          label: getEmployeeDisplayName(employee),
           description: employee.email,
         })),
     [employeeIds, employees]
@@ -154,11 +166,13 @@ export function ScheduleFormSheet({
           endDate: dateRange.endDate,
         }
 
+    const rollback = extractOptimisticRollback(onOptimisticSave?.(input))
     setPending(true)
     const result = await saveBoothSchedule(input)
     setPending(false)
 
     if (!result.ok) {
+      rollback?.()
       toast.error(result.error ?? "Unable to save shift.")
       return
     }
@@ -301,20 +315,22 @@ export function ScheduleFormSheet({
               <div className="grid grid-cols-2 gap-3">
                 <Field>
                   <FieldLabel>Start time</FieldLabel>
-                  <TimeSelect
+                  <Input
+                    type="time"
                     value={startTime}
-                    onChange={setStartTime}
+                    onChange={(event) => setStartTime(event.target.value)}
+                    step={1800}
                     disabled={pending || startedShiftLocked}
-                    stepMinutes={30}
                   />
                 </Field>
                 <Field>
                   <FieldLabel>End time</FieldLabel>
-                  <TimeSelect
+                  <Input
+                    type="time"
                     value={endTime}
-                    onChange={setEndTime}
+                    onChange={(event) => setEndTime(event.target.value)}
+                    step={1800}
                     disabled={pending || startedShiftLocked}
-                    stepMinutes={30}
                   />
                 </Field>
               </div>

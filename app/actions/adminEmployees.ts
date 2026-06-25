@@ -3,10 +3,9 @@
 import { revalidatePath } from "next/cache"
 
 import { requireEmployeeRole } from "@/lib/auth"
+import { isEmployeeRole, normalizeEmployeeEmail } from "@/lib/adminEmployees"
 import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
 import type { EmployeeRole } from "@/lib/database.types"
-import { isMagicLinkAuthEnabled } from "@/lib/env"
-import { isEmployeeRole, normalizeEmployeeEmail } from "@/lib/adminEmployees"
 import { getRequestOrigin } from "@/lib/server-utils"
 import { createAdminSupabaseClient } from "@/lib/supabase-admin"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
@@ -73,40 +72,6 @@ async function sendEmployeeInviteEmail(input: {
   const origin = await getRequestOrigin()
   const adminSupabase = createAdminSupabaseClient()
 
-  let inviteLink: string | undefined
-
-  if (isMagicLinkAuthEnabled()) {
-    const redirectTo = `${origin}/auth/callback`
-    const { error: inviteError } =
-      await adminSupabase.auth.admin.inviteUserByEmail(input.email, {
-        data: { name: input.name },
-        redirectTo,
-      })
-
-    if (inviteError) {
-      const { data: generatedLink, error: generateError } =
-        await adminSupabase.auth.admin.generateLink({
-          type: "magiclink",
-          email: input.email,
-          options: {
-            data: { name: input.name },
-            redirectTo,
-          },
-        })
-
-      if (generateError) {
-        throw new Error(generateError.message)
-      }
-
-      inviteLink = generatedLink.properties.action_link
-    }
-
-    return {
-      inviteLink,
-      message: "Invite email sent.",
-    }
-  }
-
   const authUser = await findAuthUserByEmail(input.email)
 
   if (authUser) {
@@ -155,10 +120,8 @@ async function sendEmployeeInviteEmail(input: {
     throw new Error(recoveryError.message)
   }
 
-  inviteLink = generatedLink.properties.action_link
-
   return {
-    inviteLink,
+    inviteLink: generatedLink.properties.action_link,
     message:
       "Password setup email could not be sent. Share the manual setup link.",
   }
@@ -285,6 +248,7 @@ export async function inviteEmployee(
   } catch (error) {
     return {
       ok: false,
+      employee: employeeRow.data as AdminEmployeeRecord,
       error:
         error instanceof Error
           ? error.message

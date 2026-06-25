@@ -1,8 +1,8 @@
 import { AdminProductsClient } from "@/components/admin/AdminProductsClient"
-import { getAdminProducts } from "@/lib/adminProducts"
+import { getAdminProductsPageData } from "@/lib/adminProducts"
 
 export default async function AdminProductsPage() {
-  const products = await getAdminProducts()
+  const { products, promos } = await getAdminProductsPageData()
 
-  return <AdminProductsClient products={products} />
+  return <AdminProductsClient products={products} promos={promos} />
 }

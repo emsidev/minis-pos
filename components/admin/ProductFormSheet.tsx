@@ -20,6 +20,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import type { AdminProductRecord } from "@/lib/adminProducts"
+import {
+  extractOptimisticRollback,
+  type OptimisticMutationHandler,
+} from "@/lib/optimistic"
 import { cn } from "@/lib/utils"
 
 type ProductFormSheetProps = {
@@ -27,6 +31,7 @@ type ProductFormSheetProps = {
   onOpenChange: (open: boolean) => void
   product: AdminProductRecord | null
   onSaved: (product: AdminProductRecord) => void
+  onOptimisticSave?: OptimisticMutationHandler<ProductFormInput>
 }
 
 const blankForm: ProductFormInput = {
@@ -82,6 +87,7 @@ export function ProductFormSheet({
   onOpenChange,
   product,
   onSaved,
+  onOptimisticSave,
 }: ProductFormSheetProps) {
   const [form, setForm] = useState<ProductFormInput>(blankForm)
   const [pending, setPending] = useState(false)
@@ -98,12 +104,14 @@ export function ProductFormSheet({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const rollback = extractOptimisticRollback(onOptimisticSave?.(form))
     setPending(true)
 
     const result = await saveProduct(form)
     setPending(false)
 
     if (!result.ok) {
+      rollback?.()
       toast.error(result.error ?? "Unable to save the product.")
       return
     }

@@ -287,6 +287,7 @@ export async function replaceReceiptPhotoForSale(
       .from("sales")
       .update({
         receipt_photo_path: nextReceiptPhotoPath,
+        updated_at: new Date().toISOString(),
       })
       .eq("id", saleRecord.id)
 

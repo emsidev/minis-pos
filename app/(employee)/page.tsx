@@ -9,17 +9,21 @@ import {
 } from "@/lib/shifts"
 import { CounterClient } from "@/components/pos/CounterClient"
 import { EmployeeHomeClient } from "@/components/pos/EmployeeHomeClient"
+import { getActiveCounterPromos } from "@/lib/promoData"
+import type { CounterPromo } from "@/lib/promos"
 
 export default async function EmployeeHomePage() {
   const { employee, profileSource } = await requireEmployeeRole([
     "employee",
     "admin",
   ])
+  const employeeRole = employee.role === "admin" ? "admin" : "employee"
 
-  if (employee.role === "admin") {
+  if (employeeRole === "admin") {
     let activeShift: SharedBoothSchedule | null = null
     let products: Product[] = []
     let availableProducts: Product[] = []
+    let promos: CounterPromo[] = []
     let canSell = false
     let showShiftInventoryEditor = false
     let saleBlockedMessage: string | undefined
@@ -31,22 +35,19 @@ export default async function EmployeeHomePage() {
           : null
 
       if (activeShift) {
-        ;[products, availableProducts] = await Promise.all([
+        ;[products, availableProducts, promos] = await Promise.all([
           getBoothScheduleProducts(activeShift.id),
           getAllAvailableProducts(),
+          getActiveCounterPromos(),
         ])
 
-        const adminOperatesPos =
-          activeShift.operator_employee_id === employee.id
-        canSell = adminOperatesPos
-        showShiftInventoryEditor = adminOperatesPos
-
-        if (!adminOperatesPos) {
-          saleBlockedMessage =
-            "Only the current POS operator can charge sales for this booth."
-        }
+        canSell = true
+        showShiftInventoryEditor = true
       } else {
-        products = (await getAllAvailableProducts()) as Product[]
+        ;[products, promos] = await Promise.all([
+          getAllAvailableProducts() as Promise<Product[]>,
+          getActiveCounterPromos(),
+        ])
       }
     } catch (error) {
       console.warn("Could not fetch products from server:", error)
@@ -60,7 +61,9 @@ export default async function EmployeeHomePage() {
         boothName={activeShift?.booths.name}
         boothId={activeShift?.booth_id}
         employeeId={employee.id}
+        employeeRole={employeeRole}
         scheduleId={activeShift?.id}
+        promos={promos}
         preferCachedWorkspace={false}
         canSell={canSell}
         showShiftInventoryEditor={showShiftInventoryEditor}
@@ -73,15 +76,19 @@ export default async function EmployeeHomePage() {
   let activeShift: SharedBoothSchedule | null = null
   let shiftProducts: Product[] = []
   let availableProducts: Product[] = []
+  let promos: CounterPromo[] = []
 
   if (profileSource !== "snapshot") {
     try {
       activeShift = await getActiveOperatorBoothSchedule(employee.id)
       if (activeShift) {
-        ;[shiftProducts, availableProducts] = await Promise.all([
+        ;[shiftProducts, availableProducts, promos] = await Promise.all([
           getBoothScheduleProducts(activeShift.id),
           getAllAvailableProducts(),
+          getActiveCounterPromos(),
         ])
+      } else {
+        promos = await getActiveCounterPromos()
       }
     } catch (error) {
       console.warn("Could not fetch active shift from server:", error)
@@ -103,6 +110,8 @@ export default async function EmployeeHomePage() {
       employeeId={employee.id}
       initialWorkspace={initialWorkspace}
       availableProducts={availableProducts}
+      employeeRole={employeeRole}
+      promos={promos}
       preferCachedWorkspace={profileSource === "snapshot"}
     />
   )

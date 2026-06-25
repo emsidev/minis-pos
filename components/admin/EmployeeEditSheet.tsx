@@ -17,12 +17,17 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import type { AdminEmployeeRecord } from "@/lib/adminEmployees"
+import {
+  extractOptimisticRollback,
+  type OptimisticMutationHandler,
+} from "@/lib/optimistic"
 
 type EmployeeEditSheetProps = {
   employee: AdminEmployeeRecord | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: (employee: AdminEmployeeRecord) => void
+  onOptimisticSave?: OptimisticMutationHandler<EmployeeUpdateInput>
 }
 
 const blankForm: EmployeeUpdateInput = {
@@ -38,6 +43,7 @@ export function EmployeeEditSheet({
   open,
   onOpenChange,
   onSaved,
+  onOptimisticSave,
 }: EmployeeEditSheetProps) {
   const [form, setForm] = useState<EmployeeUpdateInput>(blankForm)
   const [pending, setPending] = useState(false)
@@ -65,12 +71,14 @@ export function EmployeeEditSheet({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const rollback = extractOptimisticRollback(onOptimisticSave?.(form))
     setPending(true)
 
     const result = await updateEmployeeDetails(form)
     setPending(false)
 
     if (!result.ok || !result.employee) {
+      rollback?.()
       toast.error(result.error ?? "Unable to update this user.")
       return
     }

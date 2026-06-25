@@ -14,7 +14,7 @@ export default function AdminError({
       error={error}
       reset={reset}
       title="Admin screen unavailable"
-      description="This admin screen could not load right now. Try again or return to the dashboard."
+      description="This screen could not load. Try again or go back to the dashboard."
       homeHref="/admin/dashboard"
       homeLabel="Go to dashboard"
     />

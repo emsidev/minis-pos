@@ -1,6 +1,12 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import type { Database } from "@/lib/database.types"
-import { getBusinessDate, getBusinessTime } from "@/lib/utils"
+import type { ShiftApprovalRecord } from "@/lib/shiftApprovals"
+import {
+  getBusinessDate,
+  getBusinessShiftState,
+  getBusinessTime,
+  hasStartedOperatorPeriod,
+} from "@/lib/utils"
 
 export type Booth = Database["public"]["Tables"]["booths"]["Row"]
 export type BoothSchedule =
@@ -49,6 +55,10 @@ export type ScheduleBrowserItem = Pick<
   is_assigned: boolean
 }
 
+type ActiveScheduleCandidate = SharedBoothSchedule & {
+  booth_schedule_products?: Array<{ id: string }> | null
+}
+
 /**
  * Fetches the active shared booth schedule visible to an assigned employee.
  */
@@ -60,20 +70,30 @@ export async function getActiveBoothSchedule(employeeId: string) {
   const { data, error } = await supabase
     .from("booth_schedules")
     .select(
-      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments!inner(*, employees(id, name, email)), booth_schedule_operator_periods(*), shift_closeouts(*)"
+      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments!inner(*, employees(id, name, email)), booth_schedule_operator_periods(*), booth_schedule_products(id), shift_closeouts(*)"
     )
     .eq("booth_schedule_assignments.employee_id", employeeId)
     .eq("status", "scheduled")
     .eq("date", currentDate)
-    .lte("start_time", currentTime)
     .gt("end_time", currentTime)
-    .maybeSingle()
+    .order("start_time", { ascending: true })
 
   if (error) {
     throw new Error(error.message)
   }
 
-  return data as SharedBoothSchedule | null
+  const schedules = (data ?? []) as ActiveScheduleCandidate[]
+  return (
+    schedules.find(
+      (schedule) =>
+        getBusinessShiftState(schedule, {
+          inventoryReady: (schedule.booth_schedule_products?.length ?? 0) > 0,
+          manuallyStarted: hasStartedOperatorPeriod(
+            schedule.booth_schedule_operator_periods
+          ),
+        }).isOperational
+    ) ?? null
+  )
 }
 
 /**
@@ -87,20 +107,30 @@ export async function getActiveOperatorBoothSchedule(employeeId: string) {
   const { data, error } = await supabase
     .from("booth_schedules")
     .select(
-      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments(*, employees(id, name, email)), booth_schedule_operator_periods(*), shift_closeouts(*)"
+      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments(*, employees(id, name, email)), booth_schedule_operator_periods(*), booth_schedule_products(id), shift_closeouts(*)"
     )
     .eq("operator_employee_id", employeeId)
     .eq("status", "scheduled")
     .eq("date", currentDate)
-    .lte("start_time", currentTime)
     .gt("end_time", currentTime)
-    .maybeSingle()
+    .order("start_time", { ascending: true })
 
   if (error) {
     throw new Error(error.message)
   }
 
-  return data as SharedBoothSchedule | null
+  const schedules = (data ?? []) as ActiveScheduleCandidate[]
+  return (
+    schedules.find(
+      (schedule) =>
+        getBusinessShiftState(schedule, {
+          inventoryReady: (schedule.booth_schedule_products?.length ?? 0) > 0,
+          manuallyStarted: hasStartedOperatorPeriod(
+            schedule.booth_schedule_operator_periods
+          ),
+        }).isOperational
+    ) ?? null
+  )
 }
 
 export type SaleWithJoins = Database["public"]["Tables"]["sales"]["Row"] & {
@@ -124,6 +154,14 @@ export type ShiftDetailData = {
   schedule: SharedBoothSchedule | null
   products: Product[]
   sales: SaleWithJoins[]
+  saleItems: SaleItemWithProduct[]
+  approvalHistory?: ShiftApprovalRecord[]
+  pendingRevenueIncrease?: number
+  pendingRevenueDecrease?: number
+}
+
+export type TodayShiftListItem = SharedBoothSchedule & {
+  hasOpeningInventory: boolean
 }
 
 /**
@@ -183,6 +221,7 @@ export async function getBoothScheduleSales(scheduleId: string) {
     .from("sales")
     .select("*, employees(name), booths(name)")
     .eq("schedule_id", scheduleId)
+    .eq("status", "completed")
     .order("created_at", { ascending: false })
 
   if (error) {
@@ -214,6 +253,31 @@ export async function getEmployeeSchedules(employeeId: string) {
   return data as SharedBoothSchedule[]
 }
 
+export async function getEmployeeSchedulesForDate(
+  employeeId: string,
+  date: string
+) {
+  const supabase = createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from("booth_schedules")
+    .select(
+      "*, booths(*), operator:employees!booth_schedules_operator_employee_id_fkey(id, name, email), booth_schedule_assignments!inner(*, employees(id, name, email)), booth_schedule_operator_periods(*), booth_schedule_products(id), shift_closeouts(*)"
+    )
+    .eq("booth_schedule_assignments.employee_id", employeeId)
+    .eq("date", date)
+    .order("start_time", { ascending: true })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return ((data ?? []) as ActiveScheduleCandidate[]).map((schedule) => ({
+    ...schedule,
+    hasOpeningInventory: (schedule.booth_schedule_products?.length ?? 0) > 0,
+  })) as TodayShiftListItem[]
+}
+
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -223,6 +287,10 @@ function emptyShiftDetailData(): ShiftDetailData {
     schedule: null,
     products: [],
     sales: [],
+    saleItems: [],
+    approvalHistory: [],
+    pendingRevenueIncrease: 0,
+    pendingRevenueDecrease: 0,
   }
 }
 
@@ -349,6 +417,7 @@ export async function getEmployeeBrowsableShiftDetails(scheduleId: string) {
     schedule: parseSharedBoothSchedule(data.schedule),
     products: parseProducts(data.products),
     sales: parseSales(data.sales),
+    saleItems: parseSaleItems(data.saleItems),
   } satisfies ShiftDetailData
 }
 
@@ -401,6 +470,7 @@ export async function getEmployeeSalesHistoryForDate(
     .from("sales")
     .select("*, employees(name), booths(name)")
     .in("schedule_id", scheduleIds)
+    .eq("status", "completed")
     .order("created_at", { ascending: false })
 
   if (salesError) {
@@ -451,6 +521,28 @@ export async function getSaleItems(saleId: string) {
     .from("sale_items")
     .select("*, products(*)")
     .eq("sale_id", saleId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return data as SaleItemWithProduct[]
+}
+
+export async function getSaleItemsForSales(
+  sales: Array<Pick<SaleWithJoins, "id">>
+) {
+  const saleIds = sales.map((sale) => sale.id)
+
+  if (saleIds.length === 0) {
+    return [] as SaleItemWithProduct[]
+  }
+
+  const supabase = createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from("sale_items")
+    .select("*, products(*)")
+    .in("sale_id", saleIds)
 
   if (error) {
     throw new Error(error.message)

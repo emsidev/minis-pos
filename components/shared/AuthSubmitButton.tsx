@@ -1,12 +1,14 @@
 "use client"
 
-import { KeyRound, Loader2, Mail } from "lucide-react"
+import { KeyRound, Loader2, LogIn, Mail } from "lucide-react"
 import { useFormStatus } from "react-dom"
 
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 const submitButtonIcons = {
   keyRound: KeyRound,
+  logIn: LogIn,
   mail: Mail,
 } as const
 
@@ -15,6 +17,8 @@ type AuthSubmitButtonProps = {
   icon: keyof typeof submitButtonIcons
   label: string
   pendingLabel: string
+  className?: string
+  iconClassName?: string
 }
 
 export function AuthSubmitButton({
@@ -22,6 +26,8 @@ export function AuthSubmitButton({
   icon,
   label,
   pendingLabel,
+  className,
+  iconClassName,
 }: AuthSubmitButtonProps) {
   const { pending } = useFormStatus()
   const isDisabled = disabled || pending
@@ -33,7 +39,10 @@ export function AuthSubmitButton({
       size="lg"
       disabled={isDisabled}
       aria-busy={pending}
-      className="group bg-primary shadow-candy flex h-14 w-full items-center justify-center gap-2 rounded-full text-lg font-bold transition-all hover:brightness-110 active:scale-[0.98] disabled:active:scale-100"
+      className={cn(
+        "group bg-primary shadow-candy flex h-14 w-full items-center justify-center gap-2 rounded-full text-lg font-bold transition-all hover:brightness-110 active:scale-[0.98] disabled:active:scale-100",
+        className
+      )}
     >
       {pending ? (
         <>
@@ -43,7 +52,12 @@ export function AuthSubmitButton({
       ) : (
         <>
           <span>{label}</span>
-          <Icon className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+          <Icon
+            className={cn(
+              "h-5 w-5 transition-transform group-hover:translate-x-1",
+              iconClassName
+            )}
+          />
         </>
       )}
     </Button>

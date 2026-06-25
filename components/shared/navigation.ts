@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react"
 import {
+  ClipboardCheck,
   Calendar,
   CircleDot,
   HandCoins,
@@ -36,6 +37,12 @@ const adminNavItems: AppNavItem[] = [
     enabled: true,
   },
   { href: "/admin/booths", label: "Booths", icon: Store, enabled: true },
+  {
+    href: "/admin/approvals",
+    label: "Approvals",
+    icon: ClipboardCheck,
+    enabled: true,
+  },
   { href: "/admin/employees", label: "Employees", icon: Users, enabled: true },
   { href: "/admin/sales", label: "Sales", icon: Receipt, enabled: true },
   {

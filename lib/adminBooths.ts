@@ -1,5 +1,19 @@
 import type { Database } from "@/lib/database.types"
-import type { Booth, BoothSchedule, Product, SaleWithJoins } from "@/lib/shifts"
+import {
+  getPendingApprovalRevenue,
+  getShiftApprovalHistory,
+  type ShiftApprovalRecord,
+} from "@/lib/shiftApprovals"
+export type { ShiftApprovalRecord } from "@/lib/shiftApprovals"
+import {
+  getBoothScheduleSales,
+  getSaleItemsForSales,
+  type Booth,
+  type BoothSchedule,
+  type Product,
+  type SaleItemWithProduct,
+  type SaleWithJoins,
+} from "@/lib/shifts"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import { hasBusinessShiftStarted } from "@/lib/utils"
 
@@ -55,6 +69,20 @@ export type AdminShiftDetailData = {
   schedule: AdminSchedule | null
   products: Product[]
   sales: SaleWithJoins[]
+  saleItems: SaleItemWithProduct[]
+  approvalHistory: ShiftApprovalRecord[]
+  pendingRevenueIncrease: number
+  pendingRevenueDecrease: number
+}
+
+const EMPTY_ADMIN_SHIFT_DETAIL_DATA: AdminShiftDetailData = {
+  schedule: null,
+  products: [],
+  sales: [],
+  saleItems: [],
+  approvalHistory: [],
+  pendingRevenueIncrease: 0,
+  pendingRevenueDecrease: 0,
 }
 
 export type AdminScheduleCalendarItem = Pick<
@@ -209,7 +237,74 @@ export async function getAdminScheduleById(scheduleId: string) {
     throw new Error(error.message)
   }
 
-  return data as AdminSchedule | null
+  if (!data) {
+    return null
+  }
+
+  const schedule = data as AdminSchedule
+
+  return {
+    ...schedule,
+    booth_schedule_assignments: Array.isArray(
+      schedule.booth_schedule_assignments
+    )
+      ? schedule.booth_schedule_assignments
+      : [],
+    booth_schedule_operator_periods: Array.isArray(
+      schedule.booth_schedule_operator_periods
+    )
+      ? schedule.booth_schedule_operator_periods
+      : [],
+    booth_schedule_products: Array.isArray(schedule.booth_schedule_products)
+      ? schedule.booth_schedule_products
+      : [],
+    inventory_events: Array.isArray(schedule.inventory_events)
+      ? schedule.inventory_events
+      : [],
+    shift_closeouts: Array.isArray(schedule.shift_closeouts)
+      ? schedule.shift_closeouts
+      : [],
+  }
+}
+
+export async function getAdminShiftDetailData(
+  scheduleId: string
+): Promise<AdminShiftDetailData> {
+  if (!scheduleId.trim()) {
+    return EMPTY_ADMIN_SHIFT_DETAIL_DATA
+  }
+
+  const schedule = await getAdminScheduleById(scheduleId)
+  if (!schedule) {
+    return EMPTY_ADMIN_SHIFT_DETAIL_DATA
+  }
+
+  const [sales, approvalHistory] = await Promise.all([
+    getBoothScheduleSales(scheduleId),
+    getShiftApprovalHistory(scheduleId),
+  ])
+  const saleItems = await getSaleItemsForSales(sales)
+  const pendingRevenue = getPendingApprovalRevenue(approvalHistory)
+
+  return {
+    schedule,
+    products: schedule.booth_schedule_products.flatMap((item) =>
+      item.products
+        ? [
+            {
+              ...item.products,
+              quantity: item.quantity,
+              stock: item.stock,
+            },
+          ]
+        : []
+    ),
+    sales,
+    saleItems,
+    approvalHistory,
+    pendingRevenueIncrease: pendingRevenue.increase,
+    pendingRevenueDecrease: pendingRevenue.decrease,
+  }
 }
 
 export async function getBulkEditableScheduleRows(

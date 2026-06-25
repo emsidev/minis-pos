@@ -20,12 +20,17 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet"
+import {
+  extractOptimisticRollback,
+  type OptimisticMutationHandler,
+} from "@/lib/optimistic"
 
 type BoothFormSheetProps = {
   booth: Booth | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved: (booth: Booth) => void
+  onOptimisticSave?: OptimisticMutationHandler<BoothFormInput>
 }
 
 const blankBoothForm: BoothFormInput = {
@@ -56,6 +61,7 @@ export function BoothFormSheet({
   open,
   onOpenChange,
   onSaved,
+  onOptimisticSave,
 }: BoothFormSheetProps) {
   const [form, setForm] = useState<BoothFormInput>(() => boothToForm(booth))
   const [pending, setPending] = useState(false)
@@ -87,12 +93,14 @@ export function BoothFormSheet({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const rollback = extractOptimisticRollback(onOptimisticSave?.(form))
     setPending(true)
 
     const result = booth ? await updateBooth(form) : await createBooth(form)
     setPending(false)
 
     if (!result.ok) {
+      rollback?.()
       toast.error(result.error ?? "Unable to save booth.")
       return
     }

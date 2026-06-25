@@ -3,6 +3,7 @@ import {
   deleteReceiptPhoto,
   uploadReceiptPhotoForSale,
 } from "@/app/actions/receipts"
+import { finalizePosSale } from "@/app/actions/pos"
 import {
   db,
   type LocalBooth,
@@ -14,18 +15,25 @@ import {
   type LocalInventoryEvent,
   type LocalInventoryEventLine,
   type LocalProduct,
+  type LocalPromo,
+  type LocalPromoProduct,
   type LocalSale,
   type LocalSaleItem,
   type LocalSyncFailureKind,
   type LocalSyncState,
 } from "./db"
-import { getBusinessDate, getBusinessTime } from "./utils"
+import {
+  getBusinessDate,
+  getBusinessTime,
+  hasStartedOperatorPeriod,
+} from "./utils"
 import type {
   Database,
   InventoryEventType,
   Json,
   PaymentMethod,
 } from "./database.types"
+import type { CounterPromo } from "./promos"
 import type { Product, SharedBoothSchedule } from "./shifts"
 
 const OFFLINE_HISTORY_DAYS = 45
@@ -130,6 +138,7 @@ type ActiveShiftRow = LocalBoothSchedule & {
   booths: LocalBooth
   booth_schedule_assignments: LocalBoothScheduleAssignment[]
   booth_schedule_operator_periods: LocalBoothScheduleOperatorPeriod[]
+  booth_schedule_products?: Array<{ id: string }>
 }
 
 type ActiveShiftWorkspacePayload = {
@@ -231,6 +240,24 @@ function getSyncError(error: unknown): SyncFailureInfo {
         "The receipt photo could not be uploaded. Retry after reconnecting. If it still fails, retake the receipt photo.",
       isConflict: false,
       kind: "transient",
+    }
+  }
+
+  if (
+    normalized.includes("PRODUCT_PRICE_STALE") ||
+    normalized.includes("PROMO_NOT_ELIGIBLE") ||
+    normalized.includes("INVALID_PROMO") ||
+    normalized.includes("PROMO_APPROVAL_REQUIRED") ||
+    normalized.includes("PROMO_APPROVAL_PENDING") ||
+    normalized.includes("PROMO_APPROVAL_REJECTED") ||
+    normalized.includes("PROMO_APPROVAL_STALE") ||
+    normalized.includes("PROMO_APPROVAL_USED")
+  ) {
+    return {
+      message:
+        "Promo or product pricing changed before sync could finish. Review the sale in Needs Review.",
+      isConflict: true,
+      kind: "permanent",
     }
   }
 
@@ -353,6 +380,46 @@ export async function cacheAvailableProducts(products: Product[]) {
   )
 }
 
+export async function cacheCounterPromos(promos: CounterPromo[]) {
+  await db.transaction("rw", [db.promos, db.promoProducts], async () => {
+    await db.promos.clear()
+    await db.promoProducts.clear()
+
+    if (promos.length === 0) {
+      return
+    }
+
+    await db.promos.bulkPut(
+      promos.map<LocalPromo>((promo) => ({
+        id: promo.id,
+        name: promo.name,
+        promo_type: promo.promoType,
+        starts_on: promo.startsOn,
+        ends_on: promo.endsOn,
+        criteria: promo.criteria,
+        benefit: promo.benefit,
+        requires_admin_approval: promo.requiresAdminApproval,
+        is_active: promo.isActive,
+        created_at: promo.createdAt ?? new Date().toISOString(),
+        updated_at: promo.updatedAt ?? new Date().toISOString(),
+      }))
+    )
+
+    const promoProducts = promos.flatMap<LocalPromoProduct>((promo) =>
+      promo.products.map((product) => ({
+        promo_id: promo.id,
+        product_id: product.productId,
+        role: product.role,
+        created_at: promo.updatedAt ?? new Date().toISOString(),
+      }))
+    )
+
+    if (promoProducts.length > 0) {
+      await db.promoProducts.bulkPut(promoProducts)
+    }
+  })
+}
+
 export async function primeLocalShiftInventory(
   schedule: SharedBoothSchedule,
   inventoryProducts: Product[],
@@ -471,6 +538,11 @@ async function cacheActiveShiftWorkspace({
       schedule_id: sale.schedule_id,
       total_amount: Number(sale.total_amount),
       payment_method: sale.payment_method,
+      promo_id: sale.promo_id,
+      promo_name: sale.promo_name,
+      promo_type: sale.promo_type,
+      promo_discount_total: Number(sale.promo_discount_total ?? 0),
+      promo_approval_id: sale.promo_approval_id,
       receipt_photo_local: null,
       receipt_photo_path: sale.receipt_photo_path,
       status: sale.status,
@@ -480,6 +552,7 @@ async function cacheActiveShiftWorkspace({
       sync_failure_kind: null,
       sync_next_retry_at: null,
       created_at: sale.created_at,
+      updated_at: sale.updated_at,
     }))
   const remoteSaleIds = cachedSales.map((sale) => sale.id)
   const cachedSaleItems = saleItems
@@ -491,6 +564,8 @@ async function cacheActiveShiftWorkspace({
       sale_id: item.sale_id,
       product_id: item.product_id,
       quantity: item.quantity,
+      base_unit_price: Number(item.base_unit_price),
+      discount_amount: Number(item.discount_amount),
       unit_price: Number(item.unit_price),
       subtotal: Number(item.subtotal),
       stock_before: null,
@@ -585,7 +660,7 @@ export async function refreshActiveShiftWorkspace(employeeId: string) {
   const { data: shifts, error: shiftError } = await supabase
     .from("booth_schedules")
     .select(
-      "*, booths(*), booth_schedule_assignments!inner(*), booth_schedule_operator_periods(*)"
+      "*, booths(*), booth_schedule_assignments!inner(*), booth_schedule_operator_periods(*), booth_schedule_products(id)"
     )
     .eq("booth_schedule_assignments.employee_id", employeeId)
     .eq("date", currentDate)
@@ -597,8 +672,10 @@ export async function refreshActiveShiftWorkspace(employeeId: string) {
     todaysShifts.find(
       (shift) =>
         shift.status === "scheduled" &&
-        shift.start_time <= currentTime &&
-        shift.end_time > currentTime
+        shift.end_time > currentTime &&
+        (shift.start_time <= currentTime ||
+          (shift.booth_schedule_products?.length ?? 0) > 0 ||
+          hasStartedOperatorPeriod(shift.booth_schedule_operator_periods))
     ) ?? null
 
   await cacheShiftSummaries(todaysShifts)
@@ -887,6 +964,11 @@ export async function bootstrapEmployeeOfflineData(
     schedule_id: sale.schedule_id,
     total_amount: Number(sale.total_amount),
     payment_method: sale.payment_method,
+    promo_id: sale.promo_id,
+    promo_name: sale.promo_name,
+    promo_type: sale.promo_type,
+    promo_discount_total: Number(sale.promo_discount_total ?? 0),
+    promo_approval_id: sale.promo_approval_id,
     receipt_photo_local: null,
     receipt_photo_path: sale.receipt_photo_path,
     status: sale.status,
@@ -896,12 +978,15 @@ export async function bootstrapEmployeeOfflineData(
     sync_failure_kind: null,
     sync_next_retry_at: null,
     created_at: sale.created_at,
+    updated_at: sale.updated_at,
   }))
   const cachedSaleItems = saleItems.map<LocalSaleItem>((item) => ({
     id: item.id,
     sale_id: item.sale_id,
     product_id: item.product_id,
     quantity: item.quantity,
+    base_unit_price: Number(item.base_unit_price),
+    discount_amount: Number(item.discount_amount),
     unit_price: Number(item.unit_price),
     subtotal: Number(item.subtotal),
     stock_before: null,
@@ -1292,10 +1377,17 @@ export type LocalSalePayload = {
   scheduleId: string
   totalAmount: number
   paymentMethod: PaymentMethod
+  promoId?: string | null
+  promoName?: string | null
+  promoType?: string | null
+  promoDiscountTotal?: number
+  promoApprovalId?: string | null
   items: {
     productId: string
     quantity: number
     price: number
+    basePrice: number
+    discountAmount: number
   }[]
   receiptPhotoLocal?: string
 }
@@ -1311,6 +1403,11 @@ export async function saveSaleLocally(
     schedule_id: data.scheduleId,
     total_amount: data.totalAmount,
     payment_method: data.paymentMethod,
+    promo_id: data.promoId ?? null,
+    promo_name: data.promoName ?? null,
+    promo_type: data.promoType ?? null,
+    promo_discount_total: data.promoDiscountTotal ?? 0,
+    promo_approval_id: data.promoApprovalId ?? null,
     receipt_photo_local: data.receiptPhotoLocal ?? null,
     receipt_photo_path: null,
     status: "completed",
@@ -1320,6 +1417,7 @@ export async function saveSaleLocally(
     sync_failure_kind: null,
     sync_next_retry_at: null,
     created_at: now,
+    updated_at: now,
   }
 
   await db.transaction(
@@ -1343,6 +1441,8 @@ export async function saveSaleLocally(
           sale_id: data.id,
           product_id: item.productId,
           quantity: item.quantity,
+          base_unit_price: item.basePrice,
+          discount_amount: item.discountAmount,
           unit_price: item.price,
           subtotal: item.price * item.quantity,
           stock_before: scheduleProduct.stock,
@@ -1429,7 +1529,6 @@ export async function pushSaleToSupabase(
       sync_next_retry_at: null,
     })
 
-    const supabase = createClient()
     let receiptPhotoPath = sale.receipt_photo_path
     const previousReceiptPhotoPath = sale.receipt_photo_path
 
@@ -1466,23 +1565,51 @@ export async function pushSaleToSupabase(
       )
     }
 
-    const { error } = await supabase.rpc("finalize_pos_sale", {
-      p_sale_id: sale.id,
-      p_booth_id: sale.booth_id,
-      p_schedule_id: sale.schedule_id,
-      p_total_amount: sale.total_amount,
-      p_payment_method: sale.payment_method,
-      p_receipt_photo_path: receiptPhotoPath,
-      p_created_at: sale.created_at,
-      p_items: items.map((item) => ({
-        product_id: item.product_id,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        expected_stock: item.stock_before,
-      })) satisfies Json,
+    const aggregatedItems = Array.from(
+      items
+        .reduce(
+          (map, item) => {
+            const existing = map.get(item.product_id)
+            if (existing) {
+              existing.quantity += item.quantity
+            } else {
+              map.set(item.product_id, {
+                productId: item.product_id,
+                quantity: item.quantity,
+                expectedStock: item.stock_before ?? 0,
+                baseUnitPrice: item.base_unit_price,
+              })
+            }
+            return map
+          },
+          new Map<
+            string,
+            {
+              productId: string
+              quantity: number
+              expectedStock: number
+              baseUnitPrice: number
+            }
+          >()
+        )
+        .values()
+    )
+
+    const finalizeResult = await finalizePosSale({
+      saleId: sale.id,
+      boothId: sale.booth_id,
+      scheduleId: sale.schedule_id,
+      paymentMethod: sale.payment_method,
+      receiptPhotoPath,
+      createdAt: sale.created_at,
+      items: aggregatedItems,
+      promoId: sale.promo_id ?? null,
+      promoApprovalId: sale.promo_approval_id ?? null,
     })
 
-    if (error) throw error
+    if (!finalizeResult.ok) {
+      throw new Error(finalizeResult.error ?? "Unable to finalize the sale.")
+    }
 
     await db.sales.update(saleId, {
       sync_state: "synced",

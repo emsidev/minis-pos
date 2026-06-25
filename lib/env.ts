@@ -30,10 +30,6 @@ export const isSupabaseConfigured =
 export const isSupabaseAdminConfigured =
   isSupabaseConfigured && !isPlaceholderValue(serverEnv.supabaseServiceRoleKey)
 
-export function isMagicLinkAuthEnabled() {
-  return process.env.magiclink?.trim().toLowerCase() !== "false"
-}
-
 export function assertSupabaseConfigured() {
   if (!isSupabaseConfigured) {
     throw new Error(

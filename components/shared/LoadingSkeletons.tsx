@@ -5,22 +5,25 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export function LoadingBanner({ label }: { label: string }) {
   return (
-    <div className="border-border bg-card text-muted-foreground flex items-center gap-2 rounded-xl border px-4 py-3 text-sm">
+    <div className="app-banner">
       <Loader2 className="text-primary size-4 animate-spin" />
       <span>{label}</span>
     </div>
   )
 }
 
+export function BackLinkSkeleton() {
+  return <Skeleton className="h-11 w-36 rounded-full" />
+}
+
 export function PageHeaderSkeleton() {
   return (
-    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-      <div className="space-y-2">
-        <Skeleton className="h-3 w-28 rounded-full" />
-        <Skeleton className="h-9 w-56" />
+    <div className="app-screen-header">
+      <div className="app-screen-copy">
+        <Skeleton className="h-10 w-56 max-w-full" />
         <Skeleton className="h-4 w-72 max-w-full" />
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="app-screen-actions">
         <Skeleton className="h-11 w-32" />
         <Skeleton className="h-11 w-36" />
       </div>
@@ -56,8 +59,8 @@ export function DataTableSkeleton({
   return (
     <div className="flex flex-col gap-4">
       {showToolbar ? (
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="app-panel-muted flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <Skeleton className="h-10 w-full sm:max-w-sm" />
             <Skeleton className="h-10 w-full sm:w-[190px]" />
             <Skeleton className="h-10 w-full sm:w-[190px]" />
@@ -92,12 +95,12 @@ export function DataTableSkeleton({
 export function CalendarSkeleton() {
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-9 w-48" />
+      <div className="app-screen-header sm:items-center">
+        <div className="app-screen-copy">
+          <Skeleton className="h-10 w-48 max-w-full" />
           <Skeleton className="h-4 w-44" />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="app-screen-actions">
           <Skeleton className="size-10 rounded-full" />
           <Skeleton className="size-10 rounded-full" />
         </div>
@@ -150,6 +153,43 @@ export function ShiftDetailSkeleton() {
   )
 }
 
+export function ShiftListSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <section className="app-panel space-y-4 p-4 sm:p-5">
+      <div className="app-screen-header sm:items-center">
+        <div className="app-screen-copy">
+          <Skeleton className="h-7 w-40 max-w-full" />
+          <Skeleton className="h-4 w-64 max-w-full" />
+        </div>
+        <Skeleton className="h-8 w-12 rounded-full" />
+      </div>
+      <div className="space-y-3">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div
+            key={index}
+            className="app-panel-muted flex items-center justify-between gap-3 rounded-[calc(var(--radius)-0.15rem)] p-4"
+          >
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Skeleton className="h-5 w-36 max-w-full" />
+                <Skeleton className="h-6 w-16 rounded-full" />
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-28" />
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Skeleton className="h-11 w-20 rounded-full" />
+              <Skeleton className="h-11 w-28 rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export function CounterSkeleton() {
   return (
     <div className="app-page pb-28 xl:pb-8">
@@ -158,6 +198,7 @@ export function CounterSkeleton() {
           <Card>
             <CardContent className="space-y-4 p-4 sm:p-6">
               <Skeleton className="h-9 w-52" />
+              <Skeleton className="h-4 w-72 max-w-full" />
               <div className="grid grid-cols-2 gap-3 sm:flex">
                 <Skeleton className="h-16 flex-1" />
                 <Skeleton className="h-16 flex-1" />

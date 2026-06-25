@@ -2,12 +2,16 @@ import type {
   BoothSchedule,
   EmployeeSalesHistoryGroup,
   Product,
+  SaleItemWithProduct,
+  ShiftDetailData,
   SaleWithJoins,
 } from "@/lib/shifts"
+import type { CounterPromo } from "@/lib/promos"
 import type { Database } from "@/lib/database.types"
 import {
   db,
   type LocalBooth,
+  type LocalEmployee,
   type LocalBoothSchedule,
   type LocalBoothScheduleAssignment,
   type LocalBoothScheduleOperatorPeriod,
@@ -15,22 +19,40 @@ import {
   type LocalProduct,
   type LocalSale,
   type LocalSaleItem,
+  type LocalSyncState,
 } from "@/lib/db"
-import { getBusinessDate, getBusinessTime } from "@/lib/utils"
+import {
+  getBusinessDate,
+  getBusinessShiftState,
+  hasStartedOperatorPeriod,
+} from "@/lib/utils"
+import { normalizePromoBenefit, normalizePromoCriteria } from "@/lib/promos"
 
 const OFFLINE_HISTORY_DAYS = 45
 const OFFLINE_FUTURE_DAYS = 30
+function isInFlightSyncState(state: LocalSyncState) {
+  return state === "pending" || state === "syncing"
+}
 
 export type CachedScheduleWithBooth = LocalBoothSchedule & {
   booths: LocalBooth
-  booth_schedule_assignments: LocalBoothScheduleAssignment[]
+  booth_schedule_assignments: Array<
+    LocalBoothScheduleAssignment & {
+      employees?: Pick<LocalEmployee, "id" | "name" | "email"> | null
+    }
+  >
   booth_schedule_operator_periods: LocalBoothScheduleOperatorPeriod[]
+  operator?: Pick<LocalEmployee, "id" | "name" | "email"> | null
 }
 
 export type CachedShiftDetails = {
   schedule: CachedScheduleWithBooth | null
   products: Product[]
   sales: SaleWithJoins[]
+  saleItems: SaleItemWithProduct[]
+  approvalHistory?: ShiftDetailData["approvalHistory"]
+  pendingRevenueIncrease?: number
+  pendingRevenueDecrease?: number
 }
 
 export type CachedEmployeeSalesHistoryResult = {
@@ -69,17 +91,11 @@ function localProductToShiftProduct(
 
 function localSaleToSaleWithJoins(sale: LocalSale): SaleWithJoins {
   return {
-    id: sale.id,
-    booth_id: sale.booth_id,
-    employee_id: sale.employee_id,
-    schedule_id: sale.schedule_id,
+    ...sale,
     total_amount: sale.total_amount.toString(),
-    payment_method: sale.payment_method,
-    receipt_photo_path: sale.receipt_photo_path,
+    promo_discount_total: sale.promo_discount_total.toString(),
     receipt_photo_local: sale.receipt_photo_local,
-    status: sale.status,
     sync_state: sale.sync_state,
-    created_at: sale.created_at,
     employees: null,
     booths: null,
   }
@@ -149,13 +165,33 @@ export async function getCachedSchedulesForEmployee(employeeId: string) {
       .anyOf(scheduleIds)
       .toArray(),
   ])
+  const employeeIds = Array.from(
+    new Set(
+      [
+        ...allAssignments.map((assignment) => assignment.employee_id),
+        ...availableSchedules
+          .map((schedule) => schedule.operator_employee_id)
+          .filter((employeeId): employeeId is string => Boolean(employeeId)),
+      ].filter(Boolean)
+    )
+  )
+  const employees =
+    employeeIds.length > 0 ? await db.employees.bulkGet(employeeIds) : []
+  const employeeMap = new Map(
+    employees
+      .filter((employee): employee is LocalEmployee => employee !== undefined)
+      .map((employee) => [employee.id, employee])
+  )
   const assignmentsBySchedule = new Map<
     string,
-    LocalBoothScheduleAssignment[]
+    CachedScheduleWithBooth["booth_schedule_assignments"]
   >()
   for (const assignment of allAssignments) {
     const current = assignmentsBySchedule.get(assignment.schedule_id) ?? []
-    current.push(assignment)
+    current.push({
+      ...assignment,
+      employees: employeeMap.get(assignment.employee_id) ?? null,
+    })
     assignmentsBySchedule.set(assignment.schedule_id, current)
   }
   const periodsBySchedule = new Map<
@@ -182,6 +218,9 @@ export async function getCachedSchedulesForEmployee(employeeId: string) {
                 assignmentsBySchedule.get(schedule.id) ?? [],
               booth_schedule_operator_periods:
                 periodsBySchedule.get(schedule.id) ?? [],
+              operator: schedule.operator_employee_id
+                ? (employeeMap.get(schedule.operator_employee_id) ?? null)
+                : null,
             },
           ]
         : []
@@ -198,6 +237,7 @@ export async function getCachedShiftDetails(
       schedule: null,
       products: [],
       sales: [],
+      saleItems: [],
     }
   }
 
@@ -212,6 +252,21 @@ export async function getCachedShiftDetails(
       .equals(scheduleId)
       .toArray(),
   ])
+  const employeeIds = Array.from(
+    new Set(
+      [
+        ...assignments.map((assignment) => assignment.employee_id),
+        schedule.operator_employee_id,
+      ].filter((employeeId): employeeId is string => Boolean(employeeId))
+    )
+  )
+  const employees =
+    employeeIds.length > 0 ? await db.employees.bulkGet(employeeIds) : []
+  const employeeMap = new Map(
+    employees
+      .filter((employee): employee is LocalEmployee => employee !== undefined)
+      .map((employee) => [employee.id, employee])
+  )
   const scheduleProducts = await db.boothScheduleProducts
     .where("schedule_id")
     .equals(scheduleId)
@@ -228,14 +283,35 @@ export async function getCachedShiftDetails(
     .equals(scheduleId)
     .filter((sale) => sale.sync_state !== "failed")
     .toArray()
+  const saleIds = sales.map((sale) => sale.id)
+  const saleItems =
+    saleIds.length > 0
+      ? await db.saleItems.where("sale_id").anyOf(saleIds).toArray()
+      : []
+  const saleItemProductIds = saleItems.map((item) => item.product_id)
+  const saleItemProducts =
+    saleItemProductIds.length > 0
+      ? await db.products.bulkGet(saleItemProductIds)
+      : []
+  const saleItemProductMap = new Map(
+    saleItemProducts
+      .filter((product): product is LocalProduct => product !== undefined)
+      .map((product) => [product.id, product])
+  )
 
   return {
     schedule: booth
       ? {
           ...schedule,
           booths: booth,
-          booth_schedule_assignments: assignments,
+          booth_schedule_assignments: assignments.map((assignment) => ({
+            ...assignment,
+            employees: employeeMap.get(assignment.employee_id) ?? null,
+          })),
           booth_schedule_operator_periods: periods,
+          operator: schedule.operator_employee_id
+            ? (employeeMap.get(schedule.operator_employee_id) ?? null)
+            : null,
         }
       : null,
     products: scheduleProducts.flatMap((joint) => {
@@ -246,6 +322,30 @@ export async function getCachedShiftDetails(
       .slice()
       .sort(sortSalesDescending)
       .map(localSaleToSaleWithJoins),
+    saleItems: saleItems.map((item) => ({
+      ...item,
+      base_unit_price: item.base_unit_price.toString(),
+      discount_amount: item.discount_amount.toString(),
+      unit_price: item.unit_price.toString(),
+      subtotal: item.subtotal.toString(),
+      products: (() => {
+        const product = saleItemProductMap.get(item.product_id)
+
+        if (!product) {
+          return null
+        }
+
+        return {
+          id: product.id,
+          name: product.name,
+          price: product.price.toString(),
+          category: product.category,
+          image_url: product.image_url,
+          is_available: product.is_available,
+          created_at: product.created_at,
+        }
+      })(),
+    })),
   }
 }
 
@@ -254,14 +354,35 @@ export async function getCachedActiveShiftDetails(
 ): Promise<CachedShiftDetails> {
   const schedules = await getCachedSchedulesForEmployee(employeeId)
   const currentDate = getBusinessDate()
-  const currentTime = getBusinessTime()
+  const scheduleIds = schedules
+    .filter(
+      (schedule) =>
+        schedule.status === "scheduled" && schedule.date === currentDate
+    )
+    .map((schedule) => schedule.id)
+  const scheduleProducts =
+    scheduleIds.length > 0
+      ? await db.boothScheduleProducts
+          .where("schedule_id")
+          .anyOf(scheduleIds)
+          .toArray()
+      : []
+  const productCountBySchedule = new Map<string, number>()
+  for (const row of scheduleProducts) {
+    productCountBySchedule.set(
+      row.schedule_id,
+      (productCountBySchedule.get(row.schedule_id) ?? 0) + 1
+    )
+  }
 
   const activeSchedule = schedules.find(
     (schedule) =>
-      schedule.status === "scheduled" &&
-      schedule.date === currentDate &&
-      schedule.start_time <= currentTime &&
-      schedule.end_time > currentTime
+      getBusinessShiftState(schedule, {
+        inventoryReady: (productCountBySchedule.get(schedule.id) ?? 0) > 0,
+        manuallyStarted: hasStartedOperatorPeriod(
+          schedule.booth_schedule_operator_periods
+        ),
+      }).isOperational
   )
 
   if (!activeSchedule) {
@@ -269,6 +390,7 @@ export async function getCachedActiveShiftDetails(
       schedule: null,
       products: [],
       sales: [],
+      saleItems: [],
     }
   }
 
@@ -344,6 +466,23 @@ export async function getCachedCounterWorkspace(
   }
 }
 
+export async function hasInFlightScheduleOperations(scheduleId: string) {
+  const [pendingSales, pendingInventoryEvents] = await Promise.all([
+    db.sales
+      .where("schedule_id")
+      .equals(scheduleId)
+      .filter((sale) => isInFlightSyncState(sale.sync_state))
+      .count(),
+    db.inventoryEvents
+      .where("schedule_id")
+      .equals(scheduleId)
+      .filter((event) => isInFlightSyncState(event.sync_state))
+      .count(),
+  ])
+
+  return pendingSales + pendingInventoryEvents > 0
+}
+
 export async function getCachedAvailableProducts(): Promise<Product[]> {
   const products = await db.products
     .filter((product) => product.is_available !== false)
@@ -352,6 +491,51 @@ export async function getCachedAvailableProducts(): Promise<Product[]> {
   return products.map((product) => ({
     ...product,
     price: product.price.toString(),
+  }))
+}
+
+export async function getCachedCounterPromos(): Promise<CounterPromo[]> {
+  const businessDate = getBusinessDate()
+  const promos = await db.promos
+    .filter(
+      (promo) =>
+        promo.is_active !== false &&
+        promo.starts_on <= businessDate &&
+        promo.ends_on >= businessDate
+    )
+    .sortBy("name")
+
+  if (promos.length === 0) {
+    return []
+  }
+
+  const [promoProducts, products] = await Promise.all([
+    db.promoProducts.toArray(),
+    db.products.toArray(),
+  ])
+  const productNameById = new Map(
+    products.map((product) => [product.id, product.name])
+  )
+
+  return promos.map((promo) => ({
+    id: promo.id,
+    name: promo.name,
+    promoType: promo.promo_type,
+    startsOn: promo.starts_on,
+    endsOn: promo.ends_on,
+    isActive: promo.is_active !== false,
+    requiresAdminApproval: promo.requires_admin_approval === true,
+    criteria: normalizePromoCriteria(promo.criteria),
+    benefit: normalizePromoBenefit(promo.promo_type, promo.benefit),
+    products: promoProducts
+      .filter((product) => product.promo_id === promo.id)
+      .map((product) => ({
+        productId: product.product_id,
+        productName: productNameById.get(product.product_id),
+        role: product.role,
+      })),
+    createdAt: promo.created_at,
+    updatedAt: promo.updated_at,
   }))
 }
 
@@ -374,10 +558,9 @@ export async function getCachedSaleItems(
   )
 
   return saleItems.map((item) => ({
-    id: item.id,
-    sale_id: item.sale_id,
-    product_id: item.product_id,
-    quantity: item.quantity,
+    ...item,
+    base_unit_price: item.base_unit_price.toString(),
+    discount_amount: item.discount_amount.toString(),
     unit_price: item.unit_price.toString(),
     subtotal: item.subtotal.toString(),
     products: (() => {
@@ -432,6 +615,8 @@ export async function cacheServerSaleItems(
     sale_id: item.sale_id,
     product_id: item.product_id,
     quantity: item.quantity,
+    base_unit_price: parseFloat(item.base_unit_price),
+    discount_amount: parseFloat(item.discount_amount),
     unit_price: parseFloat(item.unit_price),
     subtotal: parseFloat(item.subtotal),
     stock_before: null,

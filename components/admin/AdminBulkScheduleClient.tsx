@@ -40,9 +40,11 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
-  SingleSelect,
-  type SingleSelectOption,
-} from "@/components/ui/single-select"
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -52,13 +54,17 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { TimeSelect } from "@/components/ui/time-select"
 import type {
   AdminEmployeeOption,
   BulkScheduleEditableRow,
 } from "@/lib/adminBooths"
 import type { Booth } from "@/lib/shifts"
-import { cn, getBusinessDate } from "@/lib/utils"
+import {
+  cn,
+  getBoothDisplayName,
+  getBusinessDate,
+  getEmployeeDisplayName,
+} from "@/lib/utils"
 
 type BulkMode = "add" | "edit"
 
@@ -87,8 +93,10 @@ type RowCorePatch = Partial<
 
 const DEFAULT_SHIFT_START = "09:00"
 const DEFAULT_SHIFT_END = "17:00"
+const SELECT_KEEP_CURRENT_BOOTH = "__keep_current_booth__"
 const OPERATOR_UNCHANGED = "__UNCHANGED__"
 const OPERATOR_CLEAR = "__CLEAR__"
+const NO_OPERATOR = "__NO_OPERATOR__"
 
 function getCurrentMonthRange() {
   const [year, month] = getBusinessDate().split("-").map(Number)
@@ -227,7 +235,7 @@ export function AdminBulkScheduleClient({
     () =>
       activeBooths.map((booth) => ({
         value: booth.id,
-        label: booth.name,
+        label: getBoothDisplayName(booth),
         description: booth.location_text ?? undefined,
       })),
     [activeBooths]
@@ -236,22 +244,39 @@ export function AdminBulkScheduleClient({
     () =>
       employees.map((employee) => ({
         value: employee.id,
-        label: employee.name,
+        label: getEmployeeDisplayName(employee),
         description: employee.email,
       })),
     [employees]
   )
   const massBoothOptions = useMemo(
     () =>
-      [
-        { value: "", label: "Keep current booth" },
-        ...activeBooths.map((booth) => ({
-          value: booth.id,
-          label: booth.name,
-        })),
-      ] satisfies SingleSelectOption[],
+      activeBooths.map((booth) => ({
+        value: booth.id,
+        label: getBoothDisplayName(booth),
+      })),
     [activeBooths]
   )
+
+  const boothLabelById = useMemo(
+    () =>
+      new Map(
+        activeBooths.map((booth) => [booth.id, getBoothDisplayName(booth)])
+      ),
+    [activeBooths]
+  )
+
+  const employeeLabelById = useMemo(
+    () =>
+      new Map(
+        employees.map((employee) => [
+          employee.id,
+          getEmployeeDisplayName(employee),
+        ])
+      ),
+    [employees]
+  )
+
   const editRangeDefaults = useMemo(() => getCurrentMonthRange(), [])
 
   const [mode, setMode] = useState<BulkMode>("add")
@@ -704,23 +729,21 @@ export function AdminBulkScheduleClient({
           <ArrowLeft data-icon="inline-start" />
           Back to booths
         </Button>
-        <div className="app-panel flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
-          <div>
-            <p className="app-kicker">Admin Workspace</p>
-            <h1 className="text-3xl font-semibold">Bulk Shift Scheduling</h1>
-            <p className="app-caption">
-              Generate or edit multiple scheduled shifts in one table, with
-              per-row teams and per-row validation.
+        <div className="app-panel app-screen-header p-5 sm:p-6">
+          <div className="app-screen-copy">
+            <h1 className="app-screen-title">Bulk Shift Scheduling</h1>
+            <p className="app-screen-description">
+              Create or edit many shifts at once.
             </p>
           </div>
           <div className="grid gap-2 text-sm sm:text-right">
-            <div className="bg-muted/60 rounded-xl px-4 py-3">
+            <div className="app-panel-muted rounded-[calc(var(--radius)-0.15rem)] px-4 py-3">
               <span className="text-foreground font-medium">
                 {dirtyRows.length}
               </span>{" "}
               dirty row{dirtyRows.length === 1 ? "" : "s"}
             </div>
-            <div className="bg-muted/40 rounded-xl px-4 py-3">
+            <div className="app-panel-muted rounded-[calc(var(--radius)-0.15rem)] px-4 py-3">
               <span className="text-foreground font-medium">
                 {selectedCount}
               </span>{" "}
@@ -850,12 +873,32 @@ export function AdminBulkScheduleClient({
           <div className="grid gap-4 2xl:grid-cols-[minmax(0,14rem)_minmax(0,11rem)_minmax(0,11rem)_minmax(0,20rem)_minmax(0,16rem)_auto]">
             <Field>
               <FieldLabel>Booth</FieldLabel>
-              <SingleSelect
-                value={massBoothId}
-                onChange={setMassBoothId}
-                options={massBoothOptions}
-                placeholder="Keep current booth"
-              />
+              <Select
+                value={massBoothId || SELECT_KEEP_CURRENT_BOOTH}
+                onValueChange={(value) =>
+                  setMassBoothId(
+                    value === SELECT_KEEP_CURRENT_BOOTH ? "" : (value ?? "")
+                  )
+                }
+              >
+                <SelectTrigger className="h-11">
+                  <span>
+                    {massBoothId
+                      ? (boothLabelById.get(massBoothId) ?? "Unnamed booth")
+                      : "Keep current booth"}
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SELECT_KEEP_CURRENT_BOOTH}>
+                    Keep current booth
+                  </SelectItem>
+                  {massBoothOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Field>
               <FieldLabel>Start time</FieldLabel>
@@ -898,18 +941,34 @@ export function AdminBulkScheduleClient({
             </Field>
             <Field>
               <FieldLabel>POS operator</FieldLabel>
-              <SingleSelect
+              <Select
                 value={massOperatorValue}
-                onChange={setMassOperatorValue}
-                options={[
-                  { value: OPERATOR_UNCHANGED, label: "Keep current operator" },
-                  { value: OPERATOR_CLEAR, label: "Clear operator" },
-                  ...employees.map((employee) => ({
-                    value: employee.id,
-                    label: employee.name,
-                  })),
-                ]}
-              />
+                onValueChange={(value) =>
+                  setMassOperatorValue(value ?? OPERATOR_UNCHANGED)
+                }
+              >
+                <SelectTrigger className="h-11">
+                  <span>
+                    {massOperatorValue === OPERATOR_UNCHANGED
+                      ? "Keep current operator"
+                      : massOperatorValue === OPERATOR_CLEAR
+                        ? "Clear operator"
+                        : (employeeLabelById.get(massOperatorValue) ??
+                          "Unknown employee")}
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={OPERATOR_UNCHANGED}>
+                    Keep current operator
+                  </SelectItem>
+                  <SelectItem value={OPERATOR_CLEAR}>Clear operator</SelectItem>
+                  {employees.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id}>
+                      {getEmployeeDisplayName(employee)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <div className="flex flex-wrap gap-2 self-end">
               <Button
@@ -994,17 +1053,9 @@ export function AdminBulkScheduleClient({
               ) : (
                 rows.map((row) => {
                   const status = buildRowStatus(row)
-                  const rowOperatorOptions: SingleSelectOption[] = [
-                    { value: "", label: "No POS operator" },
-                    ...employees
-                      .filter((employee) =>
-                        row.employeeIds.includes(employee.id)
-                      )
-                      .map((employee) => ({
-                        value: employee.id,
-                        label: employee.name,
-                      })),
-                  ]
+                  const rowOperatorOptions = employees.filter((employee) =>
+                    row.employeeIds.includes(employee.id)
+                  )
 
                   return (
                     <TableRow key={row.rowKey}>
@@ -1056,22 +1107,28 @@ export function AdminBulkScheduleClient({
                         />
                       </TableCell>
                       <TableCell>
-                        <TimeSelect
+                        <Input
+                          type="time"
                           value={row.startTime}
-                          onChange={(value) =>
-                            updateRow(row.rowKey, { startTime: value })
+                          step={1800}
+                          onChange={(event) =>
+                            updateRow(row.rowKey, {
+                              startTime: event.target.value,
+                            })
                           }
-                          stepMinutes={30}
                           disabled={row.persisted && row.startedLocked}
                         />
                       </TableCell>
                       <TableCell>
-                        <TimeSelect
+                        <Input
+                          type="time"
                           value={row.endTime}
-                          onChange={(value) =>
-                            updateRow(row.rowKey, { endTime: value })
+                          step={1800}
+                          onChange={(event) =>
+                            updateRow(row.rowKey, {
+                              endTime: event.target.value,
+                            })
                           }
-                          stepMinutes={30}
                           disabled={row.persisted && row.startedLocked}
                         />
                       </TableCell>
@@ -1086,17 +1143,36 @@ export function AdminBulkScheduleClient({
                         />
                       </TableCell>
                       <TableCell className="min-w-56">
-                        <SingleSelect
-                          value={row.operatorEmployeeId ?? ""}
-                          onChange={(value) =>
+                        <Select
+                          value={row.operatorEmployeeId ?? NO_OPERATOR}
+                          onValueChange={(value) =>
                             updateRow(row.rowKey, {
-                              operatorEmployeeId: value || null,
+                              operatorEmployeeId:
+                                value === NO_OPERATOR ? null : value,
                             })
                           }
-                          options={rowOperatorOptions}
-                          placeholder="No POS operator"
                           disabled={row.employeeIds.length === 0}
-                        />
+                        >
+                          <SelectTrigger className="h-11">
+                            <span>
+                              {row.operatorEmployeeId
+                                ? (employeeLabelById.get(
+                                    row.operatorEmployeeId
+                                  ) ?? "Unknown employee")
+                                : "No POS operator"}
+                            </span>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_OPERATOR}>
+                              No POS operator
+                            </SelectItem>
+                            {rowOperatorOptions.map((employee) => (
+                              <SelectItem key={employee.id} value={employee.id}>
+                                {getEmployeeDisplayName(employee)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </TableCell>
                       <TableCell className="align-top whitespace-normal">
                         <div className="flex flex-col gap-2 text-sm">

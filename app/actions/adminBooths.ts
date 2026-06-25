@@ -2,15 +2,14 @@
 
 import { revalidatePath } from "next/cache"
 
+import { deleteReceiptPhoto } from "@/app/actions/receipts"
 import { requireEmployeeRole } from "@/lib/auth"
 import {
-  type AdminShiftDetailData,
   type BulkScheduleEditableRow,
   type BulkScheduleLoadFilters,
   type BulkScheduleSaveResult,
   type BulkScheduleSaveRowInput,
   getBulkEditableScheduleRows,
-  getAdminScheduleById,
   getAdminScheduleCalendarItems,
 } from "@/lib/adminBooths"
 import { buildGoogleMapsLink } from "@/lib/boothMaps"
@@ -18,11 +17,11 @@ import type { Booth } from "@/lib/shifts"
 import type { Json } from "@/lib/database.types"
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import {
+  getEmployeeDisplayName,
   getBusinessDate,
   getBusinessTime,
   hasBusinessShiftStarted,
 } from "@/lib/utils"
-import { getBoothScheduleSales } from "@/lib/shifts"
 
 export type BoothFormInput = {
   id?: string
@@ -77,47 +76,6 @@ export async function loadAdminScheduleCalendarItems(
   }
 
   return getAdminScheduleCalendarItems(startDate, endDate, boothId)
-}
-
-export async function loadAdminShiftDetail(
-  scheduleId: string
-): Promise<AdminShiftDetailData> {
-  await requireEmployeeRole("admin")
-
-  if (!scheduleId.trim()) {
-    return {
-      schedule: null,
-      products: [],
-      sales: [],
-    }
-  }
-
-  const schedule = await getAdminScheduleById(scheduleId)
-  if (!schedule) {
-    return {
-      schedule: null,
-      products: [],
-      sales: [],
-    }
-  }
-
-  const sales = await getBoothScheduleSales(scheduleId)
-
-  return {
-    schedule,
-    products: schedule.booth_schedule_products.flatMap((item) =>
-      item.products
-        ? [
-            {
-              ...item.products,
-              quantity: item.quantity,
-              stock: item.stock,
-            },
-          ]
-        : []
-    ),
-    sales,
-  }
 }
 
 export type InventoryOverrideInput = {
@@ -413,6 +371,25 @@ function revalidateBoothRoutes(boothIds?: string | string[]) {
   revalidatePath("/shift")
 }
 
+async function cleanupReceiptPhotos(receiptPaths: Array<string | null>) {
+  let cleanupFailed = false
+
+  for (const receiptPath of Array.from(
+    new Set(
+      receiptPaths.filter((receiptPath): receiptPath is string =>
+        Boolean(receiptPath)
+      )
+    )
+  )) {
+    const result = await deleteReceiptPhoto(receiptPath)
+    if (!result.ok) {
+      cleanupFailed = true
+    }
+  }
+
+  return cleanupFailed
+}
+
 function joinLabels(labels: string[]) {
   if (labels.length <= 1) {
     return labels[0] ?? ""
@@ -474,7 +451,7 @@ async function getScheduleConflicts(
       schedule.end_time > input.startTime
     ) {
       const existingConflict = conflictMap.get(row.employee_id) ?? {
-        employeeName: row.employees?.name?.trim() || "Unknown employee",
+        employeeName: getEmployeeDisplayName(row.employees),
         dates: new Set<string>(),
       }
       existingConflict.dates.add(schedule.date)
@@ -576,6 +553,9 @@ function getActionErrorMessage(message: string) {
   if (message.includes("SCHEDULE_CANCELLED")) {
     return "Only scheduled shifts can be edited or cancelled."
   }
+  if (message.includes("SHIFT_ALREADY_PASSED")) {
+    return "Passed shifts can no longer be cancelled."
+  }
   if (message.includes("BOOTH_INACTIVE")) {
     return "Only active booths can receive new or updated schedules."
   }
@@ -608,6 +588,9 @@ function getActionErrorMessage(message: string) {
   }
   if (message.includes("SCHEDULE_NOT_FOUND")) {
     return "This shift no longer exists. Refresh and try again."
+  }
+  if (message.includes("BOOTH_NOT_FOUND")) {
+    return "This booth no longer exists. Refresh and try again."
   }
   if (message.includes("INVALID_SHIFT_TIME")) {
     return "End time must be later than start time."
@@ -959,11 +942,11 @@ export async function cancelBoothSchedule(
   await requireEmployeeRole("admin")
 
   const supabase = createServerSupabaseClient()
-  const { error } = await supabase
-    .from("booth_schedules")
-    .update({ status: "cancelled" })
-    .eq("id", scheduleId)
-    .eq("status", "scheduled")
+  const { error } = await supabase.rpc("cancel_booth_schedule", {
+    p_schedule_id: scheduleId,
+    p_current_date: getBusinessDate(),
+    p_current_time: getBusinessTime(),
+  })
 
   if (error) {
     return { ok: false, error: getActionErrorMessage(error.message) }
@@ -973,5 +956,107 @@ export async function cancelBoothSchedule(
   return {
     ok: true,
     message: "Shift cancelled. Its history has been retained.",
+  }
+}
+
+export async function deleteBoothScheduleCascade(
+  scheduleId: string,
+  boothId: string
+): Promise<AdminActionResult> {
+  await requireEmployeeRole("admin")
+
+  if (!scheduleId.trim()) {
+    return { ok: false, error: "Shift record is missing." }
+  }
+
+  const supabase = createServerSupabaseClient()
+  const { data: saleRows, error: saleError } = await supabase
+    .from("sales")
+    .select("receipt_photo_path")
+    .eq("schedule_id", scheduleId)
+
+  if (saleError) {
+    return { ok: false, error: getActionErrorMessage(saleError.message) }
+  }
+
+  const { error } = await supabase.rpc("delete_booth_schedule_cascade", {
+    p_schedule_id: scheduleId,
+  })
+
+  if (error) {
+    return { ok: false, error: getActionErrorMessage(error.message) }
+  }
+
+  const cleanupFailed = await cleanupReceiptPhotos(
+    (saleRows ?? []).map((sale) => sale.receipt_photo_path)
+  )
+
+  revalidateBoothRoutes(boothId)
+  revalidatePath("/admin/dashboard")
+  revalidatePath("/admin/sales")
+  return {
+    ok: true,
+    message: cleanupFailed
+      ? "Shift deleted, but one or more receipt files could not be cleaned up."
+      : "Shift deleted permanently.",
+  }
+}
+
+export async function deleteBoothCascade(
+  boothId: string
+): Promise<AdminActionResult> {
+  await requireEmployeeRole("admin")
+
+  if (!boothId.trim()) {
+    return { ok: false, error: "Booth record is missing." }
+  }
+
+  const supabase = createServerSupabaseClient()
+  const { data: saleRows, error: saleError } = await supabase
+    .from("sales")
+    .select("receipt_photo_path")
+    .eq("booth_id", boothId)
+
+  if (saleError) {
+    return { ok: false, error: getActionErrorMessage(saleError.message) }
+  }
+
+  const { data, error } = await supabase.rpc("delete_booth_cascade", {
+    p_booth_id: boothId,
+  })
+
+  if (error) {
+    return { ok: false, error: getActionErrorMessage(error.message) }
+  }
+
+  const cleanupFailed = await cleanupReceiptPhotos(
+    (saleRows ?? []).map((sale) => sale.receipt_photo_path)
+  )
+
+  const saleCount =
+    typeof data === "object" &&
+    data !== null &&
+    !Array.isArray(data) &&
+    typeof data.sale_count === "number"
+      ? data.sale_count
+      : null
+  const scheduleCount =
+    typeof data === "object" &&
+    data !== null &&
+    !Array.isArray(data) &&
+    typeof data.schedule_count === "number"
+      ? data.schedule_count
+      : null
+
+  revalidateBoothRoutes(boothId)
+  revalidatePath("/admin/dashboard")
+  revalidatePath("/admin/sales")
+  return {
+    ok: true,
+    message: cleanupFailed
+      ? "Booth deleted, but one or more receipt files could not be cleaned up."
+      : saleCount !== null && scheduleCount !== null
+        ? `Booth deleted permanently with ${scheduleCount} shift${scheduleCount === 1 ? "" : "s"} and ${saleCount} sale${saleCount === 1 ? "" : "s"}.`
+        : "Booth deleted permanently.",
   }
 }

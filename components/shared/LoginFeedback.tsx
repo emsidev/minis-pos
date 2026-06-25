@@ -1,8 +1,3 @@
-"use client"
-
-import { useEffect } from "react"
-import { toast } from "sonner"
-
 interface LoginFeedbackProps {
   error?: string | null
   sent?: boolean
@@ -18,33 +13,31 @@ export function LoginFeedback({
   sentMessage,
   successMessage,
 }: LoginFeedbackProps) {
-  useEffect(() => {
-    if (error) {
-      toast.error(error, {
-        duration: 5000,
-      })
-    }
-  }, [error])
+  const sentLabel =
+    sent &&
+    (sentMessage ?? `Check ${email ?? "your inbox"} for the reset link.`)
 
-  useEffect(() => {
-    if (sent) {
-      toast.success(
-        sentMessage ??
-          `Magic link sent${email ? ` to ${email}` : ""}. Check your inbox.`,
-        {
-          duration: 8000,
-        }
-      )
-    }
-  }, [email, sent, sentMessage])
+  if (!error && !sentLabel && !successMessage) {
+    return null
+  }
 
-  useEffect(() => {
-    if (successMessage) {
-      toast.success(successMessage, {
-        duration: 6000,
-      })
-    }
-  }, [successMessage])
-
-  return null
+  return (
+    <div className="space-y-3">
+      {error ? (
+        <div className="border-destructive/15 bg-destructive/5 text-destructive rounded-2xl border px-4 py-3 text-sm">
+          {error}
+        </div>
+      ) : null}
+      {sentLabel ? (
+        <div className="border-success/10 bg-success/5 text-success rounded-2xl border px-4 py-3 text-sm">
+          {sentLabel}
+        </div>
+      ) : null}
+      {successMessage ? (
+        <div className="border-success/10 bg-success/5 text-success rounded-2xl border px-4 py-3 text-sm">
+          {successMessage}
+        </div>
+      ) : null}
+    </div>
+  )
 }

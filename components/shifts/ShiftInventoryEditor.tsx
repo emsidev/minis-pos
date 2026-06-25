@@ -26,7 +26,7 @@ import {
   getCachedShiftDetails,
 } from "@/lib/offlineData"
 import type { Product, SharedBoothSchedule } from "@/lib/shifts"
-import { cn, isCurrentBusinessShift } from "@/lib/utils"
+import { cn, getBusinessShiftState } from "@/lib/utils"
 import { saveInventoryEventLocally, syncPendingPosOperations } from "@/lib/sync"
 
 type ShiftInventoryEditorProps = {
@@ -36,6 +36,9 @@ type ShiftInventoryEditorProps = {
   employeeId: string
   compact?: boolean
   preferCachedData?: boolean
+  onSavePhaseChange?: (
+    phase: "started" | "queued" | "reconciled"
+  ) => Promise<void> | void
 }
 
 type QuantityValues = Record<string, string>
@@ -96,6 +99,7 @@ export function ShiftInventoryEditor({
   employeeId,
   compact = false,
   preferCachedData = false,
+  onSavePhaseChange,
 }: ShiftInventoryEditorProps) {
   const cachedShift = useLiveQuery(
     () => getCachedShiftDetails(schedule.id),
@@ -176,14 +180,16 @@ export function ShiftInventoryEditor({
   const submitInventory = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    if (
-      !isCurrentBusinessShift(
-        schedule.date,
-        schedule.start_time,
-        schedule.end_time
+    const canManageNow = getBusinessShiftState(schedule, {
+      inventoryReady: initialized,
+    }).canManageInventory
+
+    if (!canManageNow) {
+      toast.error(
+        initialized
+          ? "Inventory can be changed only while this shift is active."
+          : "Opening inventory can only start a same-day scheduled shift before it ends."
       )
-    ) {
-      toast.error("Inventory can be changed only while this shift is active.")
       return
     }
 
@@ -208,12 +214,8 @@ export function ShiftInventoryEditor({
         currentInventory: localProducts,
         lines,
       })
+      onSavePhaseChange?.("started")
 
-      toast.success(
-        initialized
-          ? "Current stock updated."
-          : "Opening inventory saved. Counter is ready."
-      )
       setHasDraftChanges(false)
       setExpanded(false)
 
@@ -228,8 +230,13 @@ export function ShiftInventoryEditor({
             "Stock is saved locally, but some records still could not sync."
           )
         }
+
+        await onSavePhaseChange?.("reconciled")
+      } else {
+        await onSavePhaseChange?.("queued")
       }
     } catch (error) {
+      await onSavePhaseChange?.("queued")
       toast.error(
         error instanceof Error ? error.message : "Unable to save inventory."
       )
@@ -246,16 +253,13 @@ export function ShiftInventoryEditor({
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="app-kicker">
-              {initialized ? "Stock Adjustment" : "Shift Start"}
-            </p>
             <h2 className="text-foreground text-lg font-semibold">
               {initialized ? "Update on-hand stock" : "Enter opening inventory"}
             </h2>
             <p className="text-muted-foreground mt-1 text-sm">
               {initialized
-                ? "Opening quantities remain in history; only current stock changes."
-                : "Record stock on hand before accepting the first sale."}
+                ? "Change current stock for this shift."
+                : "Record stock before the first sale."}
             </p>
           </div>
           {initialized ? (
@@ -373,7 +377,7 @@ export function ShiftInventoryEditor({
             disabled={pending || productOptions.length === 0}
           >
             {pending ? <Loader2 className="animate-spin" /> : null}
-            {initialized ? "Save Stock Adjustment" : "Start Selling"}
+            {initialized ? "Save Stock Adjustment" : "Start Shift"}
           </Button>
         </div>
       </form>

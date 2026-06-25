@@ -29,6 +29,11 @@ import {
 } from "@/components/ui/sheet"
 import { db } from "@/lib/db"
 import type { Product, SaleWithJoins, SharedBoothSchedule } from "@/lib/shifts"
+import type { ShiftApprovalRecord } from "@/lib/shiftApprovals"
+import {
+  getApprovedCashDeductionTotal,
+  getPendingCashDeductionCount,
+} from "@/lib/shiftApprovals"
 import {
   getPendingOperationCountsForSchedule,
   syncPendingPosOperations,
@@ -41,6 +46,7 @@ type ShiftCloseoutSheetProps = {
   schedule: SharedBoothSchedule
   products: Product[]
   sales: SaleWithJoins[]
+  approvalHistory?: ShiftApprovalRecord[]
   onSaved: () => void
 }
 
@@ -83,6 +89,7 @@ export function ShiftCloseoutSheet({
   schedule,
   products,
   sales,
+  approvalHistory = [],
   onSaved,
 }: ShiftCloseoutSheetProps) {
   const pendingCounts = useLiveQuery(
@@ -111,18 +118,32 @@ export function ShiftCloseoutSheet({
     () => products.reduce((total, product) => total + (product.stock ?? 0), 0),
     [products]
   )
+  const approvedCashDeductions = useMemo(
+    () => getApprovedCashDeductionTotal(approvalHistory),
+    [approvalHistory]
+  )
+  const pendingCashDeductionCount = useMemo(
+    () => getPendingCashDeductionCount(approvalHistory),
+    [approvalHistory]
+  )
+  const expectedCashSales = systemCashSales - approvedCashDeductions
   const countedCashValue = Number(countedCashSales || "0")
   const countedStockTotal = products.reduce(
     (total, product) => total + Number(countedStocks[product.id] ?? "0"),
     0
   )
-  const cashVariance = countedCashValue - systemCashSales
+  const cashVariance = countedCashValue - expectedCashSales
   const stockVariance = countedStockTotal - systemStockTotal
   const hasPendingSync = (pendingCounts?.total ?? 0) > 0
-  const closeoutBlocked = isOffline || hasPendingSync || products.length === 0
+  const hasPendingCashDeductions = pendingCashDeductionCount > 0
+  const closeoutBlocked =
+    isOffline ||
+    hasPendingSync ||
+    hasPendingCashDeductions ||
+    products.length === 0
   const closeoutSourceKey = useMemo(
-    () => buildCloseoutSourceKey(schedule.id, systemCashSales, products),
-    [products, schedule.id, systemCashSales]
+    () => buildCloseoutSourceKey(schedule.id, expectedCashSales, products),
+    [expectedCashSales, products, schedule.id]
   )
 
   useEffect(() => {
@@ -135,9 +156,9 @@ export function ShiftCloseoutSheet({
       return
     }
 
-    setCountedCashSales(systemCashSales.toFixed(2))
+    setCountedCashSales(expectedCashSales.toFixed(2))
     setCountedStocks(buildCountedStockValues(products))
-  }, [closeoutSourceKey, hasDraftChanges, open, products, systemCashSales])
+  }, [closeoutSourceKey, expectedCashSales, hasDraftChanges, open, products])
 
   useEffect(() => {
     const syncOfflineState = () => {
@@ -199,7 +220,9 @@ export function ShiftCloseoutSheet({
       toast.error(
         isOffline
           ? "Reconnect before closing this shift."
-          : "Sync all pending local sales and stock changes first."
+          : hasPendingCashDeductions
+            ? "Resolve pending cash deductions before closing this shift."
+            : "Sync all pending local sales and stock changes first."
       )
       return
     }
@@ -340,13 +363,47 @@ export function ShiftCloseoutSheet({
               </div>
             ) : null}
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            {hasPendingCashDeductions ? (
+              <div className="flex flex-col gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  <div>
+                    <p className="font-medium">
+                      Pending cash deductions still need approval.
+                    </p>
+                    <p>
+                      {pendingCashDeductionCount} deduction request
+                      {pendingCashDeductionCount === 1 ? "" : "s"} must be
+                      approved or rejected before this shift can close.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 sm:grid-cols-4">
               <div className="border-border bg-card rounded-2xl border px-4 py-3">
                 <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
-                  System Cash
+                  Gross Cash
                 </p>
                 <p className="text-foreground mt-1 text-xl font-semibold">
                   {formatCurrency(systemCashSales)}
+                </p>
+              </div>
+              <div className="border-border bg-card rounded-2xl border px-4 py-3">
+                <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
+                  Deductions
+                </p>
+                <p className="text-foreground mt-1 text-xl font-semibold">
+                  {formatCurrency(approvedCashDeductions)}
+                </p>
+              </div>
+              <div className="border-border bg-card rounded-2xl border px-4 py-3">
+                <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
+                  Expected Cash
+                </p>
+                <p className="text-foreground mt-1 text-xl font-semibold">
+                  {formatCurrency(expectedCashSales)}
                 </p>
               </div>
               <div className="border-border bg-card rounded-2xl border px-4 py-3">
@@ -397,8 +454,8 @@ export function ShiftCloseoutSheet({
                   }}
                 />
                 <FieldDescription>
-                  Compare against cash sales only. Non-cash totals remain in the
-                  dashboard and sales history.
+                  Compare against expected cash after approved deductions.
+                  Revenue totals do not change.
                 </FieldDescription>
               </Field>
             </FieldGroup>
