@@ -21,6 +21,7 @@ import {
   buildLoginUrl,
   buildResetPasswordUrl,
 } from "@/lib/utils"
+import { isEmployeePendingApproval } from "@/lib/employeeApproval"
 
 function readRequiredFormString(formData: FormData, key: string) {
   const value = formData.get(key)
@@ -100,6 +101,13 @@ export async function signInWithPasswordAction(formData: FormData) {
   }
 
   const employee = await ensureEmployeeProfile(supabase, user)
+
+  if (isEmployeePendingApproval(employee)) {
+    await supabase.auth.signOut()
+    clearEmployeeSnapshotCookie(cookieStore)
+    clearPasswordRecoveryCookie(cookieStore)
+    redirect(buildLoginUrl(origin, { error: "approval-pending" }))
+  }
 
   if (!employee.is_active) {
     await supabase.auth.signOut()
