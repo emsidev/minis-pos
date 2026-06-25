@@ -175,11 +175,12 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
         return
       }
 
-      if (result.employee) {
+      const savedEmployee = result.employee
+      if (savedEmployee) {
         setDisplayEmployees((current) =>
           sortEmployees(
             current.map((employee) =>
-              employee.id === result.employee?.id ? result.employee : employee
+              employee.id === savedEmployee.id ? savedEmployee : employee
             )
           )
         )
@@ -276,7 +277,7 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
     []
   )
 
-  const columns = useMemo<ColumnDef<AdminEmployeeRecord>[]>
+  const columns = useMemo<ColumnDef<AdminEmployeeRecord>[]>(
     () => [
       {
         accessorKey: "name",
