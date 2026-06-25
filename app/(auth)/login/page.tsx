@@ -12,12 +12,13 @@ import { SignOutButton } from "@/components/shared/SignOutButton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getCurrentSessionContext, getHomeRouteForRole } from "@/lib/auth"
+import { getCurrentSessionContext } from "@/lib/auth.server"
+import { getHomeRouteForRole } from "@/lib/auth.shared"
 import { formatAuthMessage, readQueryValue } from "@/lib/authMessages"
 import { isEmployeePendingApproval } from "@/lib/employeeApproval"
 import { isSupabaseConfigured, publicEnv } from "@/lib/env"
 
- type LoginPageProps = {
+type LoginPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
