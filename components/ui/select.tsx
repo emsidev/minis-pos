@@ -6,7 +6,87 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+type SelectItemOption = {
+  value: unknown
+  label: React.ReactNode
+}
+
+function getTextContent(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node)
+  }
+
+  if (Array.isArray(node)) {
+    return node.map((child) => getTextContent(child)).join("")
+  }
+
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) {
+    return getTextContent(node.props.children)
+  }
+
+  return ""
+}
+
+function getTextLabelFromChildren(children: React.ReactNode) {
+  const text = getTextContent(children).trim()
+
+  return text.length > 0 ? text : undefined
+}
+
+function collectSelectItems(children: React.ReactNode): SelectItemOption[] {
+  const options: SelectItemOption[] = []
+
+  const visit = (node: React.ReactNode) => {
+    React.Children.forEach(node, (child) => {
+      if (
+        !React.isValidElement<{
+          children?: React.ReactNode
+          label?: React.ReactNode
+          value?: unknown
+        }>(child)
+      ) {
+        return
+      }
+
+      if ("value" in child.props && child.props.value !== undefined) {
+        const label =
+          child.props.label ?? getTextLabelFromChildren(child.props.children)
+
+        if (label !== undefined) {
+          options.push({
+            value: child.props.value,
+            label,
+          })
+        }
+      }
+
+      if ("children" in child.props) {
+        visit(child.props.children)
+      }
+    })
+  }
+
+  visit(children)
+
+  return options
+}
+
+function Select<Value, Multiple extends boolean | undefined = false>({
+  children,
+  items,
+  ...props
+}: SelectPrimitive.Root.Props<Value, Multiple>) {
+  const inferredItems = React.useMemo(
+    () => items ?? collectSelectItems(children),
+    [children, items]
+  )
+
+  return (
+    <SelectPrimitive.Root items={inferredItems} {...props}>
+      {children}
+    </SelectPrimitive.Root>
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
@@ -111,18 +191,6 @@ function SelectLabel({
       {...props}
     />
   )
-}
-
-function getTextLabelFromChildren(children: React.ReactNode) {
-  const text = React.Children.toArray(children)
-    .filter(
-      (child): child is string | number =>
-        typeof child === "string" || typeof child === "number"
-    )
-    .join("")
-    .trim()
-
-  return text.length > 0 ? text : undefined
 }
 
 function SelectItem({
