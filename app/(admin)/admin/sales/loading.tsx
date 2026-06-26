@@ -1,5 +1,5 @@
-import { AdminTableRouteSkeleton } from "@/components/shared/LoadingSkeletons"
+import { AdminSalesRouteSkeleton } from "@/components/shared/LoadingSkeletons"
 
 export default function AdminSalesLoading() {
-  return <AdminTableRouteSkeleton />
+  return <AdminSalesRouteSkeleton />
 }
