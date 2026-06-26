@@ -190,7 +190,7 @@ export function DataTable<TData, TValue>({
     enablePagination && table.getPageCount() > 1 && filteredRowCount > 0
 
   return (
-    <div className="min-w-0 flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       {showToolbar ? (
         <div className="app-panel-muted flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -239,49 +239,51 @@ export function DataTable<TData, TValue>({
       ) : null}
 
       <div className="border-border/70 bg-card overflow-hidden rounded-[calc(var(--radius)+0.15rem)] border">
-        <Table>
-          <TableHeader className="bg-muted/40">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length > 0 ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
+        <div className="overflow-x-auto">
+          <Table className="min-w-[44rem]">
+            <TableHeader className="bg-muted/40">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                    </TableHead>
                   ))}
                 </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={visibleColumnCount}
-                  className="text-muted-foreground h-32 text-center text-sm"
-                >
-                  {emptyMessage}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.length > 0 ? (
+                table.getRowModel().rows.map((row) => (
+                  <TableRow key={row.id}>
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={visibleColumnCount}
+                    className="text-muted-foreground h-32 text-center text-sm"
+                  >
+                    {emptyMessage}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
       <div className="text-muted-foreground bg-muted/25 flex flex-col gap-3 rounded-[calc(var(--radius)-0.25rem)] px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -291,31 +293,33 @@ export function DataTable<TData, TValue>({
         </p>
 
         {showPagination ? (
-          <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <span className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
               Page {table.getState().pagination.pageIndex + 1} of{" "}
               {table.getPageCount()}
             </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              disabled={!table.getCanPreviousPage()}
-              onClick={() => table.previousPage()}
-            >
-              <ChevronLeft />
-              <span className="sr-only">Previous page</span>
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              disabled={!table.getCanNextPage()}
-              onClick={() => table.nextPage()}
-            >
-              <ChevronRight />
-              <span className="sr-only">Next page</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                disabled={!table.getCanPreviousPage()}
+                onClick={() => table.previousPage()}
+              >
+                <ChevronLeft />
+                <span className="sr-only">Previous page</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                disabled={!table.getCanNextPage()}
+                onClick={() => table.nextPage()}
+              >
+                <ChevronRight />
+                <span className="sr-only">Next page</span>
+              </Button>
+            </div>
           </div>
         ) : null}
       </div>

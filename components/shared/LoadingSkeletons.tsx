@@ -1,15 +1,18 @@
+import type { ReactNode } from "react"
+
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export function ShiftDetailSkeleton() {
   return (
-    <div className="flex h-full flex-col gap-4 p-4 sm:p-6">
+    <div className="flex h-full flex-col gap-4 px-3 pt-12 pb-4 sm:px-5 sm:pt-14">
       <Card>
         <CardHeader className="space-y-3">
           <Skeleton className="h-7 w-48" />
           <Skeleton className="h-4 w-64 max-w-full" />
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
+        <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
@@ -20,10 +23,17 @@ export function ShiftDetailSkeleton() {
           <Skeleton className="h-5 w-32" />
           <Skeleton className="h-4 w-52" />
         </CardHeader>
-        <CardContent className="space-y-3">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-16 w-full rounded-2xl" />
-          ))}
+        <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+          <TableRowsSkeleton rows={4} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="space-y-2">
+          <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-4 w-40" />
+        </CardHeader>
+        <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+          <TableRowsSkeleton rows={4} />
         </CardContent>
       </Card>
     </div>
@@ -45,9 +55,9 @@ function ScreenHeaderSkeleton({
         <Skeleton className={`h-8 ${titleWidth}`} />
         <Skeleton className={`h-4 max-w-full ${descriptionWidth}`} />
       </div>
-      <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end sm:gap-3">
         {Array.from({ length: actionCount }).map((_, index) => (
-          <Skeleton key={index} className="h-11 w-28 rounded-full sm:w-32" />
+          <Skeleton key={index} className="h-11 w-full rounded-full sm:w-32" />
         ))}
       </div>
     </header>
@@ -56,19 +66,20 @@ function ScreenHeaderSkeleton({
 
 function CalendarSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-7 gap-2">
-        {Array.from({ length: 7 }).map((_, index) => (
-          <Skeleton key={index} className="h-4 w-full rounded-full" />
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-2 sm:gap-3">
-        {Array.from({ length: 35 }).map((_, index) => (
-          <Skeleton
-            key={index}
-            className="h-20 w-full rounded-[calc(var(--radius)-0.15rem)] sm:h-24"
-          />
-        ))}
+    <div className="app-calendar-scroll">
+      <div className="border-border/60 min-w-[42rem] overflow-hidden rounded-[var(--radius)] border md:min-w-0">
+        <div className="bg-border/60 grid grid-cols-7 gap-px">
+          {Array.from({ length: 7 }).map((_, index) => (
+            <div key={index} className="bg-background/80 px-3 py-3">
+              <Skeleton className="h-4 w-full rounded-full" />
+            </div>
+          ))}
+          {Array.from({ length: 35 }).map((_, index) => (
+            <div key={index} className="bg-background p-2 sm:p-3">
+              <Skeleton className="min-h-24 w-full rounded-[calc(var(--radius)-0.15rem)] sm:min-h-32" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -77,26 +88,36 @@ function CalendarSkeleton() {
 function TableRowsSkeleton({ rows = 6 }: { rows?: number }) {
   return (
     <div className="border-border/60 overflow-hidden rounded-[var(--radius)] border">
-      <div className="border-border/60 bg-background/70 grid grid-cols-[1.4fr_1fr_1fr_0.9fr] gap-3 border-b px-4 py-3">
-        <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-4 w-20" />
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="ml-auto h-4 w-16" />
-      </div>
-      {Array.from({ length: rows }).map((_, index) => (
-        <div
-          key={index}
-          className="border-border/50 grid grid-cols-[1.4fr_1fr_1fr_0.9fr] gap-3 border-b px-4 py-4 last:border-b-0"
-        >
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-40 max-w-full" />
-            <Skeleton className="h-3 w-24" />
+      <div className="overflow-x-auto">
+        <div className="min-w-[44rem]">
+          <div className="border-border/60 bg-background/70 grid grid-cols-[1.5fr_1fr_1fr_0.95fr] gap-3 border-b px-3 py-3 sm:px-4">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-4 w-24" />
+            <div className="flex items-center justify-end gap-3">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-8" />
+            </div>
           </div>
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-4 w-20" />
-          <Skeleton className="ml-auto h-8 w-20 rounded-full" />
+          {Array.from({ length: rows }).map((_, index) => (
+            <div
+              key={index}
+              className="border-border/50 grid grid-cols-[1.5fr_1fr_1fr_0.95fr] gap-3 border-b px-3 py-4 last:border-b-0 sm:px-4"
+            >
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-40 max-w-full" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-20" />
+              <div className="flex items-center justify-end gap-3">
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   )
 }
@@ -131,10 +152,52 @@ function MetricStripSkeleton({ count = 4 }: { count?: number }) {
         <div key={index} className="app-panel flex flex-col gap-3 p-4 sm:p-5">
           <Skeleton className="h-4 w-24" />
           <Skeleton className="h-8 w-28" />
-          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-3 w-32" />
         </div>
       ))}
     </div>
+  )
+}
+
+function DenseListSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className="border-border/70 bg-muted/30 flex items-center justify-between gap-3 rounded-2xl border px-3 py-3 sm:px-4"
+        >
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-32 max-w-full" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <div className="space-y-2 text-right">
+            <Skeleton className="ml-auto h-4 w-20" />
+            <Skeleton className="ml-auto h-3 w-14" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DashboardCardSkeleton({
+  titleWidth = "w-40",
+  descriptionWidth = "w-56",
+  children,
+}: {
+  titleWidth?: string
+  descriptionWidth?: string
+  children: ReactNode
+}) {
+  return (
+    <section className="app-panel space-y-4 p-4 sm:p-5">
+      <div className="space-y-2">
+        <Skeleton className={`h-6 ${titleWidth}`} />
+        <Skeleton className={`h-4 max-w-full ${descriptionWidth}`} />
+      </div>
+      {children}
+    </section>
   )
 }
 
@@ -211,26 +274,48 @@ export function EmployeeShiftRouteSkeleton() {
 
 export function AdminDashboardRouteSkeleton() {
   return (
-    <div className="app-page flex flex-col gap-6">
+    <div className="app-page flex flex-col gap-4 sm:gap-6">
       <ScreenHeaderSkeleton
         titleWidth="w-56"
         descriptionWidth="w-80"
-        actionCount={2}
+        actionCount={1}
       />
-      <MetricStripSkeleton />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-        <section className="app-panel space-y-4 p-4 sm:p-5">
-          <Skeleton className="h-6 w-40" />
-          <Skeleton className="h-72 w-full rounded-[calc(var(--radius)-0.15rem)]" />
-        </section>
-        <section className="app-panel space-y-4 p-4 sm:p-5">
-          <Skeleton className="h-6 w-36" />
-          <div className="space-y-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={index} className="h-14 w-full" />
-            ))}
-          </div>
-        </section>
+      <MetricStripSkeleton count={8} />
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(22rem,0.95fr)]">
+        <DashboardCardSkeleton titleWidth="w-40" descriptionWidth="w-64">
+          <Skeleton className="min-h-[18rem] w-full rounded-[calc(var(--radius)-0.15rem)]" />
+        </DashboardCardSkeleton>
+
+        <div className="grid gap-4">
+          <DashboardCardSkeleton titleWidth="w-32" descriptionWidth="w-52">
+            <DenseListSkeleton rows={4} />
+          </DashboardCardSkeleton>
+          <DashboardCardSkeleton titleWidth="w-40" descriptionWidth="w-48">
+            <DenseListSkeleton rows={4} />
+          </DashboardCardSkeleton>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <DashboardCardSkeleton titleWidth="w-36" descriptionWidth="w-56">
+          <DenseListSkeleton rows={4} />
+        </DashboardCardSkeleton>
+        <DashboardCardSkeleton titleWidth="w-40" descriptionWidth="w-56">
+          <DenseListSkeleton rows={4} />
+        </DashboardCardSkeleton>
+        <DashboardCardSkeleton titleWidth="w-32" descriptionWidth="w-56">
+          <DenseListSkeleton rows={4} />
+        </DashboardCardSkeleton>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <DashboardCardSkeleton titleWidth="w-40" descriptionWidth="w-56">
+          <TableRowsSkeleton rows={6} />
+        </DashboardCardSkeleton>
+        <DashboardCardSkeleton titleWidth="w-36" descriptionWidth="w-56">
+          <TableRowsSkeleton rows={6} />
+        </DashboardCardSkeleton>
       </div>
     </div>
   )
@@ -248,7 +333,7 @@ export function AdminTableRouteSkeleton() {
         <div className="flex flex-wrap items-center gap-3">
           <Skeleton className="h-11 w-44 rounded-full" />
           <Skeleton className="h-11 w-36 rounded-full" />
-          <Skeleton className="ml-auto h-11 w-28 rounded-full" />
+          <Skeleton className="h-11 w-full rounded-full sm:ml-auto sm:w-28" />
         </div>
         <TableRowsSkeleton rows={7} />
       </section>
@@ -268,7 +353,7 @@ export function AdminBoothsRouteSkeleton() {
         <div className="flex flex-wrap items-center gap-3">
           <Skeleton className="h-11 w-44 rounded-full" />
           <Skeleton className="h-11 w-36 rounded-full" />
-          <Skeleton className="ml-auto h-11 w-32 rounded-full" />
+          <Skeleton className="h-11 w-full rounded-full sm:ml-auto sm:w-32" />
         </div>
         <CalendarSkeleton />
       </section>
