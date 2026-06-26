@@ -10,10 +10,12 @@ import {
   EyeOff,
   Loader2,
   Plus,
+  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import {
+  deleteProduct,
   toggleProductAvailability,
   togglePromoActive,
   type ProductFormInput,
@@ -21,6 +23,7 @@ import {
 import { buildOptimisticProductRecord } from "@/lib/adminOptimistic"
 import { ProductFormSheet } from "@/components/admin/ProductFormSheet"
 import { PromoFormSheet } from "@/components/admin/PromoFormSheet"
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
 import { Badge } from "@/components/ui/badge"
@@ -137,6 +140,8 @@ export function AdminProductsClient({
   const [editingProduct, setEditingProduct] =
     useState<AdminProductRecord | null>(null)
   const [editingPromo, setEditingPromo] = useState<CounterPromo | null>(null)
+  const [deleteProductTarget, setDeleteProductTarget] =
+    useState<AdminProductRecord | null>(null)
   const [productFormOpen, setProductFormOpen] = useState(false)
   const [promoFormOpen, setPromoFormOpen] = useState(false)
   const [pendingProductId, setPendingProductId] = useState<string | null>(null)
@@ -151,25 +156,25 @@ export function AdminProductsClient({
     setDisplayPromos(sortPromos(promos))
   }, [promos])
 
-  const openCreateProduct = () => {
+  const openCreateProduct = useCallback(() => {
     setEditingProduct(null)
     setProductFormOpen(true)
-  }
+  }, [])
 
-  const openEditProduct = (product: AdminProductRecord) => {
+  const openEditProduct = useCallback((product: AdminProductRecord) => {
     setEditingProduct(product)
     setProductFormOpen(true)
-  }
+  }, [])
 
-  const openCreatePromo = () => {
+  const openCreatePromo = useCallback(() => {
     setEditingPromo(null)
     setPromoFormOpen(true)
-  }
+  }, [])
 
-  const openEditPromo = (promo: CounterPromo) => {
+  const openEditPromo = useCallback((promo: CounterPromo) => {
     setEditingPromo(promo)
     setPromoFormOpen(true)
-  }
+  }, [])
 
   const handleOptimisticSave = useCallback(
     (input: ProductFormInput) => {
@@ -229,6 +234,23 @@ export function AdminProductsClient({
     [displayProducts]
   )
 
+  const handleDeleteProduct = useCallback(async (product: AdminProductRecord) => {
+    setPendingProductId(product.id)
+
+    const result = await deleteProduct(product.id)
+    setPendingProductId(null)
+
+    if (!result.ok) {
+      toast.error(result.error ?? "Unable to delete product.")
+      return
+    }
+
+    setDisplayProducts((current) =>
+      current.filter((entry) => entry.id !== product.id)
+    )
+    toast.success(result.message)
+  }, [])
+
   const handlePromoToggle = useCallback(
     async (promoId: string, isActive: boolean) => {
       const previousPromos = displayPromos
@@ -265,8 +287,8 @@ export function AdminProductsClient({
     [displayPromos]
   )
 
-  const productColumns = useMemo<ColumnDef<AdminProductRecord>[]>(
-    () => [
+  const productColumns = useMemo<ColumnDef<AdminProductRecord>[]>
+    (() => [
       {
         accessorKey: "name",
         header: ({ column }) => (
@@ -369,6 +391,21 @@ export function AdminProductsClient({
                     )}
                     {isAvailable ? "Hide Product" : "Show Product"}
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    disabled={pending}
+                    onClick={() => setDeleteProductTarget(product)}
+                  >
+                    {pending ? (
+                      <Loader2
+                        data-icon="inline-start"
+                        className="animate-spin"
+                      />
+                    ) : (
+                      <Trash2 data-icon="inline-start" />
+                    )}
+                    Delete Product
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -376,11 +413,11 @@ export function AdminProductsClient({
         },
       },
     ],
-    [handleAvailabilityToggle, pendingProductId]
+    [handleAvailabilityToggle, openEditProduct, pendingProductId]
   )
 
-  const promoColumns = useMemo<ColumnDef<CounterPromo>[]>(
-    () => [
+  const promoColumns = useMemo<ColumnDef<CounterPromo>[]>
+    (() => [
       {
         accessorKey: "name",
         header: ({ column }) => (
@@ -392,8 +429,7 @@ export function AdminProductsClient({
               {row.original.name}
             </span>
             <span className="text-muted-foreground text-sm">
-              {formatPromoType(row.original.promoType)} •{" "}
-              {getPromoSummary(row.original)}
+              {formatPromoType(row.original.promoType)} • {getPromoSummary(row.original)}
             </span>
           </div>
         ),
@@ -406,9 +442,7 @@ export function AdminProductsClient({
         ),
         cell: ({ row }) => (
           <div className="text-sm">
-            <p className="text-foreground font-medium">
-              {row.original.startsOn}
-            </p>
+            <p className="text-foreground font-medium">{row.original.startsOn}</p>
             <p className="text-muted-foreground">to {row.original.endsOn}</p>
           </div>
         ),
@@ -511,7 +545,7 @@ export function AdminProductsClient({
         },
       },
     ],
-    [handlePromoToggle, pendingPromoId]
+    [handlePromoToggle, openEditPromo, pendingPromoId]
   )
 
   return (
@@ -653,6 +687,29 @@ export function AdminProductsClient({
               ...current.filter((entry) => entry.id !== promo.id),
             ])
           )
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteProductTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteProductTarget(null)
+          }
+        }}
+        title="Delete product?"
+        description={
+          deleteProductTarget
+            ? `Delete "${deleteProductTarget.name}" from the catalog? Products with historical sales will stay in the catalog and show an error instead.`
+            : "Delete this product from the catalog?"
+        }
+        confirmLabel="Delete Product"
+        pendingLabel="Deleting..."
+        variant="destructive"
+        onConfirm={async () => {
+          if (deleteProductTarget) {
+            await handleDeleteProduct(deleteProductTarget)
+          }
         }}
       />
     </Tabs>
