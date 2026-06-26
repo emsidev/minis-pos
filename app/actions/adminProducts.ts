@@ -55,6 +55,12 @@ export type PromoAdminActionResult = {
   promo?: CounterPromo
 }
 
+const PRODUCT_HAS_HISTORICAL_SALES_ERROR =
+  "This product cannot be deleted because it already has historical sales. Hide the product instead to keep sales history and reports accurate."
+
+const PRODUCT_HAS_INVENTORY_HISTORY_ERROR =
+  "This product cannot be deleted because it is already used in shift inventory records. Hide the product instead to keep inventory history accurate."
+
 function revalidateProductRoutes() {
   revalidatePath("/admin/products")
   revalidatePath("/")
@@ -64,6 +70,35 @@ function revalidateProductRoutes() {
 function parseNumberInput(value: string) {
   const parsed = Number.parseFloat(value)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function isForeignKeyViolation(error: { code?: string; message?: string }) {
+  return (
+    error.code === "23503" ||
+    error.message?.toLowerCase().includes("foreign key") === true
+  )
+}
+
+async function productHasReference(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  table:
+    | "sale_items"
+    | "booth_schedule_products"
+    | "inventory_event_lines",
+  productId: string
+) {
+  const { data, error } = await supabase
+    .from(table)
+    .select("id")
+    .eq("product_id", productId)
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { hasReference: Boolean(data) }
 }
 
 function parsePromoInput(input: PromoFormInput) {
@@ -327,6 +362,89 @@ export async function toggleProductAvailability(
   return {
     ok: true,
     message: isAvailable ? "Product marked available." : "Product hidden.",
+  }
+}
+
+export async function deleteProduct(
+  productId: string
+): Promise<ProductAdminActionResult> {
+  await requireEmployeeRole("admin")
+
+  const trimmedProductId = productId.trim()
+  if (!trimmedProductId) {
+    return { ok: false, error: "Product record is missing." }
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  const salesUsage = await productHasReference(
+    supabase,
+    "sale_items",
+    trimmedProductId
+  )
+  if (salesUsage.error) {
+    return { ok: false, error: salesUsage.error }
+  }
+  if (salesUsage.hasReference) {
+    return { ok: false, error: PRODUCT_HAS_HISTORICAL_SALES_ERROR }
+  }
+
+  const shiftInventoryUsage = await productHasReference(
+    supabase,
+    "booth_schedule_products",
+    trimmedProductId
+  )
+  if (shiftInventoryUsage.error) {
+    return { ok: false, error: shiftInventoryUsage.error }
+  }
+  if (shiftInventoryUsage.hasReference) {
+    return { ok: false, error: PRODUCT_HAS_INVENTORY_HISTORY_ERROR }
+  }
+
+  const inventoryEventUsage = await productHasReference(
+    supabase,
+    "inventory_event_lines",
+    trimmedProductId
+  )
+  if (inventoryEventUsage.error) {
+    return { ok: false, error: inventoryEventUsage.error }
+  }
+  if (inventoryEventUsage.hasReference) {
+    return { ok: false, error: PRODUCT_HAS_INVENTORY_HISTORY_ERROR }
+  }
+
+  const promoProductsResponse = await supabase
+    .from("promo_products")
+    .delete()
+    .eq("product_id", trimmedProductId)
+
+  if (promoProductsResponse.error) {
+    return { ok: false, error: promoProductsResponse.error.message }
+  }
+
+  const deleteResponse = await supabase
+    .from("products")
+    .delete()
+    .eq("id", trimmedProductId)
+    .select("id")
+    .maybeSingle()
+
+  if (deleteResponse.error) {
+    if (isForeignKeyViolation(deleteResponse.error)) {
+      return { ok: false, error: PRODUCT_HAS_INVENTORY_HISTORY_ERROR }
+    }
+
+    return { ok: false, error: deleteResponse.error.message }
+  }
+
+  if (!deleteResponse.data) {
+    return { ok: false, error: "Product record was not found." }
+  }
+
+  revalidateProductRoutes()
+  return {
+    ok: true,
+    message: "Product deleted.",
   }
 }
 
