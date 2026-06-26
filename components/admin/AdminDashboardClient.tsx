@@ -14,14 +14,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import {
-  CalendarDays,
-  CreditCard,
-  Loader2,
-  Radio,
-  Receipt,
-  Store,
-} from "lucide-react"
+import { CalendarDays, CreditCard, Radio, Receipt, Store } from "lucide-react"
 
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
@@ -35,6 +28,7 @@ import {
 } from "@/components/ui/card"
 import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { Skeleton } from "@/components/ui/skeleton"
 import type {
   AdminDashboardData,
   DashboardBoothCard,
@@ -151,6 +145,49 @@ function KpiCard({
         <p className="text-muted-foreground text-sm">{footer}</p>
       </CardContent>
     </Card>
+  )
+}
+
+function KpiCardSkeleton() {
+  return (
+    <Card className="border-border/70 bg-card/95 shadow-candy">
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-5 w-28" />
+        </div>
+        <Skeleton className="size-11 rounded-full" />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Skeleton className="h-9 w-36" />
+        <Skeleton className="h-4 w-44" />
+      </CardContent>
+    </Card>
+  )
+}
+
+function ListCardSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className="border-border/70 bg-muted/30 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <Skeleton className="size-9 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="ml-auto h-4 w-24" />
+            <Skeleton className="ml-auto h-3 w-12" />
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -587,38 +624,39 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
       </header>
 
       {isPending ? (
-        <div className="app-banner">
-          <Loader2 className="text-primary size-4 animate-spin" />
-          Loading dashboard data...
-        </div>
-      ) : null}
-
-      <section className="grid gap-4 xl:grid-cols-3">
-        <KpiCard
-          title="Revenue"
-          description="Completed sales for the selected day"
-          value={formatCurrency(data.summary.totalRevenue)}
-          accent="primary"
-          footer={`Average ticket ${formatCurrency(averageTicket)}`}
-          icon={CreditCard}
-        />
-        <KpiCard
-          title="Transactions"
-          description="Recorded sale count"
-          value={data.summary.saleCount.toString()}
-          accent="secondary"
-          footer={`${activePaymentBreakdown.length} payment method${activePaymentBreakdown.length === 1 ? "" : "s"} used`}
-          icon={Receipt}
-        />
-        <KpiCard
-          title="Shift coverage"
-          description="Open, closed, and cancelled schedules"
-          value={`${data.summary.openShiftCount}/${data.summary.closedShiftCount}/${data.summary.cancelledShiftCount}`}
-          accent="tertiary"
-          footer="Open / Closed / Cancelled"
-          icon={Store}
-        />
-      </section>
+        <section className="grid gap-4 xl:grid-cols-3">
+          <KpiCardSkeleton />
+          <KpiCardSkeleton />
+          <KpiCardSkeleton />
+        </section>
+      ) : (
+        <section className="grid gap-4 xl:grid-cols-3">
+          <KpiCard
+            title="Revenue"
+            description="Completed sales for the selected day"
+            value={formatCurrency(data.summary.totalRevenue)}
+            accent="primary"
+            footer={`Average ticket ${formatCurrency(averageTicket)}`}
+            icon={CreditCard}
+          />
+          <KpiCard
+            title="Transactions"
+            description="Recorded sale count"
+            value={data.summary.saleCount.toString()}
+            accent="secondary"
+            footer={`${activePaymentBreakdown.length} payment method${activePaymentBreakdown.length === 1 ? "" : "s"} used`}
+            icon={Receipt}
+          />
+          <KpiCard
+            title="Shift coverage"
+            description="Open, closed, and cancelled schedules"
+            value={`${data.summary.openShiftCount}/${data.summary.closedShiftCount}/${data.summary.cancelledShiftCount}`}
+            accent="tertiary"
+            footer="Open / Closed / Cancelled"
+            icon={Store}
+          />
+        </section>
+      )}
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(22rem,1fr)]">
         <Card className="border-border/70 bg-card/95 shadow-candy">
@@ -638,61 +676,65 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
             </div>
           </CardHeader>
           <CardContent>
-            <div
-              className="[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted min-h-72 w-full [&_.recharts-surface]:outline-hidden"
-              style={
-                {
-                  "--color-revenue": chartConfig.revenue.color,
-                  "--color-transactions": chartConfig.transactions.color,
-                } as React.CSSProperties
-              }
-            >
-              <ResponsiveContainer
-                initialDimension={{ width: 320, height: 200 }}
+            {isPending ? (
+              <Skeleton className="h-72 w-full rounded-[calc(var(--radius)-0.15rem)]" />
+            ) : (
+              <div
+                className="[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted min-h-72 w-full [&_.recharts-surface]:outline-hidden"
+                style={
+                  {
+                    "--color-revenue": chartConfig.revenue.color,
+                    "--color-transactions": chartConfig.transactions.color,
+                  } as React.CSSProperties
+                }
               >
-                <ComposedChart data={data.trendSeries}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    axisLine={false}
-                    dataKey="date"
-                    minTickGap={24}
-                    tickFormatter={formatTrendDateLabel}
-                    tickLine={false}
-                    tickMargin={10}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickFormatter={(value) => formatCurrency(Number(value))}
-                    tickLine={false}
-                    tickMargin={12}
-                    yAxisId="revenue"
-                    width={96}
-                  />
-                  <YAxis
-                    hide
-                    yAxisId="transactions"
-                    orientation="right"
-                    width={0}
-                  />
-                  <Tooltip content={<TrendChartTooltip />} />
-                  <Legend content={<TrendChartLegend />} verticalAlign="top" />
-                  <Bar
-                    dataKey="transactions"
-                    fill="var(--color-transactions)"
-                    radius={[12, 12, 0, 0]}
-                    yAxisId="transactions"
-                  />
-                  <Line
-                    dataKey="revenue"
-                    dot={false}
-                    stroke="var(--color-revenue)"
-                    strokeWidth={3}
-                    type="monotone"
-                    yAxisId="revenue"
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
+                <ResponsiveContainer
+                  initialDimension={{ width: 320, height: 200 }}
+                >
+                  <ComposedChart data={data.trendSeries}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                      axisLine={false}
+                      dataKey="date"
+                      minTickGap={24}
+                      tickFormatter={formatTrendDateLabel}
+                      tickLine={false}
+                      tickMargin={10}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickFormatter={(value) => formatCurrency(Number(value))}
+                      tickLine={false}
+                      tickMargin={12}
+                      yAxisId="revenue"
+                      width={96}
+                    />
+                    <YAxis
+                      hide
+                      yAxisId="transactions"
+                      orientation="right"
+                      width={0}
+                    />
+                    <Tooltip content={<TrendChartTooltip />} />
+                    <Legend content={<TrendChartLegend />} verticalAlign="top" />
+                    <Bar
+                      dataKey="transactions"
+                      fill="var(--color-transactions)"
+                      radius={[12, 12, 0, 0]}
+                      yAxisId="transactions"
+                    />
+                    <Line
+                      dataKey="revenue"
+                      dot={false}
+                      stroke="var(--color-revenue)"
+                      strokeWidth={3}
+                      type="monotone"
+                      yAxisId="revenue"
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -705,7 +747,9 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              {activePaymentBreakdown.length > 0 ? (
+              {isPending ? (
+                <ListCardSkeleton rows={4} />
+              ) : activePaymentBreakdown.length > 0 ? (
                 activePaymentBreakdown.map((entry) => {
                   const share =
                     data.summary.saleCount > 0
@@ -753,7 +797,9 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              {data.topProducts.length > 0 ? (
+              {isPending ? (
+                <ListCardSkeleton rows={4} />
+              ) : data.topProducts.length > 0 ? (
                 data.topProducts.map((product, index) => (
                   <div
                     key={product.productId}
@@ -804,6 +850,8 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
               emptyMessage="No sales have been recorded for the selected day."
               getSearchText={getTransactionSearchText}
               initialSorting={[{ id: "createdAt", desc: true }]}
+              isLoading={isPending}
+              loadingRowCount={8}
               pageSize={8}
               searchPlaceholder="Search by booth, employee, payment, or status"
               showColumnVisibility={false}
@@ -825,6 +873,8 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
               emptyMessage="No booth data is available for the selected day."
               getSearchText={getBoothSearchText}
               initialSorting={[{ id: "totalRevenue", desc: true }]}
+              isLoading={isPending}
+              loadingRowCount={6}
               pageSize={6}
               searchPlaceholder="Search booths"
             />
