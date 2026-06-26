@@ -26,6 +26,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
+import { CalendarDays, CreditCard, Radio, Receipt, Store } from "lucide-react"
 
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
@@ -49,6 +50,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { Skeleton } from "@/components/ui/skeleton"
 import type {
   AdminDashboardData,
   DashboardBoothCard,
@@ -206,6 +210,49 @@ function KpiCard({
         <p className="text-muted-foreground text-sm">{footer}</p>
       </CardContent>
     </Card>
+  )
+}
+
+function KpiCardSkeleton() {
+  return (
+    <Card className="border-border/70 bg-card/95 shadow-candy">
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-5 w-28" />
+        </div>
+        <Skeleton className="size-11 rounded-full" />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Skeleton className="h-9 w-36" />
+        <Skeleton className="h-4 w-44" />
+      </CardContent>
+    </Card>
+  )
+}
+
+function ListCardSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className="border-border/70 bg-muted/30 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <Skeleton className="size-9 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="ml-auto h-4 w-24" />
+            <Skeleton className="ml-auto h-3 w-12" />
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -1448,6 +1495,8 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
               emptyMessage="No sales were recorded in this date range."
               getSearchText={getTransactionSearchText}
               initialSorting={[{ id: "createdAt", desc: true }]}
+              isLoading={isPending}
+              loadingRowCount={8}
               pageSize={8}
               searchPlaceholder="Search by booth, employee, payment, or status"
               showColumnVisibility={false}
@@ -1469,6 +1518,8 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
               emptyMessage="No booth data is available in this date range."
               getSearchText={getBoothSearchText}
               initialSorting={[{ id: "totalRevenue", desc: true }]}
+              isLoading={isPending}
+              loadingRowCount={6}
               pageSize={6}
               searchPlaceholder="Search booths"
             />
