@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function createClientId(prefix = "id") {
+export function createClientId() {
   if (
     typeof crypto !== "undefined" &&
     typeof crypto.randomUUID === "function"

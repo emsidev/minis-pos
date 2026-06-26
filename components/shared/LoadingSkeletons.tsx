@@ -314,20 +314,9 @@ export function AdminDashboardRouteSkeleton() {
       />
       <MetricStripSkeleton count={8} />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(22rem,0.95fr)]">
-        <DashboardCardSkeleton titleWidth="w-40" descriptionWidth="w-64">
-          <Skeleton className="min-h-[18rem] w-full rounded-[calc(var(--radius)-0.15rem)]" />
-        </DashboardCardSkeleton>
-
-        <div className="grid gap-4">
-          <DashboardCardSkeleton titleWidth="w-32" descriptionWidth="w-52">
-            <DenseListSkeleton rows={4} />
-          </DashboardCardSkeleton>
-          <DashboardCardSkeleton titleWidth="w-40" descriptionWidth="w-48">
-            <DenseListSkeleton rows={4} />
-          </DashboardCardSkeleton>
-        </div>
-      </div>
+      <DashboardCardSkeleton titleWidth="w-40" descriptionWidth="w-64">
+        <Skeleton className="h-[18rem] w-full rounded-[calc(var(--radius)-0.15rem)]" />
+      </DashboardCardSkeleton>
 
       <div className="grid gap-4 xl:grid-cols-3">
         <DashboardCardSkeleton titleWidth="w-36" descriptionWidth="w-56">
@@ -347,6 +336,26 @@ export function AdminDashboardRouteSkeleton() {
         </DashboardCardSkeleton>
         <DashboardCardSkeleton titleWidth="w-36" descriptionWidth="w-56">
           <TableRowsSkeleton rows={6} />
+        </DashboardCardSkeleton>
+      </div>
+
+      <DashboardCardSkeleton titleWidth="w-40" descriptionWidth="w-64">
+        <div className="app-panel-muted flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid w-full gap-3 sm:grid-cols-3">
+            <Skeleton className="h-10 w-full rounded-[calc(var(--radius)-0.25rem)]" />
+            <Skeleton className="h-10 w-full rounded-[calc(var(--radius)-0.25rem)]" />
+            <Skeleton className="h-10 w-full rounded-[calc(var(--radius)-0.25rem)]" />
+          </div>
+        </div>
+        <TableRowsSkeleton rows={8} />
+      </DashboardCardSkeleton>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <DashboardCardSkeleton titleWidth="w-32" descriptionWidth="w-52">
+          <DenseListSkeleton rows={4} />
+        </DashboardCardSkeleton>
+        <DashboardCardSkeleton titleWidth="w-40" descriptionWidth="w-48">
+          <DenseListSkeleton rows={4} />
         </DashboardCardSkeleton>
       </div>
     </div>

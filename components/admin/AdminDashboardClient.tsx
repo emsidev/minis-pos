@@ -4,6 +4,17 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts"
+import {
   Boxes,
   ClipboardList,
   CreditCard,
@@ -15,18 +26,6 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react"
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
-import { CalendarDays, CreditCard, Radio, Receipt, Store } from "lucide-react"
 
 import { DataTable } from "@/components/shared/DataTable"
 import { DataTableColumnHeader } from "@/components/shared/DataTableColumnHeader"
@@ -50,12 +49,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { ReceiptPhotoPreview } from "@/components/shared/ReceiptPhotoPreview"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
-import { Skeleton } from "@/components/ui/skeleton"
 import type {
   AdminDashboardData,
   DashboardBoothCard,
+  DashboardBoothDaySale,
   DashboardRecentTransaction,
 } from "@/lib/adminDashboard"
 import { createClient } from "@/lib/supabase"
@@ -213,49 +210,6 @@ function KpiCard({
   )
 }
 
-function KpiCardSkeleton() {
-  return (
-    <Card className="border-border/70 bg-card/95 shadow-candy">
-      <CardHeader className="flex flex-row items-start justify-between gap-3">
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-5 w-28" />
-        </div>
-        <Skeleton className="size-11 rounded-full" />
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <Skeleton className="h-9 w-36" />
-        <Skeleton className="h-4 w-44" />
-      </CardContent>
-    </Card>
-  )
-}
-
-function ListCardSkeleton({ rows = 4 }: { rows?: number }) {
-  return (
-    <div className="flex flex-col gap-3">
-      {Array.from({ length: rows }).map((_, index) => (
-        <div
-          key={index}
-          className="border-border/70 bg-muted/30 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <Skeleton className="size-9 rounded-full" />
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-3 w-20" />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Skeleton className="ml-auto h-4 w-24" />
-            <Skeleton className="ml-auto h-3 w-12" />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 type TrendTooltipRow = {
   color?: string
   dataKey?: string | number
@@ -359,6 +313,83 @@ function DenseListEmpty({ message }: { message: string }) {
     <div className="border-border bg-muted/20 text-muted-foreground rounded-2xl border border-dashed px-4 py-6 text-sm">
       {message}
     </div>
+  )
+}
+
+function groupBoothDaySales(
+  rows: DashboardBoothDaySale[],
+  groupBy: BoothDaySalesGroupBy,
+  dateRangeLabel: string
+) {
+  if (groupBy === "date-booth") {
+    return rows.map<DashboardBoothSalesTableRow>((row) => ({
+      id: `${row.date}:${row.boothId}`,
+      date: row.date,
+      dateLabel: formatTrendDateLabel(row.date),
+      boothId: row.boothId,
+      boothLabel: row.boothName,
+      boothName: row.boothName,
+      saleCount: row.saleCount,
+      totalRevenue: row.totalRevenue,
+      averageTicket: row.averageTicket,
+      unitsSold: row.unitsSold,
+      cashRevenue: row.cashRevenue,
+      nonCashRevenue: row.nonCashRevenue,
+    }))
+  }
+
+  const grouped = new Map<
+    string,
+    DashboardBoothSalesTableRow & { boothIds: Set<string> }
+  >()
+
+  for (const row of rows) {
+    const key = groupBy === "date" ? row.date : row.boothId
+    const current = grouped.get(key) ?? {
+      id: key,
+      date: groupBy === "date" ? row.date : "",
+      dateLabel:
+        groupBy === "date" ? formatTrendDateLabel(row.date) : dateRangeLabel,
+      boothId: groupBy === "date" ? "all" : row.boothId,
+      boothLabel: groupBy === "date" ? "0 booths" : row.boothName,
+      boothName: row.boothName,
+      saleCount: 0,
+      totalRevenue: 0,
+      averageTicket: 0,
+      unitsSold: 0,
+      cashRevenue: 0,
+      nonCashRevenue: 0,
+      boothIds: new Set<string>(),
+    }
+
+    current.saleCount += row.saleCount
+    current.totalRevenue += row.totalRevenue
+    current.unitsSold += row.unitsSold
+    current.cashRevenue += row.cashRevenue
+    current.nonCashRevenue += row.nonCashRevenue
+    current.boothIds.add(row.boothId)
+
+    grouped.set(key, current)
+  }
+
+  return Array.from(grouped.values()).map<DashboardBoothSalesTableRow>(
+    (row) => ({
+      id: row.id,
+      date: row.date,
+      dateLabel: row.dateLabel,
+      boothId: row.boothId,
+      boothLabel:
+        groupBy === "date"
+          ? `${row.boothIds.size} booth${row.boothIds.size === 1 ? "" : "s"}`
+          : row.boothName,
+      boothName: row.boothName,
+      saleCount: row.saleCount,
+      totalRevenue: row.totalRevenue,
+      averageTicket: row.saleCount > 0 ? row.totalRevenue / row.saleCount : 0,
+      unitsSold: row.unitsSold,
+      cashRevenue: row.cashRevenue,
+      nonCashRevenue: row.nonCashRevenue,
+    })
   )
 }
 
@@ -959,6 +990,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
   const topBooths = data.boothCards.slice(0, 5)
   const topEmployees = data.employeeCards.slice(0, 5)
   const topInventoryRows = data.inventoryInsights.slice(0, 5)
+
   const filteredBoothDaySales = useMemo(
     () =>
       data.boothDaySales.filter((row) => {
@@ -974,139 +1006,70 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
     [data.boothDaySales, boothDaySalesBoothFilter, boothDaySalesDateFilter]
   )
 
-  const groupedBoothDaySales = useMemo(() => {
-    if (boothDaySalesGroupBy === "date-booth") {
-      return filteredBoothDaySales.map((row) => ({
-        id: `${row.date}:${row.boothId}`,
-        date: row.date,
-        dateLabel: formatTrendDateLabel(row.date),
-        boothId: row.boothId,
-        boothLabel: row.boothName,
-        boothName: row.boothName,
-        saleCount: row.saleCount,
-        totalRevenue: row.totalRevenue,
-        averageTicket: row.averageTicket,
-        unitsSold: row.unitsSold,
-        cashRevenue: row.cashRevenue,
-        nonCashRevenue: row.nonCashRevenue,
-      }))
-    }
+  const groupedBoothDaySales = useMemo(
+    () =>
+      groupBoothDaySales(
+        filteredBoothDaySales,
+        boothDaySalesGroupBy,
+        data.dateRange.label
+      ),
+    [boothDaySalesGroupBy, data.dateRange.label, filteredBoothDaySales]
+  )
 
-    const groupedMap = new Map<
-      string,
-      DashboardBoothSalesTableRow & { boothIds: Set<string> }
-    >()
-
-    for (const row of filteredBoothDaySales) {
-      const key = boothDaySalesGroupBy === "date" ? row.date : row.boothId
-      const current = groupedMap.get(key) ?? {
-        id: key,
-        date:
-          boothDaySalesGroupBy === "date" ? row.date : data.dateRange.startDate,
-        dateLabel:
-          boothDaySalesGroupBy === "date"
-            ? formatTrendDateLabel(row.date)
-            : data.dateRange.label,
-        boothId: boothDaySalesGroupBy === "date" ? "all" : row.boothId,
-        boothLabel:
-          boothDaySalesGroupBy === "date" ? "0 booths" : row.boothName,
-        boothName: row.boothName,
-        saleCount: 0,
-        totalRevenue: 0,
-        averageTicket: 0,
-        unitsSold: 0,
-        cashRevenue: 0,
-        nonCashRevenue: 0,
-        boothIds: new Set<string>(),
-      }
-
-      current.saleCount += row.saleCount
-      current.totalRevenue += row.totalRevenue
-      current.unitsSold += row.unitsSold
-      current.cashRevenue += row.cashRevenue
-      current.nonCashRevenue += row.nonCashRevenue
-      current.boothIds.add(row.boothId)
-
-      groupedMap.set(key, current)
-    }
-
-    return Array.from(groupedMap.values()).map((row) => ({
-      id: row.id,
-      date: row.date,
-      dateLabel: row.dateLabel,
-      boothId: row.boothId,
-      boothLabel:
-        boothDaySalesGroupBy === "date"
-          ? `${row.boothIds.size} booth${row.boothIds.size === 1 ? "" : "s"}`
-          : row.boothName,
-      boothName: row.boothName,
-      saleCount: row.saleCount,
-      totalRevenue: row.totalRevenue,
-      averageTicket: row.saleCount > 0 ? row.totalRevenue / row.saleCount : 0,
-      unitsSold: row.unitsSold,
-      cashRevenue: row.cashRevenue,
-      nonCashRevenue: row.nonCashRevenue,
-    }))
-  }, [
-    boothDaySalesGroupBy,
-    data.dateRange.label,
-    data.dateRange.startDate,
-    filteredBoothDaySales,
-  ])
   const boothDaySalesToolbar = (
-    <>
-      <div className="grid w-full gap-3 sm:grid-cols-3">
-        <Select
-          value={boothDaySalesGroupBy}
-          onValueChange={(value) =>
-            setBoothDaySalesGroupBy(value as BoothDaySalesGroupBy)
-          }
-        >
-          <SelectTrigger size="sm" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="date-booth">Group: Day + booth</SelectItem>
-            <SelectItem value="date">Group: Day totals</SelectItem>
-            <SelectItem value="booth">Group: Booth totals</SelectItem>
-          </SelectContent>
-        </Select>
+    <div className="grid w-full gap-3 sm:grid-cols-3">
+      <Select
+        value={boothDaySalesGroupBy}
+        onValueChange={(value) =>
+          setBoothDaySalesGroupBy(
+            (value as BoothDaySalesGroupBy) ?? "date-booth"
+          )
+        }
+      >
+        <SelectTrigger size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="date-booth">Group: Day + booth</SelectItem>
+          <SelectItem value="date">Group: Day totals</SelectItem>
+          <SelectItem value="booth">Group: Booth totals</SelectItem>
+        </SelectContent>
+      </Select>
 
-        <Select
-          value={boothDaySalesDateFilter}
-          onValueChange={(value) => setBoothDaySalesDateFilter(value ?? "all")}
-        >
-          <SelectTrigger size="sm" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All dates</SelectItem>
-            {boothDaySaleDateOptions.map((date) => (
-              <SelectItem key={date} value={date}>
-                {formatTrendDateLabel(date)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <Select
+        value={boothDaySalesDateFilter}
+        onValueChange={(value) => setBoothDaySalesDateFilter(value ?? "all")}
+      >
+        <SelectTrigger size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All dates</SelectItem>
+          {boothDaySaleDateOptions.map((date) => (
+            <SelectItem key={date} value={date}>
+              {formatTrendDateLabel(date)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-        <Select
-          value={boothDaySalesBoothFilter}
-          onValueChange={(value) => setBoothDaySalesBoothFilter(value ?? "all")}
-        >
-          <SelectTrigger size="sm" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All booths</SelectItem>
-            {boothDaySaleBoothOptions.map((option) => (
-              <SelectItem key={option.boothId} value={option.boothId}>
-                {option.boothName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </>
+      <Select
+        value={boothDaySalesBoothFilter}
+        onValueChange={(value) => setBoothDaySalesBoothFilter(value ?? "all")}
+      >
+        <SelectTrigger size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All booths</SelectItem>
+          {boothDaySaleBoothOptions.map((option) => (
+            <SelectItem key={option.boothId} value={option.boothId}>
+              {option.boothName}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   )
 
   return (
@@ -1118,14 +1081,6 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
             Single pane of glass for sales, shifts, payments, inventory,
             closeouts, and approvals.
           </p>
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <Badge variant="secondary">
-              {data.dateRange.label} · {formatDayCount(data.dateRange.dayCount)}
-            </Badge>
-            {data.isLiveRange ? (
-              <Badge variant="outline">Live range</Badge>
-            ) : null}
-          </div>
         </div>
 
         <div className="app-screen-actions">
@@ -1174,7 +1129,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
               : "No sales"
           }
           accent="tertiary"
-          footer={`Cash ${formatCurrency(data.summary.cashRevenue)} • Non-cash ${formatCurrency(data.summary.nonCashRevenue)}`}
+          footer={`Cash ${formatCurrency(data.summary.cashRevenue)} | Non-cash ${formatCurrency(data.summary.nonCashRevenue)}`}
           icon={Wallet}
         />
         <KpiCard
@@ -1190,7 +1145,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
           description="Non-cash receipt coverage across the range"
           value={formatPercentage(data.summary.receiptComplianceRate)}
           accent="secondary"
-          footer={`${data.summary.receiptAttachedCount} attached • ${data.summary.receiptMissingCount} missing`}
+          footer={`${data.summary.receiptAttachedCount} attached | ${data.summary.receiptMissingCount} missing`}
           icon={ShieldCheck}
         />
         <KpiCard
@@ -1198,7 +1153,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
           description="Workflow changes awaiting review"
           value={data.summary.pendingApprovalCount.toString()}
           accent="tertiary"
-          footer={`Pending +${formatCurrency(data.summary.pendingRevenueIncrease)} • Pending -${formatCurrency(data.summary.pendingRevenueDecrease)}`}
+          footer={`Pending +${formatCurrency(data.summary.pendingRevenueIncrease)} | Pending -${formatCurrency(data.summary.pendingRevenueDecrease)}`}
           icon={ClipboardList}
         />
         <KpiCard
@@ -1206,7 +1161,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
           description="Cash variance across recorded closeouts"
           value={data.closeoutInsight.cashVarianceLabel}
           accent="primary"
-          footer={`${data.closeoutInsight.closeoutCount} closeout${data.closeoutInsight.closeoutCount === 1 ? "" : "s"} • Stock ${data.closeoutInsight.stockVarianceLabel}`}
+          footer={`${data.closeoutInsight.closeoutCount} closeout${data.closeoutInsight.closeoutCount === 1 ? "" : "s"} | Stock ${data.closeoutInsight.stockVarianceLabel}`}
           icon={TriangleAlert}
         />
         <KpiCard
@@ -1280,7 +1235,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
                         {product.productName}
                       </p>
                       <p className="text-muted-foreground text-sm">
-                        {product.quantitySold} sold •{" "}
+                        {product.quantitySold} sold |{" "}
                         {formatPercentage(product.shareOfRevenue * 100)}
                       </p>
                     </div>
@@ -1427,7 +1382,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
                     </p>
                     <p className="text-muted-foreground text-sm">
                       {employee.saleCount} sale
-                      {employee.saleCount === 1 ? "" : "s"} •{" "}
+                      {employee.saleCount === 1 ? "" : "s"} |{" "}
                       {employee.unitsSold} units
                     </p>
                   </div>
@@ -1462,7 +1417,7 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
                     </p>
                     <p className="text-muted-foreground text-sm">
                       {product.remainingStock}/{product.openingStock} remaining
-                      • {product.unitsSold} sold
+                      | {product.unitsSold} sold
                     </p>
                   </div>
                   <div className="text-right">
@@ -1550,6 +1505,8 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
                       { id: "totalRevenue", desc: true },
                     ]
               }
+              isLoading={isPending}
+              loadingRowCount={10}
               pageSize={10}
               searchPlaceholder="Search by date or booth"
               showColumnVisibility={false}

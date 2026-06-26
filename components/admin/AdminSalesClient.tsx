@@ -10,7 +10,7 @@ import {
 } from "react"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
-import { Copy, Ellipsis, Store, Trash2, UserRound, Wallet } from "lucide-react"
+import { Copy, Ellipsis, Store, Trash2, UserRound } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -486,8 +486,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
     ].join(" ")
   }, [])
 
-  const columns = useMemo<ColumnDef<AdminSalesLedgerRow>[]>
-    (
+  const columns = useMemo<ColumnDef<AdminSalesLedgerRow>[]>(
     () => [
       {
         id: "select",
@@ -757,7 +756,9 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
                 {isTrashView ? "Deleted Value" : "Total Revenue"}
               </CardTitle>
               <CardDescription>
-                {isTrashView ? "Visible deleted sales" : "Visible filtered sales"}
+                {isTrashView
+                  ? "Visible deleted sales"
+                  : "Visible filtered sales"}
               </CardDescription>
             </CardHeader>
             <CardContent>
