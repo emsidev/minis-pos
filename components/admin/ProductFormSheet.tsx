@@ -127,19 +127,19 @@ export function ProductFormSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex h-full w-full max-w-xl flex-col p-0"
+        className="app-sheet-content max-w-xl"
       >
-        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
+        <div className="app-sheet-header">
           <SheetTitle>{product ? "Edit Product" : "Add Product"}</SheetTitle>
           <SheetDescription>
             Keep the product catalog accurate for Counter and shift inventory
             setup.
           </SheetDescription>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="app-sheet-body">
           <form
             id="product-form"
-            className="flex flex-col gap-6 p-6"
+            className="app-sheet-form"
             onSubmit={handleSubmit}
           >
             <FieldGroup>
@@ -212,15 +212,21 @@ export function ProductFormSheet({
             </FieldGroup>
           </form>
         </div>
-        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
+        <footer className="app-sheet-footer">
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </Button>
-          <Button type="submit" form="product-form" disabled={pending}>
+          <Button
+            type="submit"
+            form="product-form"
+            className="w-full sm:w-auto"
+            disabled={pending}
+          >
             {pending ? (
               <Loader2 data-icon="inline-start" className="animate-spin" />
             ) : null}

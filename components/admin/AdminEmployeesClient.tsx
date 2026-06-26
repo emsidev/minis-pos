@@ -385,10 +385,16 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
             !pendingApproval && isActive && !employee.user_id
 
           return (
-            <div className="flex justify-end">
+            <div className="app-row-actions">
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  render={<Button variant="ghost" size="icon-sm" />}
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="app-row-action-button"
+                    />
+                  }
                 >
                   <Ellipsis />
                   <span className="sr-only">Open employee actions</span>
@@ -507,7 +513,12 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
             Invite staff and manage access.
           </p>
         </div>
-        <Button type="button" size="lg" onClick={() => setInviteOpen(true)}>
+        <Button
+          type="button"
+          size="lg"
+          className="w-full sm:w-auto"
+          onClick={() => setInviteOpen(true)}
+        >
           <Mail data-icon="inline-start" />
           Invite Employee
         </Button>

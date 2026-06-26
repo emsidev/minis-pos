@@ -120,19 +120,19 @@ export function InventoryOverrideSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex h-full w-full max-w-xl flex-col p-0"
+        className="app-sheet-content max-w-xl"
       >
-        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
+        <div className="app-sheet-header">
           <SheetTitle>Override Current Stock</SheetTitle>
           <SheetDescription>
             Correct on-hand counts for this active shift. Each changed count is
             recorded with your reason.
           </SheetDescription>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="app-sheet-body">
           <form
             id="inventory-override-form"
-            className="flex flex-col gap-6 p-6"
+            className="app-sheet-form"
             onSubmit={handleSubmit}
           >
             <Field>
@@ -196,10 +196,11 @@ export function InventoryOverrideSheet({
             </FieldGroup>
           </form>
         </div>
-        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
+        <footer className="app-sheet-footer">
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => onOpenChange(false)}
           >
             Cancel
@@ -207,6 +208,7 @@ export function InventoryOverrideSheet({
           <Button
             type="submit"
             form="inventory-override-form"
+            className="w-full sm:w-auto"
             disabled={pending}
           >
             {pending ? <Loader2 className="animate-spin" /> : null}

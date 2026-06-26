@@ -391,7 +391,9 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
           return {
             saleId: sale.id,
             ok: result.ok,
-            error: result.ok ? null : (result.error ?? "Unable to delete sale."),
+            error: result.ok
+              ? null
+              : (result.error ?? "Unable to delete sale."),
           }
         } catch (error) {
           console.error("Unable to delete selected sale:", error)
@@ -576,7 +578,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
           <DataTableColumnHeader column={column} title="Amount" align="right" />
         ),
         cell: ({ row }) => (
-          <div className="text-foreground text-right font-semibold">
+          <div className="app-tabular-amount text-foreground font-semibold">
             {formatCurrency(row.original.totalAmount)}
           </div>
         ),
@@ -613,10 +615,16 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
         enableHiding: false,
         header: () => <div className="text-right">Actions</div>,
         cell: ({ row }) => (
-          <div className="flex justify-end">
+          <div className="app-row-actions">
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="ghost" size="icon-sm" />}
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="app-row-action-button"
+                  />
+                }
               >
                 <Ellipsis />
                 <span className="sr-only">Open sale actions</span>
@@ -677,10 +685,11 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
           </p>
         </div>
         <div className="app-screen-actions">
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <Button
               type="button"
               variant={isTrashView ? "outline" : "secondary"}
+              className="w-full sm:w-auto"
               onClick={() => handleViewChange("active")}
             >
               Sales
@@ -688,6 +697,7 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
             <Button
               type="button"
               variant={isTrashView ? "secondary" : "outline"}
+              className="w-full sm:w-auto"
               onClick={() => handleViewChange("trash")}
             >
               <Trash2 data-icon="inline-start" />
@@ -697,13 +707,8 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
           <DateRangePicker
             value={selectedRange}
             onChange={handleDateRangeChange}
+            className="w-full sm:w-auto"
           />
-          <Badge variant="outline">
-            <Wallet data-icon="inline-start" />
-            {data.startDate === data.endDate
-              ? data.startDate
-              : `${data.startDate} to ${data.endDate}`}
-          </Badge>
         </div>
       </header>
 
@@ -907,7 +912,9 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
                       }
                     >
                       <Trash2 data-icon="inline-start" />
-                      {isTrashView ? "Delete Selected" : "Move Selected to Trash"}
+                      {isTrashView
+                        ? "Delete Selected"
+                        : "Move Selected to Trash"}
                     </Button>
                   </div>
                 ) : null}
@@ -953,7 +960,9 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
             ? "Delete Selected Permanently"
             : "Move Selected to Trash"
         }
-        pendingLabel={bulkDeletingMode === "permanent" ? "Deleting..." : "Moving..."}
+        pendingLabel={
+          bulkDeletingMode === "permanent" ? "Deleting..." : "Moving..."
+        }
         cancelLabel="Keep Sales"
         variant="destructive"
         onConfirm={handleBulkDeleteSelectedSales}

@@ -109,19 +109,19 @@ export function EmployeeInviteSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex h-full w-full max-w-xl flex-col p-0"
+        className="app-sheet-content max-w-xl"
       >
-        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
+        <div className="app-sheet-header">
           <SheetTitle>Invite Employee</SheetTitle>
           <SheetDescription>
             Create the employee record, choose their access level, and send the
             first sign-in email.
           </SheetDescription>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="app-sheet-body">
           <form
             id="employee-invite-form"
-            className="flex flex-col gap-6 p-6"
+            className="app-sheet-form"
             onSubmit={handleSubmit}
           >
             <EmployeeProfileFields
@@ -139,11 +139,12 @@ export function EmployeeInviteSheet({
             {inviteLink ? (
               <Field>
                 <FieldLabel htmlFor="invite-link">Manual setup link</FieldLabel>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <Input id="invite-link" readOnly value={inviteLink} />
                   <Button
                     type="button"
                     variant="outline"
+                    className="w-full sm:w-auto"
                     onClick={() => copyInviteLink(inviteLink)}
                   >
                     <Copy data-icon="inline-start" />
@@ -157,15 +158,21 @@ export function EmployeeInviteSheet({
             ) : null}
           </form>
         </div>
-        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
+        <footer className="app-sheet-footer">
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </Button>
-          <Button type="submit" form="employee-invite-form" disabled={pending}>
+          <Button
+            type="submit"
+            form="employee-invite-form"
+            className="w-full sm:w-auto"
+            disabled={pending}
+          >
             {pending ? (
               <Loader2 data-icon="inline-start" className="animate-spin" />
             ) : (

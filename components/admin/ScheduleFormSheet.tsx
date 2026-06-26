@@ -191,19 +191,19 @@ export function ScheduleFormSheet({
     <Sheet open={open} onOpenChange={onOpenChange} modal="trap-focus">
       <SheetContent
         side="right"
-        className="flex h-full w-full max-w-xl flex-col p-0"
+        className="app-sheet-content max-w-xl"
       >
-        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
+        <div className="app-sheet-header">
           <SheetTitle>{schedule ? "Edit Shift" : "Schedule Shift"}</SheetTitle>
           <SheetDescription>
             Assign the booth team and time slot. A shift can stay unassigned
             until someone is chosen as the POS operator.
           </SheetDescription>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="app-sheet-body">
           <form
             id="schedule-shift-form"
-            className="flex flex-col gap-7 p-6"
+            className="app-sheet-form"
             onSubmit={handleSubmit}
           >
             <FieldGroup>
@@ -312,7 +312,7 @@ export function ScheduleFormSheet({
                   </>
                 )}
               </Field>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field>
                   <FieldLabel>Start time</FieldLabel>
                   <Input
@@ -347,10 +347,11 @@ export function ScheduleFormSheet({
             </FieldGroup>
           </form>
         </div>
-        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
+        <footer className="app-sheet-footer">
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => onOpenChange(false)}
           >
             Cancel
@@ -358,6 +359,7 @@ export function ScheduleFormSheet({
           <Button
             type="submit"
             form="schedule-shift-form"
+            className="w-full sm:w-auto"
             disabled={submitDisabled}
           >
             {pending ? (

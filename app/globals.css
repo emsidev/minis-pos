@@ -134,7 +134,7 @@
   }
 
   .app-page {
-    @apply w-full min-w-0 flex-1 p-4 sm:p-6 lg:p-8;
+    @apply w-full min-w-0 flex-1 px-3 py-4 sm:px-5 sm:py-6 lg:px-8 lg:py-8;
   }
 
   .app-page-center {
@@ -185,7 +185,47 @@
   }
 
   .app-screen-actions {
-    @apply flex flex-wrap items-center gap-3;
+    @apply flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3;
+  }
+
+  .app-sheet-content {
+    @apply flex h-full w-full flex-col p-0;
+  }
+
+  .app-sheet-header {
+    @apply border-border shrink-0 border-b px-4 pt-5 pb-4 sm:px-6 sm:pt-6 sm:pb-5;
+  }
+
+  .app-sheet-body {
+    @apply min-h-0 flex-1 overflow-y-auto overscroll-contain;
+  }
+
+  .app-sheet-form {
+    @apply flex flex-col gap-5 p-4 sm:gap-6 sm:p-6;
+  }
+
+  .app-sheet-footer {
+    @apply border-border flex shrink-0 flex-col-reverse gap-2 border-t p-3 sm:flex-row sm:justify-end sm:p-4;
+  }
+
+  .app-row-actions {
+    @apply inline-flex min-w-max items-center justify-end gap-1 sm:gap-1.5;
+  }
+
+  .app-row-action-button {
+    @apply size-8 rounded-full p-0;
+  }
+
+  .app-tabular-amount {
+    @apply whitespace-nowrap text-right tabular-nums;
+  }
+
+  .app-calendar-scroll {
+    @apply -mx-1 overflow-x-auto pb-2 sm:mx-0;
+  }
+
+  .app-calendar-grid {
+    @apply grid min-w-[42rem] grid-cols-7 gap-px overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border md:min-w-0;
   }
 
   .app-banner {

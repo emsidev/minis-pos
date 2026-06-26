@@ -7,12 +7,12 @@ import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const sheetContentVariants = {
-  left: "inset-y-0 left-0 h-full w-[86vw] max-w-sm rounded-r-[calc(var(--radius)+0.25rem)] border-r",
+  left: "inset-y-0 left-0 h-full max-w-[calc(100vw-0.5rem)] w-[86vw] rounded-r-[calc(var(--radius)+0.25rem)] border-r",
   right:
-    "inset-y-0 right-0 h-full w-[86vw] max-w-sm rounded-l-[calc(var(--radius)+0.25rem)] border-l",
+    "inset-y-0 right-0 h-full max-w-[calc(100vw-0.5rem)] w-[86vw] rounded-l-[calc(var(--radius)+0.25rem)] border-l",
   top: "inset-x-0 top-0 rounded-b-[calc(var(--radius)+0.25rem)] border-b",
   bottom:
-    "inset-x-0 bottom-0 max-h-[85svh] rounded-t-[calc(var(--radius)+0.35rem)] border-t",
+    "inset-x-0 bottom-0 max-h-[85svh] max-w-[100vw] rounded-t-[calc(var(--radius)+0.35rem)] border-t",
 } as const
 
 type SheetSide = keyof typeof sheetContentVariants
@@ -75,7 +75,7 @@ const SheetContent = React.forwardRef<
         {!hideClose ? (
           <SheetClose
             aria-label="Close panel"
-            className="border-border/80 bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground absolute top-4 right-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border transition-colors"
+            className="border-border/80 bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground absolute top-3 right-3 z-10 inline-flex size-9 items-center justify-center rounded-full border transition-colors sm:top-4 sm:right-4 sm:size-10"
           >
             <X className="h-4 w-4" />
           </SheetClose>

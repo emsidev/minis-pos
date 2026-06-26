@@ -464,7 +464,7 @@ export function AdminApprovalsClient({ data }: AdminApprovalsClientProps) {
         cell: ({ row }) => (
           <div
             className={cn(
-              "text-right font-semibold",
+              "app-tabular-amount font-semibold",
               row.original.revenueDelta < 0
                 ? "text-destructive"
                 : row.original.revenueDelta > 0

@@ -1200,6 +1200,7 @@ export function AdminBulkScheduleClient({
                             type="button"
                             size="xs"
                             variant="outline"
+                            className="w-full sm:w-auto"
                             onClick={() => handleResetRow(row.rowKey)}
                           >
                             Reset
@@ -1209,6 +1210,7 @@ export function AdminBulkScheduleClient({
                               type="button"
                               size="xs"
                               variant="destructive"
+                              className="w-full sm:w-auto"
                               onClick={() => handleRemoveRow(row.rowKey)}
                             >
                               <Trash2 data-icon="inline-start" />

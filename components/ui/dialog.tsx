@@ -56,7 +56,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Popup
       ref={ref}
       className={cn(
-        "bg-card text-card-foreground border-border fixed top-1/2 left-1/2 z-50 w-[min(92vw,44rem)] -translate-x-1/2 -translate-y-1/2 rounded-[calc(var(--radius)+0.35rem)] border shadow-[0_36px_80px_-32px_rgba(61,26,49,0.5)]",
+        "bg-card text-card-foreground border-border fixed top-1/2 left-1/2 z-50 max-h-[calc(100svh-1rem)] w-[calc(100vw-1rem)] overflow-hidden -translate-x-1/2 -translate-y-1/2 rounded-[calc(var(--radius)+0.35rem)] border shadow-[0_36px_80px_-32px_rgba(61,26,49,0.5)] sm:w-[min(92vw,44rem)]",
         className
       )}
       {...props}
@@ -64,7 +64,7 @@ const DialogContent = React.forwardRef<
       {!hideClose ? (
         <DialogClose
           aria-label="Close dialog"
-          className="border-border/80 bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground absolute top-4 right-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border transition-colors"
+          className="border-border/80 bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground absolute top-3 right-3 z-10 inline-flex size-9 items-center justify-center rounded-full border transition-colors sm:top-4 sm:right-4 sm:size-10"
         >
           <X className="h-4 w-4" />
         </DialogClose>

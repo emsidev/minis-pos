@@ -137,18 +137,19 @@ export function AdminScheduleCalendar({
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-center justify-between gap-4">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="app-section-title">
             {monthName}{" "}
             <span className="text-muted-foreground font-normal">{year}</span>
           </h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {enableTextExport ? (
             <Button
               type="button"
               variant="outline"
+              className="w-full sm:w-auto"
               onClick={() => void handleCopyExport()}
             >
               <Copy data-icon="inline-start" />
@@ -178,143 +179,145 @@ export function AdminScheduleCalendar({
         </div>
       </header>
 
-      <div className="bg-border/60 border-border grid grid-cols-7 gap-px overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-          <div
-            key={day}
-            className="bg-muted text-muted-foreground px-2 py-3 text-center text-xs font-medium"
-          >
-            {day}
-          </div>
-        ))}
-        {Array.from({ length: leadingDays }, (_, index) => (
-          <div
-            key={`empty-${index}`}
-            className="bg-background/40 min-h-24 sm:min-h-32"
-          />
-        ))}
-        {days.map((day) => {
-          const date = formatCalendarDate(year, month, day)
-          const daySchedules = schedulesForDay(day)
-
-          return (
+      <div className="app-calendar-scroll">
+        <div className="app-calendar-grid bg-border/60 border-border">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
             <div
-              key={date}
-              className={cn(
-                "bg-card min-h-24 p-1.5 sm:min-h-32 sm:p-2",
-                date === businessDate && "bg-primary/5"
-              )}
+              key={day}
+              className="bg-muted text-muted-foreground px-2 py-3 text-center text-xs font-medium"
             >
-              <span
+              {day}
+            </div>
+          ))}
+          {Array.from({ length: leadingDays }, (_, index) => (
+            <div
+              key={`empty-${index}`}
+              className="bg-background/40 min-h-24 sm:min-h-32"
+            />
+          ))}
+          {days.map((day) => {
+            const date = formatCalendarDate(year, month, day)
+            const daySchedules = schedulesForDay(day)
+
+            return (
+              <div
+                key={date}
                 className={cn(
-                  "mb-1 flex size-7 items-center justify-center rounded-full text-xs font-medium",
-                  date === businessDate && "bg-primary text-primary-foreground"
+                  "bg-card min-h-24 p-1.5 sm:min-h-32 sm:p-2",
+                  date === businessDate && "bg-primary/5"
                 )}
               >
-                {day}
-              </span>
-              <div className="flex flex-col gap-1">
-                {daySchedules.map((schedule) =>
-                  onSelectSchedule ? (
-                    <button
-                      key={schedule.id}
-                      type="button"
-                      onClick={() => onSelectSchedule(schedule.id)}
-                      className={cn(
-                        "focus-visible:ring-ring/50 bg-background hover:bg-muted w-full rounded-lg border px-1.5 py-1 text-left text-[0.62rem] transition-colors focus-visible:ring-3 focus-visible:outline-none sm:text-xs",
-                        getScheduleCardClassName(schedule.status)
-                      )}
-                    >
-                      <span className="flex items-center gap-1 font-medium">
-                        {boothDetailMode ? (
-                          <Clock className="text-primary size-3 shrink-0" />
-                        ) : (
-                          <Store className="text-primary size-3 shrink-0" />
+                <span
+                  className={cn(
+                    "mb-1 flex size-7 items-center justify-center rounded-full text-xs font-medium",
+                    date === businessDate && "bg-primary text-primary-foreground"
+                  )}
+                >
+                  {day}
+                </span>
+                <div className="flex flex-col gap-1">
+                  {daySchedules.map((schedule) =>
+                    onSelectSchedule ? (
+                      <button
+                        key={schedule.id}
+                        type="button"
+                        onClick={() => onSelectSchedule(schedule.id)}
+                        className={cn(
+                          "focus-visible:ring-ring/50 bg-background hover:bg-muted w-full rounded-lg border px-1.5 py-1 text-left text-[0.62rem] transition-colors focus-visible:ring-3 focus-visible:outline-none sm:text-xs",
+                          getScheduleCardClassName(schedule.status)
                         )}
-                        <span className="truncate">
-                          {boothDetailMode
-                            ? (schedule.operator?.name ?? "Unassigned")
-                            : schedule.booths.name}
+                      >
+                        <span className="flex min-w-0 items-center gap-1 font-medium">
+                          {boothDetailMode ? (
+                            <Clock className="text-primary size-3 shrink-0" />
+                          ) : (
+                            <Store className="text-primary size-3 shrink-0" />
+                          )}
+                          <span className="min-w-0 truncate">
+                            {boothDetailMode
+                              ? (schedule.operator?.name ?? "Unassigned")
+                              : schedule.booths.name}
+                          </span>
                         </span>
-                      </span>
-                      <span className="text-muted-foreground block truncate">
-                        {schedule.start_time.slice(0, 5)} -{" "}
-                        {schedule.end_time.slice(0, 5)}
-                      </span>
-                      {!boothDetailMode &&
-                      schedule.booth_schedule_assignments.length > 0 ? (
                         <span className="text-muted-foreground block truncate">
-                          {schedule.booth_schedule_assignments
-                            .map(
-                              (assignment) =>
-                                assignment.employees?.name ?? "Employee"
-                            )
-                            .join(", ")}
+                          {schedule.start_time.slice(0, 5)} -{" "}
+                          {schedule.end_time.slice(0, 5)}
                         </span>
-                      ) : null}
-                      {schedule.status === "cancelled" ? (
-                        <Badge
-                          variant="destructive"
-                          className="mt-1 min-h-5 px-1.5 py-0 text-[0.55rem] uppercase"
-                        >
-                          Cancelled
-                        </Badge>
-                      ) : schedule.status === "closed" ? (
-                        <Badge
-                          variant="outline"
-                          className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] text-emerald-700 uppercase"
-                        >
-                          Closed
-                        </Badge>
-                      ) : null}
-                    </button>
-                  ) : (
-                    <Link
-                      key={schedule.id}
-                      href={`/admin/booths/${schedule.booth_id}`}
-                      className={cn(
-                        "bg-background hover:bg-muted rounded-lg border px-1.5 py-1 text-[0.62rem] transition-colors sm:text-xs",
-                        getScheduleCardClassName(schedule.status)
-                      )}
-                    >
-                      <span className="flex items-center gap-1 font-medium">
-                        {boothDetailMode ? (
-                          <Clock className="text-primary size-3 shrink-0" />
-                        ) : (
-                          <Store className="text-primary size-3 shrink-0" />
+                        {!boothDetailMode &&
+                        schedule.booth_schedule_assignments.length > 0 ? (
+                          <span className="text-muted-foreground block truncate">
+                            {schedule.booth_schedule_assignments
+                              .map(
+                                (assignment) =>
+                                  assignment.employees?.name ?? "Employee"
+                              )
+                              .join(", ")}
+                          </span>
+                        ) : null}
+                        {schedule.status === "cancelled" ? (
+                          <Badge
+                            variant="destructive"
+                            className="mt-1 min-h-5 px-1.5 py-0 text-[0.55rem] uppercase"
+                          >
+                            Cancelled
+                          </Badge>
+                        ) : schedule.status === "closed" ? (
+                          <Badge
+                            variant="outline"
+                            className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] text-emerald-700 uppercase"
+                          >
+                            Closed
+                          </Badge>
+                        ) : null}
+                      </button>
+                    ) : (
+                      <Link
+                        key={schedule.id}
+                        href={`/admin/booths/${schedule.booth_id}`}
+                        className={cn(
+                          "bg-background hover:bg-muted rounded-lg border px-1.5 py-1 text-[0.62rem] transition-colors sm:text-xs",
+                          getScheduleCardClassName(schedule.status)
                         )}
-                        <span className="truncate">
-                          {boothDetailMode
-                            ? (schedule.operator?.name ?? "Unassigned")
-                            : schedule.booths.name}
+                      >
+                        <span className="flex min-w-0 items-center gap-1 font-medium">
+                          {boothDetailMode ? (
+                            <Clock className="text-primary size-3 shrink-0" />
+                          ) : (
+                            <Store className="text-primary size-3 shrink-0" />
+                          )}
+                          <span className="min-w-0 truncate">
+                            {boothDetailMode
+                              ? (schedule.operator?.name ?? "Unassigned")
+                              : schedule.booths.name}
+                          </span>
                         </span>
-                      </span>
-                      <span className="text-muted-foreground block truncate">
-                        {schedule.start_time.slice(0, 5)} -{" "}
-                        {schedule.end_time.slice(0, 5)}
-                      </span>
-                      {schedule.status === "cancelled" ? (
-                        <Badge
-                          variant="destructive"
-                          className="mt-1 min-h-5 px-1.5 py-0 text-[0.55rem] uppercase"
-                        >
-                          Cancelled
-                        </Badge>
-                      ) : schedule.status === "closed" ? (
-                        <Badge
-                          variant="outline"
-                          className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] text-emerald-700 uppercase"
-                        >
-                          Closed
-                        </Badge>
-                      ) : null}
-                    </Link>
-                  )
-                )}
+                        <span className="text-muted-foreground block truncate">
+                          {schedule.start_time.slice(0, 5)} -{" "}
+                          {schedule.end_time.slice(0, 5)}
+                        </span>
+                        {schedule.status === "cancelled" ? (
+                          <Badge
+                            variant="destructive"
+                            className="mt-1 min-h-5 px-1.5 py-0 text-[0.55rem] uppercase"
+                          >
+                            Cancelled
+                          </Badge>
+                        ) : schedule.status === "closed" ? (
+                          <Badge
+                            variant="outline"
+                            className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] text-emerald-700 uppercase"
+                          >
+                            Closed
+                          </Badge>
+                        ) : null}
+                      </Link>
+                    )
+                  )}
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )

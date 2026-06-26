@@ -583,45 +583,47 @@ function SaleRow({
             />
           )}
         </TableCell>
-        <TableCell className="text-right">
-          <div className="flex items-center justify-end gap-2">
-            {canManageSale ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 rounded-full px-2.5"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void openEditDialog()
-                  }}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  <span className="sr-only">
-                    {actionVerb ? `${actionVerb} edit` : "Edit"} sale
-                  </span>
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive h-8 rounded-full px-2.5"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setSubmitError(null)
-                    setDeleteReason("")
-                    setDeleteOpen(true)
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span className="sr-only">
-                    {actionVerb ? `${actionVerb} delete` : "Delete"} sale
-                  </span>
-                </Button>
-              </>
-            ) : null}
-            <span className="text-foreground font-bold">
+        <TableCell className="w-[10rem] min-w-[10rem] text-right">
+          <div className="grid grid-cols-[4.75rem_minmax(5.25rem,auto)] items-center justify-end gap-2">
+            <div className="app-row-actions justify-end">
+              {canManageSale ? (
+                <>
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    className="app-row-action-button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void openEditDialog()
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span className="sr-only">
+                      {actionVerb ? `${actionVerb} edit` : "Edit"} sale
+                    </span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="ghost"
+                    className="app-row-action-button text-destructive"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setSubmitError(null)
+                      setDeleteReason("")
+                      setDeleteOpen(true)
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span className="sr-only">
+                      {actionVerb ? `${actionVerb} delete` : "Delete"} sale
+                    </span>
+                  </Button>
+                </>
+              ) : null}
+            </div>
+            <span className="app-tabular-amount text-foreground font-bold">
               {formatCurrency(Number(sale.total_amount))}
             </span>
           </div>
@@ -630,7 +632,7 @@ function SaleRow({
       {isExpanded ? (
         <TableRow className="bg-surface-container-low/30 hover:bg-surface-container-low/30">
           <TableCell colSpan={5} className="p-0">
-            <div className="space-y-3 px-14 py-4">
+            <div className="space-y-3 px-4 py-4 sm:px-14">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-muted-foreground text-[0.62rem] font-bold tracking-[0.2em] uppercase">
                   Sale Items
@@ -689,8 +691,8 @@ function SaleRow({
       ) : null}
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-3xl p-0">
-          <div className="space-y-5 p-6">
+        <DialogContent className="max-w-3xl overflow-hidden p-0">
+          <div className="max-h-[calc(100svh-1rem)] space-y-5 overflow-y-auto p-4 sm:p-6">
             <div>
               <DialogTitle>
                 {saleActionMode === "request"
@@ -766,7 +768,7 @@ function SaleRow({
                 {editLines.map((line) => (
                   <div
                     key={line.rowId}
-                    className="border-border/60 grid gap-3 rounded-[var(--radius)] border p-3 md:grid-cols-[minmax(0,1.4fr)_7rem_8rem_auto]"
+                    className="border-border/60 grid gap-2 rounded-[var(--radius)] border p-3 sm:gap-3 md:grid-cols-[minmax(0,1.4fr)_7rem_8rem_auto]"
                   >
                     <Select
                       value={line.productId}
@@ -810,7 +812,8 @@ function SaleRow({
                     <Button
                       type="button"
                       variant="ghost"
-                      className="h-11 rounded-full px-3"
+                      size="icon-xs"
+                      className="app-row-action-button justify-self-end"
                       onClick={() => removeLine(line.rowId)}
                       disabled={editLines.length === 1}
                     >
@@ -838,10 +841,11 @@ function SaleRow({
               <p className="text-destructive text-sm">{submitError}</p>
             ) : null}
 
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <Button
                 type="button"
                 variant="outline"
+                className="w-full sm:w-auto"
                 onClick={() => setEditOpen(false)}
                 disabled={submitPending}
               >
@@ -849,6 +853,7 @@ function SaleRow({
               </Button>
               <Button
                 type="button"
+                className="w-full sm:w-auto"
                 onClick={handleSubmitEdit}
                 disabled={submitPending}
               >
@@ -952,8 +957,8 @@ export function SalesTable({
   }
 
   return (
-    <div className="border-border/50 overflow-hidden rounded-[var(--radius)] border">
-      <Table>
+    <div className="border-border/50 max-w-full overflow-hidden rounded-[var(--radius)] border">
+      <Table className="min-w-[44rem]">
         <TableHeader className="bg-surface-container-low">
           <TableRow>
             <TableHead className="w-10"></TableHead>

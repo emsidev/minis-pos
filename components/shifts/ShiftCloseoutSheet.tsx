@@ -294,19 +294,19 @@ export function ShiftCloseoutSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex h-full w-full max-w-2xl flex-col p-0"
+        className="app-sheet-content max-w-2xl"
       >
-        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
+        <div className="app-sheet-header">
           <SheetTitle>End Of Day Closeout</SheetTitle>
           <SheetDescription>
             Count cash and final stock, review variances, then lock this shift.
           </SheetDescription>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="app-sheet-body">
           <form
             id="shift-closeout-form"
-            className="flex flex-col gap-6 p-6"
+            className="app-sheet-form"
             onSubmit={handleSubmit}
           >
             {isOffline ? (
@@ -381,7 +381,7 @@ export function ShiftCloseoutSheet({
               </div>
             ) : null}
 
-            <div className="grid gap-3 sm:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="border-border bg-card rounded-2xl border px-4 py-3">
                 <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
                   Gross Cash
@@ -540,7 +540,7 @@ export function ShiftCloseoutSheet({
               </div>
             </section>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="border-border bg-card rounded-2xl border px-4 py-3">
                 <p className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
                   System Stock
@@ -591,10 +591,11 @@ export function ShiftCloseoutSheet({
           </form>
         </div>
 
-        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
+        <footer className="app-sheet-footer">
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => {
               setHasDraftChanges(false)
               onOpenChange(false)
@@ -605,6 +606,7 @@ export function ShiftCloseoutSheet({
           <Button
             type="submit"
             form="shift-closeout-form"
+            className="w-full sm:w-auto"
             disabled={pending || syncing || closeoutBlocked}
           >
             {pending ? (

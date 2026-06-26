@@ -426,10 +426,10 @@ export function ShiftDetailView({
 
   return (
     <div className={cn("app-page flex min-h-full flex-col", className)}>
-      <div className="flex-1 space-y-4 px-4 pt-3 pb-4 sm:px-5 sm:pb-5">
+      <div className="flex-1 space-y-4 px-3 pt-3 pb-4 sm:px-5 sm:pb-5">
         <section className="border-border/60 bg-card overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border">
-          <div className="space-y-4 px-4 py-4 sm:px-5 sm:py-5">
-            <div className="flex items-start justify-between gap-3">
+          <div className="space-y-4 px-3 py-3 sm:px-5 sm:py-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-foreground truncate text-xl font-semibold tracking-tight">
@@ -456,7 +456,7 @@ export function ShiftDetailView({
                   href={mapLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="border-border/70 text-primary hover:bg-muted inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+                  className="border-border/70 text-primary hover:bg-muted inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors sm:w-auto"
                 >
                   Map
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -666,7 +666,7 @@ export function ShiftDetailView({
         </section>
 
         {canManageInventory && inventoryEmployeeId ? (
-          <section className="border-border/60 bg-card rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
+          <section className="border-border/60 bg-card rounded-[calc(var(--radius)+0.1rem)] border px-3 py-3 sm:px-5 sm:py-4">
             <div className="mb-4">
               <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
                 Shift Inventory
@@ -687,7 +687,7 @@ export function ShiftDetailView({
           </section>
         ) : null}
 
-        <section className="border-border/60 bg-card rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
+        <section className="border-border/60 bg-card rounded-[calc(var(--radius)+0.1rem)] border px-3 py-3 sm:px-5 sm:py-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
@@ -720,7 +720,7 @@ export function ShiftDetailView({
             </div>
           ) : (
             <div className="border-border/60 overflow-hidden rounded-[var(--radius)] border">
-              <Table>
+              <Table className="min-w-[34rem]">
                 <TableHeader className="bg-surface-container-low">
                   <TableRow>
                     <TableHead className="w-8 p-0" />
@@ -792,7 +792,7 @@ export function ShiftDetailView({
           )}
         </section>
 
-        <section className="border-border/60 bg-card rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
+        <section className="border-border/60 bg-card rounded-[calc(var(--radius)+0.1rem)] border px-3 py-3 sm:px-5 sm:py-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
@@ -818,7 +818,7 @@ export function ShiftDetailView({
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-3 lg:grid-cols-2">
                 <div className="border-border/60 rounded-[var(--radius)] border">
                   <div className="border-border/60 bg-surface-container-low/45 border-b px-3 py-2">
                     <h3 className="text-foreground text-sm font-semibold">
@@ -899,7 +899,7 @@ export function ShiftDetailView({
         </section>
 
         {showApprovalSummary ? (
-          <section className="border-border/60 bg-card space-y-3 rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
+          <section className="border-border/60 bg-card space-y-3 rounded-[calc(var(--radius)+0.1rem)] border px-3 py-3 sm:px-5 sm:py-4">
             <div>
               <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
                 Approval Requests
@@ -954,7 +954,7 @@ export function ShiftDetailView({
         ) : null}
 
         {showAdminAudit ? (
-          <section className="border-border/60 bg-card space-y-3 rounded-[calc(var(--radius)+0.1rem)] border px-4 py-4 sm:px-5">
+          <section className="border-border/60 bg-card space-y-3 rounded-[calc(var(--radius)+0.1rem)] border px-3 py-3 sm:px-5 sm:py-4">
             <div>
               <p className="text-muted-foreground text-[0.68rem] font-semibold tracking-[0.2em] uppercase">
                 Admin Audit

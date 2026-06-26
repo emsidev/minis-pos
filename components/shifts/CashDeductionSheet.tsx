@@ -97,9 +97,9 @@ export function CashDeductionSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex h-full w-full max-w-xl flex-col p-0"
+        className="app-sheet-content max-w-xl"
       >
-        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
+        <div className="app-sheet-header">
           <SheetTitle>Cash Deduction Request</SheetTitle>
           <SheetDescription>
             Send a shift expense deduction for admin approval before it affects
@@ -107,10 +107,10 @@ export function CashDeductionSheet({
           </SheetDescription>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="app-sheet-body">
           <form
             id="cash-deduction-form"
-            className="flex flex-col gap-6 p-6"
+            className="app-sheet-form"
             onSubmit={handleSubmit}
           >
             {isOffline ? (
@@ -175,10 +175,11 @@ export function CashDeductionSheet({
           </form>
         </div>
 
-        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
+        <footer className="app-sheet-footer">
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => onOpenChange(false)}
           >
             Cancel
@@ -186,6 +187,7 @@ export function CashDeductionSheet({
           <Button
             type="submit"
             form="cash-deduction-form"
+            className="w-full sm:w-auto"
             disabled={pending || isOffline}
           >
             {pending ? (

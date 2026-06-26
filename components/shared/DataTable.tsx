@@ -190,10 +190,10 @@ export function DataTable<TData, TValue>({
     enablePagination && table.getPageCount() > 1 && filteredRowCount > 0
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="min-w-0 flex flex-col gap-4">
       {showToolbar ? (
         <div className="app-panel-muted flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             {showSearch ? (
               <Input
                 type="search"
@@ -291,7 +291,7 @@ export function DataTable<TData, TValue>({
         </p>
 
         {showPagination ? (
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
             <span className="text-muted-foreground text-xs tracking-[0.18em] uppercase">
               Page {table.getState().pagination.pageIndex + 1} of{" "}
               {table.getPageCount()}

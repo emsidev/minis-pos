@@ -121,6 +121,30 @@ function rangeToValue(range: DateRange): DateRangePickerValue | null {
   return { startDate: endDate, endDate: startDate }
 }
 
+function useCompactCalendar() {
+  const [isCompact, setIsCompact] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 640px)")
+    const updateCompact = (event?: MediaQueryListEvent) => {
+      setIsCompact(event ? event.matches : mediaQuery.matches)
+    }
+
+    updateCompact()
+    mediaQuery.addEventListener("change", updateCompact)
+
+    return () => {
+      mediaQuery.removeEventListener("change", updateCompact)
+    }
+  }, [])
+
+  return isCompact
+}
+
 function SingleDatePicker({
   value,
   onChange,
@@ -165,6 +189,7 @@ function RangeDatePicker({
   disabled = false,
   minDate,
 }: RangeDatePickerProps) {
+  const isCompact = useCompactCalendar()
   const [open, setOpen] = useState(false)
   const [draftRange, setDraftRange] = useState<DateRange>(() =>
     rangeFromValue(value)
@@ -195,26 +220,30 @@ function RangeDatePicker({
         <CalendarIcon data-icon="inline-start" />
         {formatRangeLabel(rangeValue)}
       </PopoverTrigger>
-      <PopoverContent className={cn("w-auto p-0", className)} align="start">
+      <PopoverContent
+        className={cn("w-[calc(100vw-1rem)] p-0 sm:w-auto", className)}
+        align="start"
+      >
         <Calendar
           mode="range"
           defaultMonth={appliedRange.from}
-          numberOfMonths={2}
+          numberOfMonths={isCompact ? 1 : 2}
           selected={draftRange.from ? draftRange : undefined}
           onSelect={(nextRange) =>
             setDraftRange(nextRange ?? { from: undefined })
           }
           disabled={(date) => (min ? date < min : false)}
         />
-        <div className="border-border flex items-center justify-between gap-3 border-t p-2">
+        <div className="border-border flex flex-col gap-2 border-t p-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-muted-foreground truncate text-xs">
             {draftValue ? formatRangeLabel(draftValue) : "Select date range"}
           </p>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => setOpen(false)}
             >
               Cancel
@@ -222,6 +251,7 @@ function RangeDatePicker({
             <Button
               type="button"
               size="sm"
+              className="w-full sm:w-auto"
               disabled={!draftValue}
               onClick={handleApply}
             >

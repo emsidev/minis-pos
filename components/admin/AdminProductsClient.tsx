@@ -300,7 +300,7 @@ export function AdminProductsClient({
           <DataTableColumnHeader column={column} title="Price" align="right" />
         ),
         cell: ({ row }) => (
-          <div className="text-foreground text-right font-semibold">
+          <div className="app-tabular-amount text-foreground font-semibold">
             {formatCurrency(Number(row.original.price))}
           </div>
         ),
@@ -332,10 +332,16 @@ export function AdminProductsClient({
           const isAvailable = product.is_available !== false
 
           return (
-            <div className="flex justify-end">
+            <div className="app-row-actions">
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  render={<Button variant="ghost" size="icon-sm" />}
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="app-row-action-button"
+                    />
+                  }
                 >
                   <Ellipsis />
                   <span className="sr-only">Open product actions</span>
@@ -463,10 +469,16 @@ export function AdminProductsClient({
           const pending = pendingPromoId === promo.id
 
           return (
-            <div className="flex justify-end">
+            <div className="app-row-actions">
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  render={<Button variant="ghost" size="icon-sm" />}
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="app-row-action-button"
+                    />
+                  }
                 >
                   <Ellipsis />
                   <span className="sr-only">Open promo actions</span>

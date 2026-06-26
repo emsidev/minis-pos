@@ -601,6 +601,7 @@ export function AdminBoothsClient({
             nativeButton={false}
             size="lg"
             variant="outline"
+            className="w-full sm:w-auto"
           >
             <TableProperties data-icon="inline-start" />
             Bulk Schedule
@@ -609,13 +610,19 @@ export function AdminBoothsClient({
             type="button"
             size="lg"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={openScheduleCreate}
             disabled={!displayBooths.some((booth) => booth.is_active)}
           >
             <Plus data-icon="inline-start" />
             Add Shift
           </Button>
-          <Button type="button" size="lg" onClick={openCreate}>
+          <Button
+            type="button"
+            size="lg"
+            className="w-full sm:w-auto"
+            onClick={openCreate}
+          >
             <Plus data-icon="inline-start" />
             Add Booth
           </Button>
@@ -665,7 +672,7 @@ export function AdminBoothsClient({
                         scheduled shift{scheduleCount === 1 ? "" : "s"} this
                         month
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
                         <Button
                           render={<Link href={`/admin/booths/${booth.id}`} />}
                           nativeButton={false}
@@ -732,7 +739,7 @@ export function AdminBoothsClient({
                 All booth shifts in one calendar.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-3 sm:px-6">
               <AdminScheduleCalendar
                 schedules={displaySchedules}
                 loadMonths

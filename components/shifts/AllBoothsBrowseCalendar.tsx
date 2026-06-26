@@ -41,100 +41,106 @@ export function AllBoothsBrowseCalendar({
   }
 
   return (
-    <div className="bg-border/60 border-border grid grid-cols-7 gap-px overflow-hidden rounded-[calc(var(--radius)+0.2rem)] border">
-      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-        <div
-          key={day}
-          className="bg-muted text-muted-foreground px-2 py-3 text-center text-xs font-medium"
-        >
-          {day}
-        </div>
-      ))}
-      {Array.from({ length: leadingDays }, (_, index) => (
-        <div
-          key={`empty-${index}`}
-          className="bg-background/40 min-h-24 sm:min-h-32"
-        />
-      ))}
-      {days.map((day) => {
-        const date = formatCalendarDate(year, month, day)
-        const daySchedules = schedulesForDay(day)
-        const isToday = date === businessDate
-        const isSelected = date === selectedDate
-
-        return (
+    <div className="app-calendar-scroll">
+      <div className="app-calendar-grid bg-border/60 border-border">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
           <div
-            key={date}
-            className={cn(
-              "bg-card min-h-24 p-1.5 sm:min-h-32 sm:p-2",
-              isToday && "bg-primary/5",
-              isSelected && "ring-primary/20 ring-2 ring-inset"
-            )}
+            key={day}
+            className="bg-muted text-muted-foreground px-2 py-3 text-center text-xs font-medium"
           >
-            <span
+            {day}
+          </div>
+        ))}
+        {Array.from({ length: leadingDays }, (_, index) => (
+          <div
+            key={`empty-${index}`}
+            className="bg-background/40 min-h-24 sm:min-h-32"
+          />
+        ))}
+        {days.map((day) => {
+          const date = formatCalendarDate(year, month, day)
+          const daySchedules = schedulesForDay(day)
+          const isToday = date === businessDate
+          const isSelected = date === selectedDate
+
+          return (
+            <div
+              key={date}
               className={cn(
-                "mb-1 flex size-7 items-center justify-center rounded-full text-xs font-medium",
-                isToday && "bg-primary text-primary-foreground",
-                isSelected &&
-                  !isToday &&
-                  "ring-primary/30 bg-surface-container text-foreground ring-2"
+                "bg-card min-h-24 p-1.5 sm:min-h-32 sm:p-2",
+                isToday && "bg-primary/5",
+                isSelected && "ring-primary/20 ring-2 ring-inset"
               )}
             >
-              {day}
-            </span>
-            <div className="flex flex-col gap-1">
-              {daySchedules.map((schedule) => (
-                <button
-                  key={schedule.id}
-                  type="button"
-                  onClick={() => onSelectSchedule(schedule)}
-                  className={cn(
-                    "focus-visible:ring-ring/50 hover:bg-muted w-full rounded-lg border px-1.5 py-1 text-left text-[0.62rem] transition-colors focus-visible:ring-3 focus-visible:outline-none sm:text-xs",
-                    getScheduleCardClassName(schedule.status)
-                  )}
-                >
-                  <span className="flex items-center gap-1 font-medium">
-                    <Store className="text-primary size-3 shrink-0" />
-                    <span className="truncate">{schedule.booth_name}</span>
-                  </span>
-                  <span className="text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
-                    <Clock className="size-3 shrink-0" />
-                    {schedule.start_time.slice(0, 5)} -{" "}
-                    {schedule.end_time.slice(0, 5)}
-                  </span>
-                  <span className="text-muted-foreground block truncate">
-                    {schedule.assigned_employee_names.length > 0
-                      ? schedule.assigned_employee_names.join(", ")
-                      : "Open shift"}
-                  </span>
-                  {schedule.is_assigned ? (
-                    <Badge
-                      variant="secondary"
-                      className="mt-1 min-h-5 px-1.5 py-0 text-[0.55rem] uppercase"
-                    >
-                      Joined
-                    </Badge>
-                  ) : schedule.status === "cancelled" ? (
-                    <Badge
-                      variant="destructive"
-                      className="mt-1 min-h-5 px-1.5 py-0 text-[0.55rem] uppercase"
-                    >
-                      Cancelled
-                    </Badge>
-                  ) : schedule.status === "closed" ? (
-                    <Badge
-                      variant="outline"
-                      className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] text-emerald-700 uppercase"
-                    >
-                      Closed
-                    </Badge>
-                  ) : null}
-                </button>
-              ))}
+              <span
+                className={cn(
+                  "mb-1 flex size-7 items-center justify-center rounded-full text-xs font-medium",
+                  isToday && "bg-primary text-primary-foreground",
+                  isSelected &&
+                    !isToday &&
+                    "ring-primary/30 bg-surface-container text-foreground ring-2"
+                )}
+              >
+                {day}
+              </span>
+              <div className="flex flex-col gap-1">
+                {daySchedules.map((schedule) => (
+                  <button
+                    key={schedule.id}
+                    type="button"
+                    onClick={() => onSelectSchedule(schedule)}
+                    className={cn(
+                      "focus-visible:ring-ring/50 hover:bg-muted w-full rounded-lg border px-1.5 py-1 text-left text-[0.62rem] transition-colors focus-visible:ring-3 focus-visible:outline-none sm:text-xs",
+                      getScheduleCardClassName(schedule.status)
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-1 font-medium">
+                      <Store className="text-primary size-3 shrink-0" />
+                      <span className="min-w-0 truncate">
+                        {schedule.booth_name}
+                      </span>
+                    </span>
+                    <span className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1">
+                      <Clock className="size-3 shrink-0" />
+                      <span className="min-w-0 truncate">
+                        {schedule.start_time.slice(0, 5)} -{" "}
+                        {schedule.end_time.slice(0, 5)}
+                      </span>
+                    </span>
+                    <span className="text-muted-foreground block truncate">
+                      {schedule.assigned_employee_names.length > 0
+                        ? schedule.assigned_employee_names.join(", ")
+                        : "Open shift"}
+                    </span>
+                    {schedule.is_assigned ? (
+                      <Badge
+                        variant="secondary"
+                        className="mt-1 min-h-5 px-1.5 py-0 text-[0.55rem] uppercase"
+                      >
+                        Joined
+                      </Badge>
+                    ) : schedule.status === "cancelled" ? (
+                      <Badge
+                        variant="destructive"
+                        className="mt-1 min-h-5 px-1.5 py-0 text-[0.55rem] uppercase"
+                      >
+                        Cancelled
+                      </Badge>
+                    ) : schedule.status === "closed" ? (
+                      <Badge
+                        variant="outline"
+                        className="mt-1 min-h-5 border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 text-[0.55rem] text-emerald-700 uppercase"
+                      >
+                        Closed
+                      </Badge>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }

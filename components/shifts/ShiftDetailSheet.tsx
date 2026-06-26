@@ -113,7 +113,7 @@ export function ShiftDetailSheet({
 }: ShiftDetailSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full max-w-[58rem] p-0">
+      <SheetContent side="right" className="app-sheet-content max-w-[58rem]">
         <div className="sr-only">
           <SheetTitle>Shift Details</SheetTitle>
           <SheetDescription>
@@ -139,7 +139,7 @@ export function ShiftDetailSheet({
                   ),
                 }).isFuture
               }
-              className="min-h-full p-0 pt-14"
+              className="min-h-full p-0 pt-12 sm:pt-14"
               assignedEmployeeNames={assignedEmployeeNames}
               operatorName={operatorName}
               canEditReceipts={canEditReceipts}

@@ -583,19 +583,6 @@ export function AdminDashboardClient({ data }: AdminDashboardClientProps) {
             value={selectedDate}
             onChange={handleDateChange}
           />
-          <Badge variant={data.isLiveDate ? "default" : "outline"}>
-            {data.isLiveDate ? (
-              <>
-                <Radio data-icon="inline-start" />
-                Live today
-              </>
-            ) : (
-              <>
-                <CalendarDays data-icon="inline-start" />
-                Historical day
-              </>
-            )}
-          </Badge>
         </div>
       </header>
 

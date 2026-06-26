@@ -441,7 +441,7 @@ export function ScheduleCalendar({
 
   return (
     <>
-      <section className="app-panel space-y-4 p-4 sm:p-5">
+      <section className="app-panel space-y-4 p-3 sm:p-5">
         <header className="app-screen-header sm:items-start">
           <div className="app-screen-copy">
             <h2 className="app-screen-title">
@@ -458,6 +458,7 @@ export function ScheduleCalendar({
               mode="single"
               value={selectedCalendarDate}
               onChange={handleDateChange}
+              className="w-full sm:w-auto"
             />
             <Button
               type="button"

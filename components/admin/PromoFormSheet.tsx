@@ -331,9 +331,9 @@ export function PromoFormSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex h-full w-full max-w-[54rem] flex-col p-0"
+        className="app-sheet-content max-w-[54rem]"
       >
-        <div className="border-border shrink-0 border-b px-6 pt-6 pb-5">
+        <div className="app-sheet-header">
           <SheetTitle>{promo ? "Edit Promo" : "Add Promo"}</SheetTitle>
           <SheetDescription>
             Define the qualifying products, promo rule, criteria, and approval
@@ -341,10 +341,10 @@ export function PromoFormSheet({
           </SheetDescription>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="app-sheet-body">
           <form
             id="promo-form"
-            className="flex flex-col gap-6 p-6"
+            className="app-sheet-form"
             onSubmit={handleSubmit}
           >
             <FieldGroup>
@@ -639,7 +639,7 @@ export function PromoFormSheet({
                 </div>
               </Field>
 
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2">
                 <label className="border-border/70 bg-background/80 flex items-start gap-3 rounded-[calc(var(--radius)-0.2rem)] border px-3 py-3">
                   <Checkbox
                     checked={form.requiresAdminApproval}
@@ -695,15 +695,21 @@ export function PromoFormSheet({
           </form>
         </div>
 
-        <footer className="border-border flex shrink-0 justify-end gap-2 border-t p-4">
+        <footer className="app-sheet-footer">
           <Button
             type="button"
             variant="outline"
+            className="w-full sm:w-auto"
             onClick={() => onOpenChange(false)}
           >
             Cancel
           </Button>
-          <Button type="submit" form="promo-form" disabled={pending}>
+          <Button
+            type="submit"
+            form="promo-form"
+            className="w-full sm:w-auto"
+            disabled={pending}
+          >
             {pending ? (
               <Loader2 data-icon="inline-start" className="animate-spin" />
             ) : null}

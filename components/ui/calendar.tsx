@@ -16,8 +16,8 @@ function Calendar({
   ...props
 }: CalendarProps) {
   const mergedClassNames = {
-    months: "flex flex-col gap-3 sm:flex-row",
-    month: "flex flex-col gap-3",
+    months: "flex flex-col gap-2 sm:flex-row sm:gap-3",
+    month: "flex flex-col gap-2 sm:gap-3",
     month_caption: "relative flex items-center justify-center pt-1",
     caption_label: "text-sm font-medium",
     nav: "flex items-center gap-1",
@@ -31,12 +31,12 @@ function Calendar({
     ),
     month_grid: "w-full border-collapse space-y-1",
     weekdays: "flex",
-    weekday: "w-9 text-center text-[0.78rem] font-medium text-muted-foreground",
+    weekday: "w-8 text-center text-[0.78rem] font-medium text-muted-foreground sm:w-9",
     week: "mt-1 flex w-full",
-    day: "relative h-9 w-9 p-0 text-center text-sm [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-range-start)]:rounded-l-md [&:has([aria-selected])]:bg-primary/10 first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md",
+    day: "relative h-8 w-8 p-0 text-center text-sm sm:h-9 sm:w-9 [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-range-start)]:rounded-l-md [&:has([aria-selected])]:bg-primary/10 first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md",
     day_button: cn(
       buttonVariants({ variant: "ghost", size: "icon-xs" }),
-      "size-9 rounded-md p-0 font-normal aria-selected:opacity-100"
+      "size-8 rounded-md p-0 font-normal aria-selected:opacity-100 sm:size-9"
     ),
     range_start: "day-range-start",
     range_end: "day-range-end",
