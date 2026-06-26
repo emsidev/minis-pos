@@ -101,6 +101,38 @@ function TableRowsSkeleton({ rows = 6 }: { rows?: number }) {
   )
 }
 
+function SalesLedgerSkeleton({ rows = 8 }: { rows?: number }) {
+  return (
+    <div className="border-border/70 bg-card overflow-hidden rounded-[calc(var(--radius)+0.15rem)] border">
+      <div className="border-border/60 bg-muted/40 grid min-w-[62rem] grid-cols-[2.5rem_1.1fr_0.75fr_1.1fr_1fr_0.8fr_0.8fr_0.9fr_0.8fr_3rem] gap-3 border-b px-4 py-3">
+        {Array.from({ length: 10 }).map((_, index) => (
+          <Skeleton key={index} className="h-4 w-full max-w-24" />
+        ))}
+      </div>
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className="border-border/50 grid min-w-[62rem] grid-cols-[2.5rem_1.1fr_0.75fr_1.1fr_1fr_0.8fr_0.8fr_0.9fr_0.8fr_3rem] items-center gap-3 border-b px-4 py-4 last:border-b-0"
+        >
+          <Skeleton className="h-4 w-4 rounded-sm" />
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-6 w-20 rounded-full" />
+          <Skeleton className="h-6 w-24 rounded-full" />
+          <Skeleton className="ml-auto h-4 w-24" />
+          <Skeleton className="h-6 w-20 rounded-full" />
+          <Skeleton className="ml-auto h-8 w-8 rounded-full" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function ProductGridSkeleton({ count = 8 }: { count?: number }) {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
@@ -252,6 +284,62 @@ export function AdminTableRouteSkeleton() {
         </div>
         <TableRowsSkeleton rows={7} />
       </section>
+    </div>
+  )
+}
+
+export function AdminSalesRouteSkeleton() {
+  return (
+    <div className="app-page flex flex-col gap-6">
+      <header className="app-screen-header">
+        <div className="space-y-3">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-4 w-72 max-w-full" />
+        </div>
+        <div className="app-screen-actions">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <Skeleton className="h-10 w-full rounded-full sm:w-20" />
+            <Skeleton className="h-10 w-full rounded-full sm:w-24" />
+          </div>
+          <Skeleton className="h-10 w-full rounded-full sm:w-64" />
+        </div>
+      </header>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Card key={index}>
+            <CardHeader className="space-y-2">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-4 w-40" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-9 w-36" />
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+
+      <Card>
+        <CardHeader className="space-y-2">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-4 w-72 max-w-full" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="app-panel-muted flex flex-col gap-3 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <Skeleton className="h-10 w-full sm:max-w-sm" />
+              <Skeleton className="h-10 w-full sm:w-[190px]" />
+              <Skeleton className="h-10 w-full sm:w-[190px]" />
+              <Skeleton className="h-10 w-full sm:w-[190px]" />
+            </div>
+            <Skeleton className="h-9 w-full sm:w-28" />
+          </div>
+          <div className="overflow-x-auto">
+            <SalesLedgerSkeleton />
+          </div>
+          <Skeleton className="h-9 w-24" />
+        </CardContent>
+      </Card>
     </div>
   )
 }
