@@ -10,7 +10,8 @@ import {
   useTransition,
 } from "react"
 import { useRouter } from "next/navigation"
-import { Package, ShoppingBag, Store } from "lucide-react"
+import { Package, RefreshCw, ShoppingBag, Store, WifiOff } from "lucide-react"
+import { toast } from "sonner"
 import { useLiveQuery } from "dexie-react-hooks"
 
 import { CartProvider, useCart } from "@/components/pos/CartContext"
@@ -90,9 +91,30 @@ function CounterWorkspace({
   const [isPending, startTransition] = useTransition()
   const [mobileOrderOpen, setMobileOrderOpen] = useState(false)
   const [holdOptimisticInventory, setHoldOptimisticInventory] = useState(false)
+  const [isInventoryRefreshing, setIsInventoryRefreshing] = useState(false)
+  const [isOnline, setIsOnline] = useState(
+    typeof window === "undefined" ? true : window.navigator.onLine
+  )
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { items, syncProductStock, total } = useCart()
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const syncOnline = () => setIsOnline(window.navigator.onLine)
+    syncOnline()
+    window.addEventListener("online", syncOnline)
+    window.addEventListener("offline", syncOnline)
+
+    return () => {
+      window.removeEventListener("online", syncOnline)
+      window.removeEventListener("offline", syncOnline)
+    }
+  }, [])
+
+  // Prime the current server payload into Dexie. Network warm-up is owned by AppShell.
   useEffect(() => {
     const sync = async () => {
       try {
@@ -125,6 +147,7 @@ function CounterWorkspace({
         : Promise.resolve(null),
     [employeeId, preferCachedWorkspace]
   )
+
   const cachedShiftDetails = useLiveQuery<CachedShiftDetails>(
     () =>
       initialScheduleId
@@ -137,6 +160,7 @@ function CounterWorkspace({
           }),
     [initialScheduleId]
   )
+
   const hasInFlightScheduleOps = useLiveQuery(
     () =>
       initialScheduleId
@@ -145,6 +169,7 @@ function CounterWorkspace({
     [initialScheduleId],
     false
   )
+
   const cachedPromos = useLiveQuery(() => getCachedCounterPromos(), [], [])
 
   const serverWorkspace = {
@@ -153,31 +178,33 @@ function CounterWorkspace({
     boothId: initialBoothId,
     scheduleId: initialScheduleId,
   }
+
   const displayWorkspace = cachedWorkspace ?? serverWorkspace
   const cachedProducts = cachedShiftDetails?.products ?? []
   const hasCachedShift = Boolean(cachedShiftDetails?.schedule)
+
   const shouldUseOptimisticInventory =
-    typeof window !== "undefined" &&
-    window.navigator.onLine &&
+    isOnline &&
     !preferCachedWorkspace &&
     Boolean(initialScheduleId) &&
     hasCachedShift &&
     (cachedProducts.length > 0 ||
       hasInFlightScheduleOps ||
       holdOptimisticInventory)
+
   const displayProducts = (
     shouldUseOptimisticInventory && cachedProducts.length > 0
       ? cachedProducts
       : displayWorkspace.products
   ) as SellableProduct[]
+
   const displaySchedule =
     shouldUseOptimisticInventory && cachedShiftDetails?.schedule
       ? cachedShiftDetails.schedule
       : (cachedWorkspace?.schedule ?? initialSchedule)
+
   const displayPromos =
-    typeof window !== "undefined" &&
-    (!window.navigator.onLine || preferCachedWorkspace) &&
-    cachedPromos.length > 0
+    (!isOnline || preferCachedWorkspace) && cachedPromos.length > 0
       ? cachedPromos
       : initialPromos
 
@@ -187,30 +214,56 @@ function CounterWorkspace({
       ? getBoothDisplayName(displaySchedule.booths)
       : undefined) ??
     initialBoothName
+
   const displayBoothId =
     displayWorkspace.boothId ?? displaySchedule?.booth_id ?? initialBoothId
+
   const displayScheduleId = displayWorkspace.scheduleId ?? displaySchedule?.id
+
+  const showInventoryConnectionNotice =
+    Boolean(displayScheduleId) &&
+    showShiftInventoryEditor &&
+    (!isOnline || preferCachedWorkspace || preferCachedInventoryData)
 
   useEffect(() => {
     syncProductStock(displayProducts)
   }, [displayProducts, syncProductStock])
 
   const refreshActiveWorkspace = useCallback(async () => {
-    if (
-      !initialScheduleId ||
-      typeof window === "undefined" ||
-      !window.navigator.onLine
-    ) {
+    if (!displayScheduleId || !isOnline) {
+      return false
+    }
+
+    await refreshActiveShiftWorkspace(employeeId)
+    router.refresh()
+    return true
+  }, [displayScheduleId, employeeId, isOnline, router])
+
+  const handleRefreshInventoryData = async () => {
+    if (!displayScheduleId) {
       return
     }
 
-    try {
-      await refreshActiveShiftWorkspace(employeeId)
-      router.refresh()
-    } catch (error) {
-      console.warn("Active Counter refresh failed:", error)
+    if (!isOnline) {
+      toast.error("Reconnect to the internet before refreshing inventory.")
+      return
     }
-  }, [employeeId, initialScheduleId, router])
+
+    setIsInventoryRefreshing(true)
+
+    try {
+      const refreshed = await refreshActiveWorkspace()
+
+      if (refreshed) {
+        toast.success("Inventory refreshed.")
+      }
+    } catch (error) {
+      console.warn("Manual inventory refresh failed:", error)
+      toast.error("Unable to refresh inventory right now.")
+    } finally {
+      setIsInventoryRefreshing(false)
+    }
+  }
 
   const handleInventorySavePhaseChange = async (
     phase: "started" | "queued" | "reconciled"
@@ -220,8 +273,16 @@ function CounterWorkspace({
       return
     }
 
-    if (phase === "reconciled") {
+    if (phase !== "reconciled" || !displayScheduleId || !isOnline) {
+      setHoldOptimisticInventory(false)
+      return
+    }
+
+    try {
       await refreshActiveWorkspace()
+    } catch (error) {
+      console.warn("Counter inventory reconciliation failed:", error)
+    } finally {
       setHoldOptimisticInventory(false)
     }
   }
@@ -234,6 +295,7 @@ function CounterWorkspace({
   }, [displayProducts])
 
   const deferredCategory = useDeferredValue(activeCategory)
+
   const filteredProducts = useMemo(() => {
     if (deferredCategory === "All") {
       return displayProducts
@@ -254,6 +316,7 @@ function CounterWorkspace({
   const orderSidebarScheduleId =
     canSell && inventoryReady ? displayScheduleId : undefined
   const orderSidebarSchedule = canSell ? displaySchedule : undefined
+
   const shiftStarted = displaySchedule
     ? getBusinessShiftState(displaySchedule, {
         inventoryReady,
@@ -263,16 +326,52 @@ function CounterWorkspace({
       }).isOperational
     : false
 
+  const inventoryConnectionNotice = showInventoryConnectionNotice ? (
+    <div className="border-warning/30 bg-warning/8 text-warning-foreground flex flex-col gap-3 rounded-2xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+        <div className="bg-warning/10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full">
+          {isOnline ? (
+            <RefreshCw className="h-4 w-4" />
+          ) : (
+            <WifiOff className="h-4 w-4" />
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-semibold">
+            {isOnline ? "Inventory data may be stale" : "Inventory is offline"}
+          </p>
+          <p className="mt-1 text-xs leading-5">
+            {isOnline
+              ? "Refresh live stock before charging if this booth was updated from another device."
+              : "Reconnect to refresh live stock before charging."}
+          </p>
+        </div>
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="shrink-0 rounded-full px-3 text-[0.65rem] font-semibold tracking-[0.18em] uppercase"
+        disabled={isInventoryRefreshing || !isOnline}
+        onClick={() => void handleRefreshInventoryData()}
+      >
+        <RefreshCw
+          data-icon="inline-start"
+          className={isInventoryRefreshing ? "animate-spin" : undefined}
+        />
+        {isOnline ? "Refresh Inventory" : "Reconnect"}
+      </Button>
+    </div>
+  ) : null
+
   useEffect(() => {
-    if (
-      !initialScheduleId ||
-      typeof window === "undefined" ||
-      !window.navigator.onLine
-    ) {
+    if (!initialScheduleId || !isOnline) {
       return
     }
 
     const supabase = createClient()
+
     const scheduleRefresh = () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current)
@@ -280,7 +379,9 @@ function CounterWorkspace({
 
       refreshTimerRef.current = setTimeout(() => {
         refreshTimerRef.current = null
-        void refreshActiveWorkspace()
+        void refreshActiveWorkspace().catch((error) => {
+          console.warn("Active Counter refresh failed:", error)
+        })
       }, 300)
     }
 
@@ -298,17 +399,29 @@ function CounterWorkspace({
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "products" },
+        {
+          event: "*",
+          schema: "public",
+          table: "products",
+        },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "promos" },
+        {
+          event: "*",
+          schema: "public",
+          table: "promos",
+        },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "promo_products" },
+        {
+          event: "*",
+          schema: "public",
+          table: "promo_products",
+        },
         scheduleRefresh
       )
       .on(
@@ -377,9 +490,10 @@ function CounterWorkspace({
         clearTimeout(refreshTimerRef.current)
         refreshTimerRef.current = null
       }
+
       void supabase.removeChannel(channel)
     }
-  }, [employeeId, initialScheduleId, refreshActiveWorkspace])
+  }, [employeeId, initialScheduleId, isOnline, refreshActiveWorkspace])
 
   if (
     displaySchedule &&
@@ -396,6 +510,9 @@ function CounterWorkspace({
             Add opening stock before the first sale.
           </p>
         </div>
+
+        {inventoryConnectionNotice}
+
         <ShiftInventoryEditor
           schedule={displaySchedule}
           inventoryProducts={displayProducts as Product[]}
@@ -433,6 +550,7 @@ function CounterWorkspace({
                       {productCountLabel}
                     </p>
                   </div>
+
                   <div className="app-panel-muted flex items-center gap-3 px-4 py-3">
                     <div className="bg-secondary/10 text-secondary flex h-10 w-10 items-center justify-center rounded-full">
                       <ShoppingBag className="h-4 w-4" />
@@ -446,6 +564,8 @@ function CounterWorkspace({
                 </div>
               </div>
             </div>
+
+            {inventoryConnectionNotice}
 
             <CategoryTabs
               categories={categories}
@@ -521,6 +641,7 @@ function CounterWorkspace({
                   ? "No items"
                   : `${items.length} item${items.length === 1 ? "" : "s"}`}
               </p>
+
               {items.length > 0 ? (
                 <Badge className="rounded-full px-2.5 py-1 text-[0.62rem] font-semibold tracking-[0.18em] uppercase">
                   {formatCurrency(total)}
@@ -551,6 +672,7 @@ function CounterWorkspace({
               Review cart items, payment method, and complete the sale.
             </SheetDescription>
           </div>
+
           <OrderSidebar
             boothId={orderSidebarBoothId}
             employeeId={employeeId}
