@@ -1,17 +1,16 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react"
 import { useRouter } from "next/navigation"
 import type { ColumnDef } from "@tanstack/react-table"
-import {
-  Copy,
-  Ellipsis,
-  Loader2,
-  Store,
-  Trash2,
-  UserRound,
-  Wallet,
-} from "lucide-react"
+import { Copy, Ellipsis, Store, Trash2, UserRound, Wallet } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -51,6 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import type {
   AdminSalesLedgerData,
   AdminSalesLedgerRow,
@@ -116,11 +116,28 @@ function buildSalesRoute(
   return query.length > 0 ? `/admin/sales?${query}` : "/admin/sales"
 }
 
+function SalesSummarySkeleton() {
+  return (
+    <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <Card key={index}>
+          <CardHeader className="space-y-2">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-4 w-40" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-9 w-36" />
+          </CardContent>
+        </Card>
+      ))}
+    </section>
+  )
+}
+
 export function AdminSalesClient({ data }: AdminSalesClientProps) {
   const router = useRouter()
+  const loadRunRef = useRef(0)
   const [rows, setRows] = useState(data.rows)
-  const [nextCursor, setNextCursor] = useState(data.nextCursor)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [selectedRange, setSelectedRange] = useState<DateRangePickerValue>({
     startDate: data.startDate,
     endDate: data.endDate,
@@ -142,13 +159,59 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
 
   useEffect(() => {
     setRows(data.rows)
-    setNextCursor(data.nextCursor)
     setSelectedRange({
       startDate: data.startDate,
       endDate: data.endDate,
     })
     setSelectedSaleIds([])
-  }, [data.endDate, data.nextCursor, data.rows, data.startDate])
+  }, [data.endDate, data.rows, data.startDate, data.view])
+
+  useEffect(() => {
+    let cancelled = false
+    const runId = ++loadRunRef.current
+
+    async function loadRemainingSales() {
+      let cursor = data.nextCursor
+
+      if (!cursor) {
+        return
+      }
+
+      const byId = new Map(data.rows.map((row) => [row.id, row]))
+
+      try {
+        while (cursor && !cancelled && loadRunRef.current === runId) {
+          const page = await loadAdminSalesPage(
+            data.startDate,
+            data.endDate,
+            cursor,
+            data.view
+          )
+
+          for (const row of page.rows) {
+            byId.set(row.id, row)
+          }
+
+          cursor = page.nextCursor
+
+          if (!cancelled && loadRunRef.current === runId) {
+            setRows(Array.from(byId.values()))
+          }
+        }
+      } catch (error) {
+        if (!cancelled && loadRunRef.current === runId) {
+          console.error("Unable to load all sales:", error)
+          toast.error("Unable to load all sales.")
+        }
+      }
+    }
+
+    void loadRemainingSales()
+
+    return () => {
+      cancelled = true
+    }
+  }, [data.endDate, data.nextCursor, data.rows, data.startDate, data.view])
 
   useEffect(() => {
     setBoothFilter("all")
@@ -230,35 +293,6 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       current.filter((saleId) => filteredSaleIds.has(saleId))
     )
   }, [filteredSaleIds])
-
-  const handleLoadMore = async () => {
-    if (!nextCursor || isLoadingMore) {
-      return
-    }
-
-    setIsLoadingMore(true)
-    try {
-      const page = await loadAdminSalesPage(
-        data.startDate,
-        data.endDate,
-        nextCursor,
-        data.view
-      )
-      setRows((current) => {
-        const byId = new Map(current.map((row) => [row.id, row]))
-        for (const row of page.rows) {
-          byId.set(row.id, row)
-        }
-        return Array.from(byId.values())
-      })
-      setNextCursor(page.nextCursor)
-    } catch (error) {
-      console.error("Unable to load more sales:", error)
-      toast.error("Unable to load more sales.")
-    } finally {
-      setIsLoadingMore(false)
-    }
-  }
 
   const summary = useMemo(() => {
     const cashRevenue = filteredRows.reduce((total, row) => {
@@ -452,7 +486,8 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
     ].join(" ")
   }, [])
 
-  const columns = useMemo<ColumnDef<AdminSalesLedgerRow>[]>(
+  const columns = useMemo<ColumnDef<AdminSalesLedgerRow>[]>
+    (
     () => [
       {
         id: "select",
@@ -713,74 +748,71 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
       </header>
 
       {isPending ? (
-        <div className="app-banner">
-          <Loader2 className="text-primary animate-spin" />
-          Loading sales data...
-        </div>
-      ) : null}
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {isTrashView ? "Deleted Value" : "Total Revenue"}
-            </CardTitle>
-            <CardDescription>
-              {isTrashView ? "Visible deleted sales" : "Visible filtered sales"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-primary text-3xl font-semibold">
-              {formatCurrency(summary.revenue)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {isTrashView ? "Deleted Rows" : "Transactions"}
-            </CardTitle>
-            <CardDescription>Rows matching current filters</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-foreground text-3xl font-semibold">
-              {summary.saleCount}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {isTrashView ? "Deleted Cash" : "Cash Revenue"}
-            </CardTitle>
-            <CardDescription>
-              {isTrashView ? "Cash sales in trash" : "Cash-only totals"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-foreground text-3xl font-semibold">
-              {formatCurrency(summary.cashRevenue)}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {isTrashView ? "Deleted Non-Cash" : "Non-Cash Revenue"}
-            </CardTitle>
-            <CardDescription>
-              {isTrashView
-                ? "Non-cash sales in trash"
-                : "Receipt-backed totals"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-foreground text-3xl font-semibold">
-              {formatCurrency(summary.nonCashRevenue)}
-            </p>
-          </CardContent>
-        </Card>
-      </section>
+        <SalesSummarySkeleton />
+      ) : (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {isTrashView ? "Deleted Value" : "Total Revenue"}
+              </CardTitle>
+              <CardDescription>
+                {isTrashView ? "Visible deleted sales" : "Visible filtered sales"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-primary text-3xl font-semibold">
+                {formatCurrency(summary.revenue)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {isTrashView ? "Deleted Rows" : "Transactions"}
+              </CardTitle>
+              <CardDescription>Rows matching current filters</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-foreground text-3xl font-semibold">
+                {summary.saleCount}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {isTrashView ? "Deleted Cash" : "Cash Revenue"}
+              </CardTitle>
+              <CardDescription>
+                {isTrashView ? "Cash sales in trash" : "Cash-only totals"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-foreground text-3xl font-semibold">
+                {formatCurrency(summary.cashRevenue)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {isTrashView ? "Deleted Non-Cash" : "Non-Cash Revenue"}
+              </CardTitle>
+              <CardDescription>
+                {isTrashView
+                  ? "Non-cash sales in trash"
+                  : "Receipt-backed totals"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-foreground text-3xl font-semibold">
+                {formatCurrency(summary.nonCashRevenue)}
+              </p>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       <Card>
         <CardHeader>
@@ -803,6 +835,8 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
                 : "No sales match the current filters."
             }
             initialSorting={[{ id: "createdAt", desc: true }]}
+            isLoading={isPending}
+            loadingRowCount={10}
             toolbarContent={
               <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <Select
@@ -921,21 +955,6 @@ export function AdminSalesClient({ data }: AdminSalesClientProps) {
               </div>
             }
           />
-          {nextCursor ? (
-            <div className="mt-4 flex justify-center">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isLoadingMore}
-                onClick={() => void handleLoadMore()}
-              >
-                {isLoadingMore ? (
-                  <Loader2 data-icon="inline-start" className="animate-spin" />
-                ) : null}
-                Load 100 More
-              </Button>
-            </div>
-          ) : null}
         </CardContent>
       </Card>
       <ConfirmDialog
