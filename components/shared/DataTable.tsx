@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -50,6 +51,8 @@ type DataTableProps<TData, TValue> = {
   showSearch?: boolean
   showColumnVisibility?: boolean
   enablePagination?: boolean
+  isLoading?: boolean
+  loadingRowCount?: number
   getSearchText?: (row: TData) => string
 }
 
@@ -86,6 +89,37 @@ function getColumnLabel(columnId: string) {
     .replace(/\b\w/g, (character) => character.toUpperCase())
 }
 
+function renderSkeletonCell(columnId: string, cellIndex: number) {
+  if (columnId === "select") {
+    return <Skeleton className="h-4 w-4 rounded-sm" />
+  }
+
+  if (columnId === "actions") {
+    return (
+      <div className="flex justify-end">
+        <Skeleton className="h-8 w-8 rounded-full" />
+      </div>
+    )
+  }
+
+  if (cellIndex === 0) {
+    return (
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-40 max-w-full" />
+        <Skeleton className="h-3 w-24 max-w-full" />
+      </div>
+    )
+  }
+
+  const widths = ["w-24", "w-32", "w-20", "w-28", "w-36"]
+
+  return (
+    <Skeleton
+      className={`h-4 max-w-full ${widths[cellIndex % widths.length]}`}
+    />
+  )
+}
+
 export function DataTable<TData, TValue>({
   columns,
   data,
@@ -98,6 +132,8 @@ export function DataTable<TData, TValue>({
   showSearch = true,
   showColumnVisibility = true,
   enablePagination = true,
+  isLoading = false,
+  loadingRowCount = pageSize,
   getSearchText,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting)
@@ -109,6 +145,7 @@ export function DataTable<TData, TValue>({
     pageSize,
   })
   const deferredGlobalFilter = useDeferredValue(globalFilter)
+
   const searchTextCache = useMemo(() => {
     const nextCache = new WeakMap<object, string>()
 
@@ -182,12 +219,16 @@ export function DataTable<TData, TValue>({
     .getAllColumns()
     .filter((column) => column.getCanHide())
 
-  const visibleColumnCount = table.getVisibleLeafColumns().length || 1
+  const visibleColumns = table.getVisibleLeafColumns()
+  const visibleColumnCount = visibleColumns.length || 1
   const showToolbar =
     showSearch || showColumnVisibility || Boolean(toolbarContent)
   const filteredRowCount = table.getFilteredRowModel().rows.length
   const showPagination =
-    enablePagination && table.getPageCount() > 1 && filteredRowCount > 0
+    !isLoading &&
+    enablePagination &&
+    table.getPageCount() > 1 &&
+    filteredRowCount > 0
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -258,7 +299,17 @@ export function DataTable<TData, TValue>({
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows.length > 0 ? (
+              {isLoading ? (
+                Array.from({ length: loadingRowCount }).map((_, rowIndex) => (
+                  <TableRow key={`skeleton-${rowIndex}`}>
+                    {visibleColumns.map((column, cellIndex) => (
+                      <TableCell key={column.id}>
+                        {renderSkeletonCell(column.id, cellIndex)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : table.getRowModel().rows.length > 0 ? (
                 table.getRowModel().rows.map((row) => (
                   <TableRow key={row.id}>
                     {row.getVisibleCells().map((cell) => (
@@ -287,10 +338,14 @@ export function DataTable<TData, TValue>({
       </div>
 
       <div className="text-muted-foreground bg-muted/25 flex flex-col gap-3 rounded-[calc(var(--radius)-0.25rem)] px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-        <p>
-          {filteredRowCount} result
-          {filteredRowCount === 1 ? "" : "s"}
-        </p>
+        {isLoading ? (
+          <Skeleton className="h-4 w-20" />
+        ) : (
+          <p>
+            {filteredRowCount} result
+            {filteredRowCount === 1 ? "" : "s"}
+          </p>
+        )}
 
         {showPagination ? (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
