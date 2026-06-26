@@ -8,6 +8,7 @@ import type { AdminProductRecord } from "@/lib/adminProducts"
 import type { EmployeeRole } from "@/lib/domain-types"
 import type { EmployeeApprovalStatus } from "@/lib/employeeApproval"
 import type { Booth } from "@/lib/shifts"
+import { createClientId } from "./utils"
 
 export type ProductDraftInput = {
   id?: string
@@ -188,8 +189,7 @@ export function buildOptimisticScheduleCalendarItems(
     const scheduleId =
       "id" in input && input.id
         ? input.id
-        : (optimisticIds?.[index] ??
-          `optimistic-schedule-${crypto.randomUUID()}`)
+        : (optimisticIds?.[index] ?? `optimistic-schedule-${createClientId()}`)
 
     return {
       id: scheduleId,

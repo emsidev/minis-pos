@@ -18,11 +18,13 @@ import {
   type LocalPromo,
   type LocalPromoProduct,
   type LocalSale,
+  type LocalSalePayment,
   type LocalSaleItem,
   type LocalSyncFailureKind,
   type LocalSyncState,
 } from "./db"
 import {
+  createClientId,
   getBusinessDate,
   getBusinessTime,
   hasStartedOperatorPeriod,
@@ -50,7 +52,9 @@ function normalizeInventoryEventType(value: string): InventoryEventType {
   }
 }
 
-function normalizePaymentMethod(value: string | null | undefined): PaymentMethod {
+function normalizePaymentMethod(
+  value: string | null | undefined
+): PaymentMethod {
   switch (value) {
     case "cash":
     case "gcash":
@@ -168,6 +172,7 @@ type ActiveShiftWorkspacePayload = {
   scheduleProducts: LocalBoothScheduleProduct[]
   products: Database["public"]["Tables"]["products"]["Row"][]
   sales: Database["public"]["Tables"]["sales"]["Row"][]
+  salePayments: Database["public"]["Tables"]["sale_payments"]["Row"][]
   saleItems: Database["public"]["Tables"]["sale_items"]["Row"][]
 }
 
@@ -189,6 +194,10 @@ function readFirstSyncErrorString(values: unknown[]) {
   }
 
   return null
+}
+
+function roundCurrency(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
 function readSyncErrorMessage(error: unknown) {
@@ -492,7 +501,7 @@ export async function primeLocalShiftInventory(
 
       await db.boothScheduleProducts.bulkPut(
         inventoryProducts.map((product) => ({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           schedule_id: schedule.id,
           product_id: product.id,
           quantity: product.quantity ?? 0,
@@ -542,6 +551,7 @@ async function cacheActiveShiftWorkspace({
   scheduleProducts,
   products,
   sales,
+  salePayments,
   saleItems,
 }: ActiveShiftWorkspacePayload) {
   const pendingScheduleOperations = await hasPendingOperations(activeShift.id)
@@ -592,6 +602,15 @@ async function cacheActiveShiftWorkspace({
       subtotal: Number(item.subtotal),
       stock_before: null,
     }))
+  const cachedSalePayments = salePayments.map<LocalSalePayment>((payment) => ({
+    id: payment.id,
+    sale_id: payment.sale_id,
+    payment_method: normalizePaymentMethod(payment.payment_method),
+    amount: Number(payment.amount),
+    receipt_photo_local: null,
+    receipt_photo_path: payment.receipt_photo_path,
+    created_at: payment.created_at,
+  }))
 
   await db.transaction(
     "rw",
@@ -603,6 +622,7 @@ async function cacheActiveShiftWorkspace({
       db.boothScheduleOperatorPeriods,
       db.boothScheduleProducts,
       db.sales,
+      db.salePayments,
       db.saleItems,
     ],
     async () => {
@@ -659,6 +679,7 @@ async function cacheActiveShiftWorkspace({
       )
 
       if (saleIdsToClear.length > 0) {
+        await db.salePayments.where("sale_id").anyOf(saleIdsToClear).delete()
         await db.saleItems.where("sale_id").anyOf(saleIdsToClear).delete()
       }
       if (replaceableSaleIds.length > 0) {
@@ -666,6 +687,9 @@ async function cacheActiveShiftWorkspace({
       }
       if (cachedSales.length > 0) {
         await db.sales.bulkPut(cachedSales)
+      }
+      if (cachedSalePayments.length > 0) {
+        await db.salePayments.bulkPut(cachedSalePayments)
       }
       if (cachedSaleItems.length > 0) {
         await db.saleItems.bulkPut(cachedSaleItems)
@@ -729,12 +753,21 @@ export async function refreshActiveShiftWorkspace(employeeId: string) {
   const sales = (salesResult.data ??
     []) as Database["public"]["Tables"]["sales"]["Row"][]
   const saleIds = sales.map((sale) => sale.id)
-  const saleItemsResult =
+  const [saleItemsResult, salePaymentsResult] = await Promise.all([
     saleIds.length > 0
-      ? await supabase.from("sale_items").select("*").in("sale_id", saleIds)
-      : { data: [], error: null }
+      ? supabase.from("sale_items").select("*").in("sale_id", saleIds)
+      : Promise.resolve({ data: [], error: null }),
+    saleIds.length > 0
+      ? supabase
+          .from("sale_payments")
+          .select("*")
+          .in("sale_id", saleIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+  ])
 
   if (saleItemsResult.error) throw saleItemsResult.error
+  if (salePaymentsResult.error) throw salePaymentsResult.error
 
   await cacheActiveShiftWorkspace({
     activeShift,
@@ -742,6 +775,8 @@ export async function refreshActiveShiftWorkspace(employeeId: string) {
     products: (productsResult.data ??
       []) as Database["public"]["Tables"]["products"]["Row"][],
     sales,
+    salePayments: (salePaymentsResult.data ??
+      []) as Database["public"]["Tables"]["sale_payments"]["Row"][],
     saleItems: (saleItemsResult.data ??
       []) as Database["public"]["Tables"]["sale_items"]["Row"][],
   })
@@ -808,12 +843,14 @@ async function pruneOfflineCache(
       db.boothScheduleOperatorPeriods,
       db.boothScheduleProducts,
       db.sales,
+      db.salePayments,
       db.saleItems,
       db.inventoryEvents,
       db.inventoryEventLines,
     ],
     async () => {
       if (saleIds.length > 0) {
+        await db.salePayments.where("sale_id").anyOf(saleIds).delete()
         await db.saleItems.where("sale_id").anyOf(saleIds).delete()
         await db.sales.bulkDelete(saleIds)
       }
@@ -906,27 +943,39 @@ export async function bootstrapEmployeeOfflineData(
 
   report(2, 5, "Syncing booth inventory...")
 
-  const [scheduleProductsResult, saleItemsResult, inventoryEventsResult] =
-    await Promise.all([
-      scheduleIds.length > 0
-        ? supabase
-            .from("booth_schedule_products")
-            .select("*")
-            .in("schedule_id", scheduleIds)
-        : Promise.resolve({ data: [], error: null }),
-      saleIds.length > 0
-        ? supabase.from("sale_items").select("*").in("sale_id", saleIds)
-        : Promise.resolve({ data: [], error: null }),
-      scheduleIds.length > 0
-        ? supabase
-            .from("inventory_events")
-            .select("*")
-            .in("schedule_id", scheduleIds)
-        : Promise.resolve({ data: [], error: null }),
-    ])
+  const [
+    scheduleProductsResult,
+    saleItemsResult,
+    salePaymentsResult,
+    inventoryEventsResult,
+  ] = await Promise.all([
+    scheduleIds.length > 0
+      ? supabase
+          .from("booth_schedule_products")
+          .select("*")
+          .in("schedule_id", scheduleIds)
+      : Promise.resolve({ data: [], error: null }),
+    saleIds.length > 0
+      ? supabase.from("sale_items").select("*").in("sale_id", saleIds)
+      : Promise.resolve({ data: [], error: null }),
+    saleIds.length > 0
+      ? supabase
+          .from("sale_payments")
+          .select("*")
+          .in("sale_id", saleIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    scheduleIds.length > 0
+      ? supabase
+          .from("inventory_events")
+          .select("*")
+          .in("schedule_id", scheduleIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
 
   if (scheduleProductsResult.error) throw scheduleProductsResult.error
   if (saleItemsResult.error) throw saleItemsResult.error
+  if (salePaymentsResult.error) throw salePaymentsResult.error
   if (inventoryEventsResult.error) throw inventoryEventsResult.error
 
   const scheduleProducts = (scheduleProductsResult.data ??
@@ -1004,6 +1053,17 @@ export async function bootstrapEmployeeOfflineData(
     created_at: sale.created_at,
     updated_at: sale.updated_at,
   }))
+  const cachedSalePayments = (
+    salePaymentsResult.data ?? []
+  ).map<LocalSalePayment>((payment) => ({
+    id: payment.id,
+    sale_id: payment.sale_id,
+    payment_method: normalizePaymentMethod(payment.payment_method),
+    amount: Number(payment.amount),
+    receipt_photo_local: null,
+    receipt_photo_path: payment.receipt_photo_path,
+    created_at: payment.created_at,
+  }))
   const cachedSaleItems = saleItems.map<LocalSaleItem>((item) => ({
     id: item.id,
     sale_id: item.sale_id,
@@ -1055,6 +1115,7 @@ export async function bootstrapEmployeeOfflineData(
       db.boothScheduleProducts,
       db.products,
       db.sales,
+      db.salePayments,
       db.saleItems,
       db.inventoryEvents,
       db.inventoryEventLines,
@@ -1073,6 +1134,9 @@ export async function bootstrapEmployeeOfflineData(
       }
       if (cachedProducts.length > 0) await db.products.bulkPut(cachedProducts)
       if (cachedSales.length > 0) await db.sales.bulkPut(cachedSales)
+      if (cachedSalePayments.length > 0) {
+        await db.salePayments.bulkPut(cachedSalePayments)
+      }
       if (cachedSaleItems.length > 0)
         await db.saleItems.bulkPut(cachedSaleItems)
       if (cachedInventoryEvents.length > 0) {
@@ -1174,7 +1238,7 @@ export async function saveInventoryEventLocally(
 ): Promise<LocalInventoryEvent> {
   const occurredAt = new Date().toISOString()
   const event: LocalInventoryEvent = {
-    id: crypto.randomUUID(),
+    id: createClientId(),
     schedule_id: data.scheduleId,
     actor_employee_id: data.employeeId,
     event_type: data.eventType,
@@ -1246,7 +1310,7 @@ export async function saveInventoryEventLocally(
         data.currentInventory.length > 0
       ) {
         currentRows = data.currentInventory.map((product) => ({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           schedule_id: data.scheduleId,
           product_id: product.id,
           quantity: product.quantity ?? 0,
@@ -1301,7 +1365,7 @@ export async function saveInventoryEventLocally(
         const nextRow: LocalBoothScheduleProduct = current
           ? { ...current, stock: line.resultingStock }
           : {
-              id: crypto.randomUUID(),
+              id: createClientId(),
               schedule_id: data.scheduleId,
               product_id: line.productId,
               quantity: data.eventType === "opening" ? line.resultingStock : 0,
@@ -1310,7 +1374,7 @@ export async function saveInventoryEventLocally(
             }
         await db.boothScheduleProducts.put(nextRow)
         lines.push({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           event_id: event.id,
           product_id: line.productId,
           previous_stock: previousStock,
@@ -1365,7 +1429,10 @@ export async function pushInventoryEventToSupabase(
         resulting_stock: line.resulting_stock,
       })) satisfies Json,
     } as unknown as Database["public"]["Functions"]["record_shift_inventory_event"]["Args"]
-    const { error } = await supabase.rpc("record_shift_inventory_event", rpcArgs)
+    const { error } = await supabase.rpc(
+      "record_shift_inventory_event",
+      rpcArgs
+    )
 
     if (error) throw error
 
@@ -1405,6 +1472,12 @@ export type LocalSalePayload = {
   scheduleId: string
   totalAmount: number
   paymentMethod: PaymentMethod
+  payments: {
+    id?: string
+    paymentMethod: PaymentMethod
+    amount: number
+    receiptPhotoLocal?: string | null
+  }[]
   promoId?: string | null
   promoName?: string | null
   promoType?: string | null
@@ -1417,13 +1490,54 @@ export type LocalSalePayload = {
     basePrice: number
     discountAmount: number
   }[]
-  receiptPhotoLocal?: string
+}
+
+function validateLocalSalePayments(
+  payments: LocalSalePayload["payments"],
+  totalAmount: number
+) {
+  if (payments.length === 0) {
+    throw new Error("At least one payment is required.")
+  }
+
+  const hasInvalidAmounts = payments.some(
+    (payment) =>
+      !Number.isFinite(payment.amount) || roundCurrency(payment.amount) <= 0
+  )
+
+  if (hasInvalidAmounts) {
+    throw new Error("Each payment must be greater than zero.")
+  }
+
+  const paymentTotal = roundCurrency(
+    payments.reduce((sum, payment) => sum + roundCurrency(payment.amount), 0)
+  )
+
+  if (Math.abs(paymentTotal - roundCurrency(totalAmount)) >= 0.01) {
+    throw new Error("Payment amounts must match the sale total.")
+  }
+
+  const missingReceipt = payments.some(
+    (payment) =>
+      payment.paymentMethod !== "cash" &&
+      (!payment.receiptPhotoLocal ||
+        payment.receiptPhotoLocal.trim().length === 0)
+  )
+
+  if (missingReceipt) {
+    throw new Error("Each non-cash payment needs its own receipt photo.")
+  }
 }
 
 export async function saveSaleLocally(
   data: LocalSalePayload
 ): Promise<LocalSale> {
+  validateLocalSalePayments(data.payments, data.totalAmount)
+
   const now = new Date().toISOString()
+  const summaryReceiptPhotoLocal =
+    data.payments.find((payment) => payment.paymentMethod !== "cash")
+      ?.receiptPhotoLocal ?? null
   const sale: LocalSale = {
     id: data.id,
     booth_id: data.boothId,
@@ -1436,7 +1550,7 @@ export async function saveSaleLocally(
     promo_type: data.promoType ?? null,
     promo_discount_total: data.promoDiscountTotal ?? 0,
     promo_approval_id: data.promoApprovalId ?? null,
-    receipt_photo_local: data.receiptPhotoLocal ?? null,
+    receipt_photo_local: summaryReceiptPhotoLocal,
     receipt_photo_path: null,
     status: "completed",
     sync_state: "pending",
@@ -1447,10 +1561,22 @@ export async function saveSaleLocally(
     created_at: now,
     updated_at: now,
   }
+  const salePayments: LocalSalePayment[] = data.payments.map((payment) => ({
+    id: payment.id ?? createClientId(),
+    sale_id: data.id,
+    payment_method: payment.paymentMethod,
+    amount: roundCurrency(payment.amount),
+    receipt_photo_local:
+      payment.paymentMethod === "cash"
+        ? null
+        : (payment.receiptPhotoLocal ?? null),
+    receipt_photo_path: null,
+    created_at: now,
+  }))
 
   await db.transaction(
     "rw",
-    [db.sales, db.saleItems, db.boothScheduleProducts],
+    [db.sales, db.saleItems, db.salePayments, db.boothScheduleProducts],
     async () => {
       const saleItems: LocalSaleItem[] = []
 
@@ -1465,7 +1591,7 @@ export async function saveSaleLocally(
         }
 
         saleItems.push({
-          id: crypto.randomUUID(),
+          id: createClientId(),
           sale_id: data.id,
           product_id: item.productId,
           quantity: item.quantity,
@@ -1482,6 +1608,7 @@ export async function saveSaleLocally(
 
       await db.sales.put(sale)
       await db.saleItems.bulkPut(saleItems)
+      await db.salePayments.bulkPut(salePayments)
     }
   )
 
@@ -1547,7 +1674,10 @@ export async function pushSaleToSupabase(
     return { synced: true }
   }
 
-  const items = await db.saleItems.where("sale_id").equals(saleId).toArray()
+  const [items, storedPayments] = await Promise.all([
+    db.saleItems.where("sale_id").equals(saleId).toArray(),
+    db.salePayments.where("sale_id").equals(saleId).sortBy("created_at"),
+  ])
 
   try {
     await db.sales.update(saleId, {
@@ -1557,41 +1687,85 @@ export async function pushSaleToSupabase(
       sync_next_retry_at: null,
     })
 
-    let receiptPhotoPath = sale.receipt_photo_path
-    const previousReceiptPhotoPath = sale.receipt_photo_path
+    const localPayments =
+      storedPayments.length > 0
+        ? storedPayments
+        : [
+            {
+              id: sale.id,
+              sale_id: sale.id,
+              payment_method: normalizePaymentMethod(sale.payment_method),
+              amount: roundCurrency(sale.total_amount),
+              receipt_photo_local: sale.receipt_photo_local,
+              receipt_photo_path: sale.receipt_photo_path,
+              created_at: sale.created_at ?? new Date().toISOString(),
+            } satisfies LocalSalePayment,
+          ]
+    const syncedPayments: LocalSalePayment[] = []
+    const receiptPathsToCleanup: string[] = []
 
-    if (sale.receipt_photo_local) {
-      const uploadResult = await uploadReceiptPhotoForSale(
-        sale.id,
-        sale.receipt_photo_local
-      )
+    for (const payment of localPayments) {
+      let receiptPhotoPath =
+        payment.payment_method === "cash" ? null : payment.receipt_photo_path
+      const previousReceiptPhotoPath = payment.receipt_photo_path
 
-      if (!uploadResult.ok || !uploadResult.receiptPhotoPath) {
-        console.error("Receipt photo upload failed for sale sync.", {
-          saleId: sale.id,
-          scheduleId: sale.schedule_id,
-          employeeId: sale.employee_id,
-          error: uploadResult.error ?? "Missing receipt photo path.",
+      if (payment.payment_method !== "cash" && payment.receipt_photo_local) {
+        const uploadResult = await uploadReceiptPhotoForSale(
+          sale.id,
+          payment.receipt_photo_local,
+          payment.id
+        )
+
+        if (!uploadResult.ok || !uploadResult.receiptPhotoPath) {
+          console.error("Receipt photo upload failed for sale sync.", {
+            saleId: sale.id,
+            scheduleId: sale.schedule_id,
+            employeeId: sale.employee_id,
+            paymentId: payment.id,
+            error: uploadResult.error ?? "Missing receipt photo path.",
+          })
+          throw new Error(
+            uploadResult.error ??
+              "RECEIPT_PHOTO_UPLOAD_FAILED: Missing receipt photo path."
+          )
+        }
+
+        receiptPhotoPath = uploadResult.receiptPhotoPath
+
+        await db.salePayments.update(payment.id, {
+          receipt_photo_path: receiptPhotoPath,
+          receipt_photo_local: null,
         })
+      }
+
+      if (payment.payment_method !== "cash" && !receiptPhotoPath) {
         throw new Error(
-          uploadResult.error ??
-            "RECEIPT_PHOTO_UPLOAD_FAILED: Missing receipt photo path."
+          "A receipt photo is required before syncing a non-cash sale."
         )
       }
 
-      receiptPhotoPath = uploadResult.receiptPhotoPath
+      if (
+        payment.receipt_photo_local &&
+        previousReceiptPhotoPath &&
+        previousReceiptPhotoPath !== receiptPhotoPath
+      ) {
+        receiptPathsToCleanup.push(previousReceiptPhotoPath)
+      }
 
-      await db.sales.update(saleId, {
+      syncedPayments.push({
+        ...payment,
         receipt_photo_path: receiptPhotoPath,
         receipt_photo_local: null,
       })
     }
 
-    if (sale.payment_method !== "cash" && !receiptPhotoPath) {
-      throw new Error(
-        "A receipt photo is required before syncing a non-cash sale."
-      )
-    }
+    const summaryPaymentMethod: PaymentMethod =
+      syncedPayments.length === 1
+        ? normalizePaymentMethod(syncedPayments[0].payment_method)
+        : "other"
+    const receiptPhotoPath =
+      syncedPayments.find((payment) => payment.payment_method !== "cash")
+        ?.receipt_photo_path ?? null
 
     const aggregatedItems = Array.from(
       items
@@ -1640,10 +1814,17 @@ export async function pushSaleToSupabase(
       saleId: sale.id,
       boothId: sale.booth_id,
       scheduleId: sale.schedule_id,
-      paymentMethod: normalizePaymentMethod(sale.payment_method),
+      paymentMethod: summaryPaymentMethod,
       receiptPhotoPath,
       createdAt: sale.created_at,
       items: aggregatedItems,
+      payments: syncedPayments.map((payment) => ({
+        id: payment.id,
+        paymentMethod: normalizePaymentMethod(payment.payment_method),
+        amount: payment.amount,
+        receiptPhotoPath:
+          payment.payment_method === "cash" ? null : payment.receipt_photo_path,
+      })),
       promoId: sale.promo_id ?? null,
       promoApprovalId: sale.promo_approval_id ?? null,
     })
@@ -1652,21 +1833,27 @@ export async function pushSaleToSupabase(
       throw new Error(finalizeResult.error ?? "Unable to finalize the sale.")
     }
 
-    await db.sales.update(saleId, {
-      sync_state: "synced",
-      sync_error: null,
-      sync_attempt_count: 0,
-      sync_failure_kind: null,
-      sync_next_retry_at: null,
-      receipt_photo_path: receiptPhotoPath,
-      receipt_photo_local: null,
+    await db.transaction("rw", [db.sales, db.salePayments], async () => {
+      await db.sales.update(saleId, {
+        payment_method: summaryPaymentMethod,
+        sync_state: "synced",
+        sync_error: null,
+        sync_attempt_count: 0,
+        sync_failure_kind: null,
+        sync_next_retry_at: null,
+        receipt_photo_path: receiptPhotoPath,
+        receipt_photo_local: null,
+      })
+
+      await db.salePayments.bulkPut(
+        syncedPayments.map((payment) => ({
+          ...payment,
+          receipt_photo_local: null,
+        }))
+      )
     })
 
-    if (
-      sale.receipt_photo_local &&
-      previousReceiptPhotoPath &&
-      previousReceiptPhotoPath !== receiptPhotoPath
-    ) {
+    for (const previousReceiptPhotoPath of receiptPathsToCleanup) {
       const cleanupResult = await deleteReceiptPhoto(previousReceiptPhotoPath)
 
       if (!cleanupResult.ok) {
@@ -1707,11 +1894,14 @@ async function rollbackStagedSale(saleId: string, cleanupReceiptPhoto = false) {
     return
   }
 
-  const saleItems = await db.saleItems.where("sale_id").equals(saleId).toArray()
+  const [saleItems, salePayments] = await Promise.all([
+    db.saleItems.where("sale_id").equals(saleId).toArray(),
+    db.salePayments.where("sale_id").equals(saleId).toArray(),
+  ])
 
   await db.transaction(
     "rw",
-    [db.sales, db.saleItems, db.boothScheduleProducts],
+    [db.sales, db.saleItems, db.salePayments, db.boothScheduleProducts],
     async () => {
       for (const item of saleItems) {
         if (
@@ -1739,18 +1929,32 @@ async function rollbackStagedSale(saleId: string, cleanupReceiptPhoto = false) {
       if (saleItems.length > 0) {
         await db.saleItems.where("sale_id").equals(saleId).delete()
       }
+      if (salePayments.length > 0) {
+        await db.salePayments.where("sale_id").equals(saleId).delete()
+      }
       await db.sales.delete(saleId)
     }
   )
 
-  if (cleanupReceiptPhoto && sale.receipt_photo_path) {
-    const result = await deleteReceiptPhoto(sale.receipt_photo_path)
-
-    if (!result.ok) {
-      console.warn(
-        "Unable to clean up receipt photo for rolled-back sale:",
-        result.error
+  if (cleanupReceiptPhoto) {
+    const receiptPaths = Array.from(
+      new Set(
+        [
+          sale.receipt_photo_path,
+          ...salePayments.map((payment) => payment.receipt_photo_path),
+        ].filter((value): value is string => Boolean(value))
       )
+    )
+
+    for (const receiptPath of receiptPaths) {
+      const result = await deleteReceiptPhoto(receiptPath)
+
+      if (!result.ok) {
+        console.warn(
+          "Unable to clean up receipt photo for rolled-back sale:",
+          result.error
+        )
+      }
     }
   }
 }

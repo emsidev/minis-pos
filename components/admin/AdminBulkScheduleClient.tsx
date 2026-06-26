@@ -64,6 +64,7 @@ import {
   getBoothDisplayName,
   getBusinessDate,
   getEmployeeDisplayName,
+  createClientId,
 } from "@/lib/utils"
 
 type BulkMode = "add" | "edit"
@@ -401,7 +402,7 @@ export function AdminBulkScheduleClient({
       addRange.endDate
     ).map((date) =>
       createRowState(
-        `draft-${crypto.randomUUID()}`,
+        `draft-${createClientId()}`,
         {
           boothId: defaultBoothId,
           date,

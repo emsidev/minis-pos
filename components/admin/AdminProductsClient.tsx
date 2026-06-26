@@ -41,7 +41,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { AdminProductRecord } from "@/lib/adminProducts"
 import { getPromoSummary, type CounterPromo } from "@/lib/promos"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, createClientId } from "@/lib/utils"
 
 type AdminProductsClientProps = {
   products: AdminProductRecord[]
@@ -174,8 +174,7 @@ export function AdminProductsClient({
   const handleOptimisticSave = useCallback(
     (input: ProductFormInput) => {
       const previousProducts = displayProducts
-      const optimisticId =
-        input.id ?? `optimistic-product-${crypto.randomUUID()}`
+      const optimisticId = input.id ?? `optimistic-product-${createClientId()}`
 
       optimisticProductIdRef.current = input.id ? null : optimisticId
 

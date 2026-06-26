@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie"
 import { Database } from "./database.types"
-import type { InventoryEventType } from "./domain-types"
+import type { InventoryEventType, PaymentMethod } from "./domain-types"
 
 type PublicSchema = Database["public"]["Tables"]
 
@@ -56,6 +56,16 @@ export type LocalSaleItem = Omit<
   stock_before: number | null
 }
 
+export type LocalSalePayment = {
+  id: string
+  sale_id: string
+  payment_method: PaymentMethod
+  amount: number
+  receipt_photo_local: string | null
+  receipt_photo_path: string | null
+  created_at: string
+}
+
 export type LocalEmployee = PublicSchema["employees"]["Row"]
 
 export type LocalInventoryEvent = Omit<
@@ -96,6 +106,7 @@ export class MinisPOSDatabase extends Dexie {
   boothScheduleProducts!: Table<LocalBoothScheduleProduct>
   sales!: Table<LocalSale>
   saleItems!: Table<LocalSaleItem>
+  salePayments!: Table<LocalSalePayment>
   employees!: Table<LocalEmployee>
   inventoryEvents!: Table<LocalInventoryEvent>
   inventoryEventLines!: Table<LocalInventoryEventLine>
@@ -339,6 +350,29 @@ export class MinisPOSDatabase extends Dexie {
             }),
         ])
       })
+
+    this.version(9).stores({
+      products: "id, name, category, is_available",
+      promos: "id, is_active, starts_on, ends_on",
+      promoProducts: "[promo_id+product_id+role], promo_id, product_id, role",
+      booths: "id, name",
+      boothSchedules:
+        "id, operator_employee_id, date, [operator_employee_id+date]",
+      boothScheduleAssignments:
+        "[schedule_id+employee_id], schedule_id, employee_id",
+      boothScheduleOperatorPeriods:
+        "id, schedule_id, operator_employee_id, starts_at",
+      boothScheduleProducts:
+        "id, schedule_id, product_id, [schedule_id+product_id]",
+      sales:
+        "id, employee_id, booth_id, schedule_id, sync_state, sync_failure_kind, sync_next_retry_at, created_at",
+      saleItems: "++id, sale_id, product_id",
+      salePayments: "id, sale_id, payment_method, created_at",
+      employees: "id, user_id, email, name, role",
+      inventoryEvents:
+        "id, schedule_id, actor_employee_id, event_type, sync_state, sync_failure_kind, sync_next_retry_at, occurred_at",
+      inventoryEventLines: "id, event_id, product_id",
+    })
   }
 }
 

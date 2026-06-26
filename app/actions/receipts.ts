@@ -70,9 +70,15 @@ function parseReceiptDataUrl(value: string) {
 function buildReceiptPhotoPath(
   employeeId: string,
   saleId: string,
-  extension: string
+  extension: string,
+  paymentKey?: string
 ) {
-  return `${employeeId}/${saleId}.${extension}`
+  const normalizedKey =
+    paymentKey && paymentKey.trim().length > 0
+      ? paymentKey.trim().replace(/[^a-zA-Z0-9_-]/g, "-")
+      : "sale"
+
+  return `${employeeId}/sales/${saleId}/payments/${normalizedKey}.${extension}`
 }
 
 async function uploadParsedReceiptPhoto(
@@ -112,7 +118,8 @@ export async function getReceiptSignedUrl(
 
 export async function uploadReceiptPhotoForSale(
   saleId: string,
-  receiptPhotoDataUrl: string
+  receiptPhotoDataUrl: string,
+  paymentId?: string
 ): Promise<ReceiptUploadResult> {
   try {
     const { employee } = await requireEmployeeRole(["employee", "admin"])
@@ -143,7 +150,8 @@ export async function uploadReceiptPhotoForSale(
     const receiptPhotoPath = buildReceiptPhotoPath(
       employee.id,
       saleId,
-      parsedReceipt.extension
+      parsedReceipt.extension,
+      paymentId
     )
     const { error } = await uploadParsedReceiptPhoto(
       receiptPhotoPath,

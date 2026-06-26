@@ -437,7 +437,6 @@ export function ReceiptPhotoPreview({
                     id={fileInputId}
                     type="file"
                     accept="image/*"
-                    capture="environment"
                     className="sr-only"
                     disabled={isReplacing}
                     onChange={(event) => void handleReplaceReceipt(event)}

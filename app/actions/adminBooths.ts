@@ -21,6 +21,7 @@ import {
   getBusinessDate,
   getBusinessTime,
   hasBusinessShiftStarted,
+  createClientId,
 } from "@/lib/utils"
 
 type ServerSupabaseClient = Awaited<
@@ -948,7 +949,7 @@ export async function overrideShiftInventory(
 
   const supabase = await createServerSupabaseClient()
   const { error } = await supabase.rpc("record_admin_inventory_override", {
-    p_event_id: crypto.randomUUID(),
+    p_event_id: createClientId(),
     p_schedule_id: input.scheduleId,
     p_reason: reason,
     p_lines: lines,

@@ -52,7 +52,12 @@ import { cacheServerSaleItems, getCachedSaleItems } from "@/lib/offlineData"
 import { replaceLocalSaleReceiptPhoto } from "@/lib/sync"
 import type { PaymentMethod } from "@/lib/domain-types"
 import type { Product, SaleItemWithProduct, SaleWithJoins } from "@/lib/shifts"
-import { cn, formatCurrency, getProductDisplayName } from "@/lib/utils"
+import {
+  cn,
+  formatCurrency,
+  getProductDisplayName,
+  createClientId,
+} from "@/lib/utils"
 
 type SaleActionMode = "none" | "direct" | "request"
 
@@ -141,9 +146,9 @@ function buildEditableProducts(
 
     productMap.set(item.product_id, {
       id: item.product_id,
-        name: getProductDisplayName(item.products),
-        price: item.unit_price,
-      })
+      name: getProductDisplayName(item.products),
+      price: item.unit_price,
+    })
   }
 
   return Array.from(productMap.values()).sort((left, right) =>
@@ -191,7 +196,37 @@ function parseEditableLines(lines: EditableSaleLine[]) {
 }
 
 function getHasReceipt(sale: SaleWithJoins) {
-  return Boolean(sale.receipt_photo_path || sale.receipt_photo_local)
+  return getDisplayPayments(sale).some(
+    (payment) =>
+      payment.paymentMethod !== "cash" &&
+      Boolean(payment.receiptPhotoPath || payment.receiptPhotoLocal)
+  )
+}
+
+function getDisplayPayments(sale: SaleWithJoins) {
+  if (sale.sale_payments && sale.sale_payments.length > 0) {
+    return sale.sale_payments.map((payment) => ({
+      id: payment.id,
+      paymentMethod: normalizePaymentMethod(payment.payment_method),
+      amount: Number(payment.amount),
+      receiptPhotoPath: payment.receipt_photo_path,
+      receiptPhotoLocal: null,
+      createdAt: payment.created_at,
+      isFallback: false,
+    }))
+  }
+
+  return [
+    {
+      id: sale.id,
+      paymentMethod: normalizePaymentMethod(sale.payment_method),
+      amount: Number(sale.total_amount),
+      receiptPhotoPath: sale.receipt_photo_path,
+      receiptPhotoLocal: sale.receipt_photo_local ?? null,
+      createdAt: sale.created_at ?? undefined,
+      isFallback: true,
+    },
+  ]
 }
 
 function SaleRow({
@@ -222,6 +257,7 @@ function SaleRow({
     () => buildEditableProducts(products, items),
     [items, products]
   )
+  const displayPayments = useMemo(() => getDisplayPayments(sale), [sale])
   const hasReceipt = getHasReceipt(sale)
   const canManageSale = saleActionMode !== "none" && !pendingSaleChange
   const actionVerb = saleActionMode === "request" ? "Request" : ""
@@ -348,7 +384,7 @@ function SaleRow({
     setEditLines((current) => [
       ...current,
       {
-        rowId: crypto.randomUUID(),
+        rowId: createClientId(),
         productId: fallbackProduct?.id ?? "",
         quantity: "1",
         unitPrice: fallbackProduct
@@ -474,41 +510,78 @@ function SaleRow({
           </div>
         </TableCell>
         <TableCell>
-          <Badge
-            variant="outline"
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold tracking-wider uppercase",
-              salePaymentMethod === "cash"
-                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                : "border-secondary/20 bg-secondary/10 text-secondary"
-            )}
-          >
-            {salePaymentMethod}
-          </Badge>
+          <div className="flex flex-wrap gap-1.5">
+            {displayPayments.map((payment) => (
+              <Badge
+                key={payment.id}
+                variant="outline"
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-[0.62rem] font-semibold tracking-wider uppercase",
+                  payment.paymentMethod === "cash"
+                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    : "border-secondary/20 bg-secondary/10 text-secondary"
+                )}
+              >
+                {payment.paymentMethod} {formatCurrency(payment.amount)}
+              </Badge>
+            ))}
+          </div>
         </TableCell>
         <TableCell>
-          <ReceiptPhotoPreview
-            saleId={sale.id}
-            paymentMethod={salePaymentMethod}
-            receiptPhotoPath={sale.receipt_photo_path}
-            receiptPhotoLocal={sale.receipt_photo_local ?? null}
-            syncState={sale.sync_state ?? null}
-            canEditReceipt={canEditReceipts}
-            createdAt={sale.created_at ?? undefined}
-            boothName={sale.booths?.name ?? undefined}
-            employeeName={sale.employees?.name ?? undefined}
-            amount={Number(sale.total_amount)}
-            onReplaceLocalReceipt={
-              sale.sync_state && sale.sync_state !== "synced"
-                ? handleReplaceLocalReceipt
-                : undefined
-            }
-            fallback={
-              <span className="text-muted-foreground text-xs">
-                {salePaymentMethod === "cash" ? "Cash sale" : "Missing"}
-              </span>
-            }
-          />
+          {displayPayments.some((payment) => !payment.isFallback) ? (
+            <div className="flex flex-wrap gap-2">
+              {displayPayments.map((payment) =>
+                payment.paymentMethod === "cash" ? (
+                  <span
+                    key={payment.id}
+                    className="text-muted-foreground text-xs font-medium"
+                  >
+                    Cash only
+                  </span>
+                ) : (
+                  <ReceiptPhotoPreview
+                    key={payment.id}
+                    saleId={sale.id}
+                    paymentMethod={payment.paymentMethod}
+                    receiptPhotoPath={payment.receiptPhotoPath}
+                    canEditReceipt={false}
+                    createdAt={payment.createdAt}
+                    boothName={sale.booths?.name ?? undefined}
+                    employeeName={sale.employees?.name ?? undefined}
+                    amount={payment.amount}
+                    fallback={
+                      <span className="text-muted-foreground text-xs">
+                        Missing
+                      </span>
+                    }
+                  />
+                )
+              )}
+            </div>
+          ) : (
+            <ReceiptPhotoPreview
+              saleId={sale.id}
+              paymentMethod={salePaymentMethod}
+              receiptPhotoPath={sale.receipt_photo_path}
+              receiptPhotoLocal={sale.receipt_photo_local ?? null}
+              syncState={sale.sync_state ?? null}
+              canEditReceipt={canEditReceipts}
+              createdAt={sale.created_at ?? undefined}
+              boothName={sale.booths?.name ?? undefined}
+              employeeName={sale.employees?.name ?? undefined}
+              amount={Number(sale.total_amount)}
+              onReplaceLocalReceipt={
+                sale.sync_state && sale.sync_state !== "synced"
+                  ? handleReplaceLocalReceipt
+                  : undefined
+              }
+              fallback={
+                <span className="text-muted-foreground text-xs">
+                  {salePaymentMethod === "cash" ? "Cash sale" : "Missing"}
+                </span>
+              }
+            />
+          )}
         </TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-2">

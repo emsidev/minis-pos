@@ -2,11 +2,10 @@
 
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import React, { useEffect, useId, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import {
   Banknote,
   Building2,
-  Camera,
   CreditCard,
   Landmark,
   Loader2,
@@ -21,6 +20,7 @@ import { toast } from "sonner"
 
 import { getPromoApprovalStatus, requestPromoApproval } from "@/app/actions/pos"
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog"
+import { ReceiptPhotoDropzone } from "@/components/shared/ReceiptPhotoDropzone"
 import { useCart } from "@/components/pos/CartContext"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,7 +47,12 @@ import {
   type PromoPricingResult,
 } from "@/lib/promos"
 import type { BoothSchedule } from "@/lib/shifts"
-import { cn, formatCurrency, isCurrentBusinessShift } from "@/lib/utils"
+import {
+  cn,
+  formatCurrency,
+  isCurrentBusinessShift,
+  createClientId,
+} from "@/lib/utils"
 
 type OrderSidebarProps = {
   boothId?: string
@@ -69,10 +74,12 @@ type PromoApprovalState = {
   snapshotKey: string | null
 }
 
-type SplitPaymentLine = {
+type PaymentRow = {
   id: string
-  paymentMethod: PaymentMethod
+  method: PaymentMethod
   amount: string
+  receiptPhotoLocal: string | null
+  isPreparingReceiptPhoto?: boolean
 }
 
 const paymentOptions: Array<{
@@ -153,14 +160,15 @@ function getCriteriaSummary(promo: CounterPromo) {
   return parts.length > 0 ? parts.join(" • ") : "No extra criteria"
 }
 
-function makeSplitLine(
-  paymentMethod: PaymentMethod = "cash",
+function makePaymentRow(
+  method: PaymentMethod = "cash",
   amount = ""
-): SplitPaymentLine {
+): PaymentRow {
   return {
-    id: crypto.randomUUID(),
-    paymentMethod,
+    id: createClientId(),
+    method,
     amount,
+    receiptPhotoLocal: null,
   }
 }
 
@@ -186,17 +194,12 @@ export function OrderSidebar({
     updateQuantity,
     clearCart,
   } = useCart()
-  const receiptInputId = useId()
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
   const [cashReceived, setCashReceived] = useState("")
-  const [receiptPhoto, setReceiptPhoto] = useState<string | null>(null)
   const [isSplitPayment, setIsSplitPayment] = useState(false)
-  const [splitPayments, setSplitPayments] = useState<SplitPaymentLine[]>(() => [
-    makeSplitLine("cash"),
-    makeSplitLine("gcash"),
+  const [paymentRows, setPaymentRows] = useState<PaymentRow[]>(() => [
+    makePaymentRow("cash"),
   ])
   const [isCharging, setIsCharging] = useState(false)
-  const [isPreparingReceiptPhoto, setIsPreparingReceiptPhoto] = useState(false)
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false)
   const [isRequestingApproval, setIsRequestingApproval] = useState(false)
   const [isOnline, setIsOnline] = useState(
@@ -221,9 +224,8 @@ export function OrderSidebar({
     }
   }, [])
 
-  const activePaymentMethod: PaymentMethod = isSplitPayment
-    ? "other"
-    : paymentMethod
+  const summaryPaymentMethod: PaymentMethod =
+    paymentRows.length === 1 ? (paymentRows[0]?.method ?? "cash") : "other"
   const availablePromos = promos
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name))
@@ -243,9 +245,9 @@ export function OrderSidebar({
         unitPrice: item.price,
       })),
       businessDate: schedule?.date ?? new Date().toISOString().slice(0, 10),
-      paymentMethod: activePaymentMethod,
+      paymentMethod: summaryPaymentMethod,
     })
-  }, [activePaymentMethod, items, schedule?.date, selectedPromo])
+  }, [items, schedule?.date, selectedPromo, summaryPaymentMethod])
   const promoSnapshot =
     selectedPromo && promoPricing.eligible
       ? buildPromoApprovalSnapshot({
@@ -256,7 +258,7 @@ export function OrderSidebar({
             quantity: item.quantity,
             unitPrice: item.price,
           })),
-          paymentMethod: activePaymentMethod,
+          paymentMethod: summaryPaymentMethod,
           pricing: promoPricing,
         })
       : null
@@ -278,7 +280,7 @@ export function OrderSidebar({
         ? { approvalId: null, status: null, snapshotKey: null }
         : current
     )
-  }, [activePaymentMethod, items, selectedPromoId])
+  }, [items, selectedPromoId, summaryPaymentMethod])
 
   useEffect(() => {
     if (
@@ -330,26 +332,44 @@ export function OrderSidebar({
   const effectiveTotal = promoPricing.total
   const splitAllocations = useMemo(
     () =>
-      splitPayments
+      paymentRows
         .map((line) => ({
-          paymentMethod: line.paymentMethod,
+          id: line.id,
+          paymentMethod: line.method,
           amount: parseAmount(line.amount),
+          receiptPhotoLocal: line.receiptPhotoLocal,
         }))
         .filter((line) => line.amount > 0),
-    [splitPayments]
+    [paymentRows]
   )
+  const checkoutPaymentRows = isSplitPayment
+    ? paymentRows
+    : [
+        {
+          ...(paymentRows[0] ?? makePaymentRow("cash")),
+          amount: effectiveTotal.toFixed(2),
+        },
+      ]
+  const singlePaymentRow = checkoutPaymentRows[0] ?? makePaymentRow("cash")
+  const singlePaymentMethod = singlePaymentRow.method
   const splitTotal = roundCurrency(
     splitAllocations.reduce((total, payment) => total + payment.amount, 0)
   )
   const splitBalance = roundCurrency(effectiveTotal - splitTotal)
-  const splitHasNonCash = splitAllocations.some(
-    (payment) => payment.paymentMethod !== "cash"
+  const splitHasNonCash = paymentRows.some(
+    (payment) => payment.method !== "cash"
   )
+  const splitHasAllPositiveAmounts =
+    paymentRows.length > 0 &&
+    paymentRows.every((payment) => parseAmount(payment.amount) > 0)
   const splitIsBalanced = Math.abs(splitBalance) < 0.005
-  const splitHasEnoughLines = splitAllocations.length >= 2
-  const isCash = paymentMethod === "cash"
+  const splitHasEnoughLines = paymentRows.length >= 2
+  const splitHasRequiredReceipts = paymentRows.every(
+    (row) => row.method === "cash" || Boolean(row.receiptPhotoLocal)
+  )
+  const isCash = singlePaymentMethod === "cash"
   const cashAmount = parseAmount(cashReceived)
-  const checkoutNeedsReceipt = isSplitPayment ? splitHasNonCash : !isCash
+  const singleNeedsReceipt = singlePaymentMethod !== "cash"
   const promoEligible = !selectedPromo || promoPricing.eligible
   const approvalSatisfied =
     !promoNeedsApproval || promoApproval.status === "approved"
@@ -359,40 +379,52 @@ export function OrderSidebar({
     promoEligible &&
     approvalSatisfied &&
     !isCharging &&
-    !isPreparingReceiptPhoto &&
     (isSplitPayment
-      ? splitHasEnoughLines && splitIsBalanced && (!splitHasNonCash || receiptPhoto)
-      : (isCash && cashAmount >= effectiveTotal) || (!isCash && receiptPhoto))
+      ? splitHasEnoughLines &&
+        splitHasAllPositiveAmounts &&
+        splitIsBalanced &&
+        splitHasRequiredReceipts &&
+        !paymentRows.some((row) => row.isPreparingReceiptPhoto)
+      : (isCash && cashAmount >= effectiveTotal) ||
+        (singleNeedsReceipt &&
+          Boolean(singlePaymentRow.receiptPhotoLocal) &&
+          !singlePaymentRow.isPreparingReceiptPhoto))
   const changeDue = Math.max(0, cashAmount - effectiveTotal)
 
   const updateSplitPayment = (
     id: string,
-    field: keyof Omit<SplitPaymentLine, "id">,
+    field: keyof Pick<PaymentRow, "method" | "amount">,
     value: string
   ) => {
-    setSplitPayments((current) =>
+    setPaymentRows((current) =>
       current.map((line) =>
-        line.id === id ? { ...line, [field]: value } : line
+        line.id === id
+          ? {
+              ...line,
+              [field]: value,
+              ...(field === "method" && value === "cash"
+                ? { receiptPhotoLocal: null }
+                : {}),
+            }
+          : line
       )
     )
   }
 
   const addSplitPayment = () => {
-    setSplitPayments((current) => [...current, makeSplitLine("cash")])
+    setPaymentRows((current) => [...current, makePaymentRow("cash")])
   }
 
   const removeSplitPayment = (id: string) => {
-    setSplitPayments((current) =>
+    setPaymentRows((current) =>
       current.length <= 2 ? current : current.filter((line) => line.id !== id)
     )
   }
 
   const resetCheckoutState = () => {
-    setReceiptPhoto(null)
     setCashReceived("")
-    setPaymentMethod("cash")
     setIsSplitPayment(false)
-    setSplitPayments([makeSplitLine("cash"), makeSplitLine("gcash")])
+    setPaymentRows([makePaymentRow("cash")])
     setPromoApproval({ approvalId: null, status: null, snapshotKey: null })
   }
 
@@ -423,20 +455,42 @@ export function OrderSidebar({
       return
     }
 
+    if (
+      isSplitPayment &&
+      (!splitHasEnoughLines ||
+        !splitHasAllPositiveAmounts ||
+        !splitIsBalanced ||
+        !splitHasRequiredReceipts)
+    ) {
+      toast.error(
+        "Split payments must balance and include each required receipt."
+      )
+      return
+    }
+
+    if (
+      !isSplitPayment &&
+      singleNeedsReceipt &&
+      !singlePaymentRow.receiptPhotoLocal
+    ) {
+      toast.error("Take a receipt photo before charging this non-cash payment.")
+      return
+    }
+
     if (!canCharge || !boothId || !scheduleId) return
 
     setIsCharging(true)
     onOptimisticMutationChange?.(true)
 
     try {
-      const saleId = crypto.randomUUID()
+      const saleId = createClientId()
       const salePayload = {
         id: saleId,
         boothId,
         employeeId,
         scheduleId,
         totalAmount: effectiveTotal,
-        paymentMethod: activePaymentMethod,
+        paymentMethod: summaryPaymentMethod,
         promoId: selectedPromo?.id ?? null,
         promoName: selectedPromo?.name ?? null,
         promoType: selectedPromo?.promoType ?? null,
@@ -452,18 +506,13 @@ export function OrderSidebar({
           basePrice: item.baseUnitPrice,
           discountAmount: item.discountAmount,
         })),
-        receiptPhotoLocal: checkoutNeedsReceipt ? (receiptPhoto ?? undefined) : undefined,
-        paymentBreakdown: isSplitPayment
-          ? splitAllocations.map((payment) => ({
-              paymentMethod: payment.paymentMethod,
-              amount: payment.amount,
-            }))
-          : [
-              {
-                paymentMethod,
-                amount: effectiveTotal,
-              },
-            ],
+        payments: checkoutPaymentRows.map((row) => ({
+          id: row.id,
+          paymentMethod: row.method,
+          amount: Number.parseFloat(row.amount),
+          receiptPhotoLocal:
+            row.method === "cash" ? null : row.receiptPhotoLocal,
+        })),
       }
 
       if (isOnline) {
@@ -503,26 +552,52 @@ export function OrderSidebar({
     toast.info("Cart cleared")
   }
 
-  const handlePhotoUpload = async (
+  const handlePaymentPhotoUpload = async (
+    rowId: string,
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = event.target.files?.[0]
+    event.target.value = ""
+
     if (!file) return
 
     try {
-      setIsPreparingReceiptPhoto(true)
-      const nextReceiptPhoto = await prepareReceiptPhotoDataUrl(file)
-      setReceiptPhoto(nextReceiptPhoto)
+      setPaymentRows((rows) =>
+        rows.map((row) =>
+          row.id === rowId ? { ...row, isPreparingReceiptPhoto: true } : row
+        )
+      )
+
+      const receiptPhotoLocal = await prepareReceiptPhotoDataUrl(file)
+
+      setPaymentRows((rows) =>
+        rows.map((row) =>
+          row.id === rowId
+            ? { ...row, receiptPhotoLocal, isPreparingReceiptPhoto: false }
+            : row
+        )
+      )
     } catch (error) {
+      setPaymentRows((rows) =>
+        rows.map((row) =>
+          row.id === rowId ? { ...row, isPreparingReceiptPhoto: false } : row
+        )
+      )
+
       toast.error(
         error instanceof Error && error.message.trim().length > 0
           ? error.message
           : "Unable to prepare the receipt photo."
       )
-    } finally {
-      event.target.value = ""
-      setIsPreparingReceiptPhoto(false)
     }
+  }
+
+  const clearPaymentPhoto = (rowId: string) => {
+    setPaymentRows((rows) =>
+      rows.map((row) =>
+        row.id === rowId ? { ...row, receiptPhotoLocal: null } : row
+      )
+    )
   }
 
   const handleRequestApproval = async () => {
@@ -542,7 +617,7 @@ export function OrderSidebar({
 
     const result = await requestPromoApproval({
       scheduleId,
-      paymentMethod: activePaymentMethod,
+      paymentMethod: summaryPaymentMethod,
       promoId: selectedPromo.id,
       items: items.map((item) => ({
         productId: item.id,
@@ -569,10 +644,10 @@ export function OrderSidebar({
   return (
     <aside
       className={cn(
-        "flex flex-col overflow-hidden",
+        "flex min-h-0 flex-col overflow-hidden",
         mode === "docked"
           ? "app-panel h-[calc(100svh-7rem)]"
-          : "h-[85svh] max-h-[85svh]"
+          : "h-[calc(100svh-5rem)] max-h-[calc(100svh-5rem)]"
       )}
     >
       <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -676,7 +751,11 @@ export function OrderSidebar({
                     No promo
                   </SelectItem>
                   {availablePromos.map((promo) => (
-                    <SelectItem key={promo.id} value={promo.id} label={promo.name}>
+                    <SelectItem
+                      key={promo.id}
+                      value={promo.id}
+                      label={promo.name}
+                    >
                       <span className="flex flex-col items-start">
                         <span>{promo.name}</span>
                         <span className="text-muted-foreground text-xs">
@@ -738,7 +817,10 @@ export function OrderSidebar({
                         onClick={() => void handleRequestApproval()}
                       >
                         {isRequestingApproval ? (
-                          <Loader2 data-icon="inline-start" className="animate-spin" />
+                          <Loader2
+                            data-icon="inline-start"
+                            className="animate-spin"
+                          />
                         ) : null}
                         {promoApproval.status === "approved"
                           ? "Approved"
@@ -753,11 +835,243 @@ export function OrderSidebar({
                 </div>
               ) : null}
             </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={!isSplitPayment ? "default" : "outline"}
+                className="rounded-xl"
+                disabled={isCharging}
+                onClick={() => {
+                  setIsSplitPayment(false)
+                  setPaymentRows((current) => [
+                    {
+                      ...(current[0] ?? makePaymentRow("cash")),
+                      amount: "",
+                    },
+                  ])
+                }}
+              >
+                Single payment
+              </Button>
+              <Button
+                type="button"
+                variant={isSplitPayment ? "default" : "outline"}
+                className="rounded-xl"
+                disabled={isCharging}
+                onClick={() => {
+                  setIsSplitPayment(true)
+                  setPaymentRows((current) =>
+                    current.length >= 2
+                      ? current
+                      : [
+                          {
+                            ...(current[0] ?? makePaymentRow("cash")),
+                          },
+                          makePaymentRow("gcash"),
+                        ]
+                  )
+                }}
+              >
+                Split payment
+              </Button>
+            </div>
+
+            {!isSplitPayment ? (
+              <div className="grid grid-cols-3 gap-1.5">
+                {paymentOptions.map((option) => {
+                  const Icon = option.icon
+                  const selected = singlePaymentMethod === option.value
+                  return (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      variant={selected ? "default" : "ghost"}
+                      className={cn(
+                        "flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[10px] font-bold tracking-wider uppercase transition-all",
+                        selected
+                          ? "shadow-primary/20 bg-primary text-primary-foreground shadow-md"
+                          : "bg-muted/50 hover:bg-primary/5 text-muted-foreground hover:text-primary"
+                      )}
+                      disabled={isCharging}
+                      onClick={() =>
+                        updateSplitPayment(
+                          singlePaymentRow.id,
+                          "method",
+                          option.value
+                        )
+                      }
+                    >
+                      <Icon className="h-4 w-4" />
+                      {option.label}
+                    </Button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="space-y-2 rounded-2xl border px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-foreground text-sm font-semibold">
+                    Split allocations
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isCharging}
+                    onClick={addSplitPayment}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add
+                  </Button>
+                </div>
+                {paymentRows.map((line) => (
+                  <div
+                    key={line.id}
+                    className="space-y-3 rounded-xl border p-3"
+                  >
+                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_8rem_auto]">
+                      <Select
+                        value={line.method}
+                        onValueChange={(value) =>
+                          updateSplitPayment(
+                            line.id,
+                            "method",
+                            value as PaymentMethod
+                          )
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {paymentOptions.map((option) => (
+                            <SelectItem
+                              key={option.value}
+                              value={option.value}
+                              label={option.label}
+                            >
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.01"
+                        placeholder="Amount"
+                        value={line.amount}
+                        disabled={isCharging}
+                        onChange={(event) =>
+                          updateSplitPayment(
+                            line.id,
+                            "amount",
+                            event.target.value
+                          )
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="rounded-xl"
+                        disabled={isCharging || paymentRows.length <= 2}
+                        onClick={() => removeSplitPayment(line.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {line.method !== "cash" ? (
+                      <ReceiptPhotoDropzone
+                        id={line.id}
+                        receiptPhotoLocal={line.receiptPhotoLocal}
+                        isPreparing={line.isPreparingReceiptPhoto}
+                        disabled={isCharging}
+                        label="Take receipt photo"
+                        onFileSelected={(event) =>
+                          void handlePaymentPhotoUpload(line.id, event)
+                        }
+                        onClear={() => clearPaymentPhoto(line.id)}
+                      />
+                    ) : null}
+                  </div>
+                ))}
+                <div
+                  className={cn(
+                    "flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold",
+                    splitIsBalanced
+                      ? "bg-success/8 text-success"
+                      : "bg-muted/50 text-muted-foreground"
+                  )}
+                >
+                  <span>{splitIsBalanced ? "Balanced" : "Remaining"}</span>
+                  <span>{formatCurrency(Math.abs(splitBalance))}</span>
+                </div>
+                {!splitHasRequiredReceipts && splitHasNonCash ? (
+                  <p className="text-destructive text-xs font-medium">
+                    Each non-cash payment row needs its own receipt photo.
+                  </p>
+                ) : null}
+              </div>
+            )}
+
+            {!isSplitPayment && isCash ? (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Input
+                    id="cash-received"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={cashReceived}
+                    onChange={(event) => setCashReceived(event.target.value)}
+                    placeholder="Cash received"
+                    className="border-border/60 h-12 rounded-xl pr-14 text-lg font-bold"
+                    disabled={isCharging}
+                  />
+                  <span className="text-muted-foreground/50 absolute top-1/2 right-3 -translate-y-1/2 text-xs font-medium">
+                    PHP
+                  </span>
+                </div>
+                {cashAmount > 0 ? (
+                  <div
+                    className={cn(
+                      "flex items-center justify-between rounded-xl px-3 py-2.5",
+                      cashAmount >= effectiveTotal && effectiveTotal > 0
+                        ? "bg-success/8 text-success"
+                        : "bg-muted/50 text-foreground"
+                    )}
+                  >
+                    <span className="text-xs font-medium">Change</span>
+                    <span className="text-lg font-black tracking-tight">
+                      {formatCurrency(changeDue)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            ) : singleNeedsReceipt ? (
+              <div>
+                <ReceiptPhotoDropzone
+                  id={singlePaymentRow.id}
+                  receiptPhotoLocal={singlePaymentRow.receiptPhotoLocal}
+                  isPreparing={singlePaymentRow.isPreparingReceiptPhoto}
+                  disabled={isCharging}
+                  label="Take receipt photo"
+                  onFileSelected={(event) =>
+                    void handlePaymentPhotoUpload(singlePaymentRow.id, event)
+                  }
+                  onClear={() => clearPaymentPhoto(singlePaymentRow.id)}
+                />
+              </div>
+            ) : null}
           </div>
         )}
       </div>
 
-      <div className="border-border/60 shrink-0 space-y-4 border-t px-4 py-4">
+      <div className="border-border/60 shrink-0 space-y-4 border-t px-4 py-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
         {!hasSaleContext ? (
           <div className="bg-warning/8 text-warning-foreground rounded-xl px-3 py-2.5 text-xs font-medium">
             {unavailableMessage}
@@ -790,220 +1104,6 @@ export function OrderSidebar({
             </span>
           </div>
         </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            type="button"
-            variant={!isSplitPayment ? "default" : "outline"}
-            className="rounded-xl"
-            disabled={isCharging}
-            onClick={() => setIsSplitPayment(false)}
-          >
-            Single payment
-          </Button>
-          <Button
-            type="button"
-            variant={isSplitPayment ? "default" : "outline"}
-            className="rounded-xl"
-            disabled={isCharging}
-            onClick={() => setIsSplitPayment(true)}
-          >
-            Split payment
-          </Button>
-        </div>
-
-        {!isSplitPayment ? (
-          <div className="grid grid-cols-3 gap-1.5">
-            {paymentOptions.map((option) => {
-              const Icon = option.icon
-              const selected = paymentMethod === option.value
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  variant={selected ? "default" : "ghost"}
-                  className={cn(
-                    "flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-[10px] font-bold tracking-wider uppercase transition-all",
-                    selected
-                      ? "shadow-primary/20 bg-primary text-primary-foreground shadow-md"
-                      : "bg-muted/50 hover:bg-primary/5 text-muted-foreground hover:text-primary"
-                  )}
-                  disabled={isCharging}
-                  onClick={() => setPaymentMethod(option.value)}
-                >
-                  <Icon className="h-4 w-4" />
-                  {option.label}
-                </Button>
-              )
-            })}
-          </div>
-        ) : (
-          <div className="space-y-2 rounded-2xl border px-3 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-foreground text-sm font-semibold">
-                Split allocations
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={isCharging}
-                onClick={addSplitPayment}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add
-              </Button>
-            </div>
-            {splitPayments.map((line) => (
-              <div key={line.id} className="grid grid-cols-[1fr_8rem_auto] gap-2">
-                <Select
-                  value={line.paymentMethod}
-                  onValueChange={(value) =>
-                    updateSplitPayment(
-                      line.id,
-                      "paymentMethod",
-                      value as PaymentMethod
-                    )
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {paymentOptions.map((option) => (
-                      <SelectItem
-                        key={option.value}
-                        value={option.value}
-                        label={option.label}
-                      >
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  placeholder="Amount"
-                  value={line.amount}
-                  disabled={isCharging}
-                  onChange={(event) =>
-                    updateSplitPayment(line.id, "amount", event.target.value)
-                  }
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="rounded-xl"
-                  disabled={isCharging || splitPayments.length <= 2}
-                  onClick={() => removeSplitPayment(line.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-            <div
-              className={cn(
-                "flex items-center justify-between rounded-xl px-3 py-2 text-xs font-semibold",
-                splitIsBalanced
-                  ? "bg-success/8 text-success"
-                  : "bg-muted/50 text-muted-foreground"
-              )}
-            >
-              <span>{splitIsBalanced ? "Balanced" : "Remaining"}</span>
-              <span>{formatCurrency(Math.abs(splitBalance))}</span>
-            </div>
-          </div>
-        )}
-
-        {!isSplitPayment && isCash ? (
-          <div className="space-y-2">
-            <div className="relative">
-              <Input
-                id="cash-received"
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={cashReceived}
-                onChange={(event) => setCashReceived(event.target.value)}
-                placeholder="Cash received"
-                className="border-border/60 h-12 rounded-xl pr-14 text-lg font-bold"
-                disabled={isCharging}
-              />
-              <span className="text-muted-foreground/50 absolute top-1/2 right-3 -translate-y-1/2 text-xs font-medium">
-                PHP
-              </span>
-            </div>
-            {cashAmount > 0 ? (
-              <div
-                className={cn(
-                  "flex items-center justify-between rounded-xl px-3 py-2.5",
-                  cashAmount >= effectiveTotal && effectiveTotal > 0
-                    ? "bg-success/8 text-success"
-                    : "bg-muted/50 text-foreground"
-                )}
-              >
-                <span className="text-xs font-medium">Change</span>
-                <span className="text-lg font-black tracking-tight">
-                  {formatCurrency(changeDue)}
-                </span>
-              </div>
-            ) : null}
-          </div>
-        ) : checkoutNeedsReceipt ? (
-          <div>
-            <label
-              htmlFor={receiptInputId}
-              className={cn(
-                "flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-4 text-center transition-all",
-                receiptPhoto
-                  ? "border-success/30 bg-success/5"
-                  : "border-primary/20 bg-primary/[0.02] hover:border-primary/40 hover:bg-primary/5"
-              )}
-            >
-              {receiptPhoto ? (
-                <div className="flex items-center gap-2">
-                  <div className="relative h-10 w-10 overflow-hidden rounded-lg">
-                    <Image
-                      src={receiptPhoto}
-                      alt="Receipt"
-                      fill
-                      sizes="40px"
-                      unoptimized
-                      className="object-cover"
-                    />
-                  </div>
-                  <span className="text-success text-xs font-bold">
-                    Photo attached - tap to change
-                  </span>
-                </div>
-              ) : isPreparingReceiptPhoto ? (
-                <div className="text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="text-xs font-bold">Preparing photo...</span>
-                </div>
-              ) : (
-                <div className="text-muted-foreground flex items-center gap-2">
-                  <Camera className="h-5 w-5" />
-                  <span className="text-xs font-bold">Take receipt photo</span>
-                </div>
-              )}
-            </label>
-            <Input
-              id={receiptInputId}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="sr-only"
-              disabled={isCharging || isPreparingReceiptPhoto}
-              onChange={(event) => void handlePhotoUpload(event)}
-            />
-          </div>
-        ) : null}
 
         <div className="flex gap-2">
           <Button

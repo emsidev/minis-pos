@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -109,7 +110,13 @@ function CounterWorkspace({
     }
 
     void sync()
-  }, [availableProducts, initialProducts, initialPromos, initialSchedule, showShiftInventoryEditor])
+  }, [
+    availableProducts,
+    initialProducts,
+    initialPromos,
+    initialSchedule,
+    showShiftInventoryEditor,
+  ])
 
   const cachedWorkspace = useLiveQuery<CachedCounterWorkspace | null>(
     () =>
@@ -155,7 +162,9 @@ function CounterWorkspace({
     !preferCachedWorkspace &&
     Boolean(initialScheduleId) &&
     hasCachedShift &&
-    (cachedProducts.length > 0 || hasInFlightScheduleOps || holdOptimisticInventory)
+    (cachedProducts.length > 0 ||
+      hasInFlightScheduleOps ||
+      holdOptimisticInventory)
   const displayProducts = (
     shouldUseOptimisticInventory && cachedProducts.length > 0
       ? cachedProducts
@@ -186,8 +195,12 @@ function CounterWorkspace({
     syncProductStock(displayProducts)
   }, [displayProducts, syncProductStock])
 
-  const refreshActiveWorkspace = async () => {
-    if (!initialScheduleId || typeof window === "undefined" || !window.navigator.onLine) {
+  const refreshActiveWorkspace = useCallback(async () => {
+    if (
+      !initialScheduleId ||
+      typeof window === "undefined" ||
+      !window.navigator.onLine
+    ) {
       return
     }
 
@@ -197,7 +210,7 @@ function CounterWorkspace({
     } catch (error) {
       console.warn("Active Counter refresh failed:", error)
     }
-  }
+  }, [employeeId, initialScheduleId, router])
 
   const handleInventorySavePhaseChange = async (
     phase: "started" | "queued" | "reconciled"
@@ -238,7 +251,8 @@ function CounterWorkspace({
 
   const inventoryReady = displayProducts.length > 0
   const orderSidebarBoothId = canSell ? displayBoothId : undefined
-  const orderSidebarScheduleId = canSell && inventoryReady ? displayScheduleId : undefined
+  const orderSidebarScheduleId =
+    canSell && inventoryReady ? displayScheduleId : undefined
   const orderSidebarSchedule = canSell ? displaySchedule : undefined
   const shiftStarted = displaySchedule
     ? getBusinessShiftState(displaySchedule, {
@@ -250,7 +264,11 @@ function CounterWorkspace({
     : false
 
   useEffect(() => {
-    if (!initialScheduleId || typeof window === "undefined" || !window.navigator.onLine) {
+    if (
+      !initialScheduleId ||
+      typeof window === "undefined" ||
+      !window.navigator.onLine
+    ) {
       return
     }
 
@@ -270,7 +288,12 @@ function CounterWorkspace({
       .channel(`counter-live-${employeeId}-${initialScheduleId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "sales", filter: `schedule_id=eq.${initialScheduleId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "sales",
+          filter: `schedule_id=eq.${initialScheduleId}`,
+        },
         scheduleRefresh
       )
       .on(
@@ -290,32 +313,61 @@ function CounterWorkspace({
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "booth_schedule_products", filter: `schedule_id=eq.${initialScheduleId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "booth_schedule_products",
+          filter: `schedule_id=eq.${initialScheduleId}`,
+        },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "inventory_events", filter: `schedule_id=eq.${initialScheduleId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "inventory_events",
+          filter: `schedule_id=eq.${initialScheduleId}`,
+        },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "booth_schedules", filter: `id=eq.${initialScheduleId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "booth_schedules",
+          filter: `id=eq.${initialScheduleId}`,
+        },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "booth_schedule_assignments", filter: `schedule_id=eq.${initialScheduleId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "booth_schedule_assignments",
+          filter: `schedule_id=eq.${initialScheduleId}`,
+        },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        { event: "DELETE", schema: "public", table: "booth_schedule_assignments" },
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "booth_schedule_assignments",
+        },
         scheduleRefresh
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "booth_schedule_operator_periods", filter: `schedule_id=eq.${initialScheduleId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "booth_schedule_operator_periods",
+          filter: `schedule_id=eq.${initialScheduleId}`,
+        },
         scheduleRefresh
       )
       .subscribe()
@@ -327,7 +379,7 @@ function CounterWorkspace({
       }
       void supabase.removeChannel(channel)
     }
-  }, [employeeId, initialScheduleId, router])
+  }, [employeeId, initialScheduleId, refreshActiveWorkspace])
 
   if (
     displaySchedule &&
@@ -386,7 +438,9 @@ function CounterWorkspace({
                       <ShoppingBag className="h-4 w-4" />
                     </div>
                     <p className="text-foreground text-sm font-medium">
-                      {items.length === 0 ? "Cart empty" : `${items.length} in cart`}
+                      {items.length === 0
+                        ? "Cart empty"
+                        : `${items.length} in cart`}
                     </p>
                   </div>
                 </div>
@@ -487,7 +541,10 @@ function CounterWorkspace({
       </div>
 
       <Sheet open={mobileOrderOpen} onOpenChange={setMobileOrderOpen}>
-        <SheetContent side="bottom" className="p-0 xl:hidden">
+        <SheetContent
+          side="bottom"
+          className="h-[calc(100svh-4rem)] max-h-[calc(100svh-4rem)] p-0 xl:hidden"
+        >
           <div className="sr-only">
             <SheetTitle>Current order</SheetTitle>
             <SheetDescription>

@@ -66,6 +66,7 @@ import {
   getEmployeeDisplayName,
   hasBusinessShiftPassed,
   isCurrentBusinessShift,
+  createClientId,
 } from "@/lib/utils"
 import { joinSchedule } from "@/app/actions/shifts"
 
@@ -170,7 +171,7 @@ export function AdminBoothsClient({
   const handleOptimisticBoothSave = useCallback(
     (input: BoothFormInput) => {
       const previousBooths = displayBooths
-      const optimisticId = input.id ?? `optimistic-booth-${crypto.randomUUID()}`
+      const optimisticId = input.id ?? `optimistic-booth-${createClientId()}`
 
       optimisticBoothIdRef.current = input.id ? null : optimisticId
 

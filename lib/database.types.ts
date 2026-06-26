@@ -507,6 +507,7 @@ export type Database = {
           created_at: string
           id: string
           payment_method: string
+          receipt_photo_path: string | null
           sale_id: string
         }
         Insert: {
@@ -514,6 +515,7 @@ export type Database = {
           created_at?: string
           id?: string
           payment_method: string
+          receipt_photo_path?: string | null
           sale_id: string
         }
         Update: {
@@ -521,6 +523,7 @@ export type Database = {
           created_at?: string
           id?: string
           payment_method?: string
+          receipt_photo_path?: string | null
           sale_id?: string
         }
         Relationships: [
@@ -887,7 +890,7 @@ export type Database = {
               p_promo_name?: string
               p_promo_snapshot?: Json
               p_promo_type?: string
-              p_receipt_photo_path: string
+              p_receipt_photo_path: string | null
               p_sale_id: string
               p_schedule_id: string
               p_total_amount: number
@@ -907,7 +910,7 @@ export type Database = {
               p_promo_name?: string
               p_promo_snapshot?: Json
               p_promo_type?: string
-              p_receipt_photo_path: string
+              p_receipt_photo_path: string | null
               p_sale_id: string
               p_schedule_id: string
               p_total_amount: number

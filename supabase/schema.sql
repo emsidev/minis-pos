@@ -411,6 +411,7 @@ create index if not exists sales_promo_id_idx
     sale_id uuid references public.sales(id) on delete cascade not null,
     payment_method text not null,
     amount numeric(10,2) not null,
+    receipt_photo_path text,
     created_at timestamptz not null default now(),
     constraint sale_payments_payment_method_check
       check (payment_method in ('cash', 'gcash', 'maya', 'maribank', 'unionbank', 'other')),
@@ -418,11 +419,25 @@ create index if not exists sales_promo_id_idx
       check (amount > 0)
   );
 
+alter table public.sale_payments
+  add column if not exists receipt_photo_path text;
+
+alter table public.sale_payments
+  drop constraint if exists sale_payments_non_cash_receipt_check;
+
+alter table public.sale_payments
+  add constraint sale_payments_non_cash_receipt_check
+  check (payment_method = 'cash' or receipt_photo_path is not null);
+
   create index if not exists sale_payments_sale_id_idx
     on public.sale_payments (sale_id);
 
   create index if not exists sale_payments_method_idx
     on public.sale_payments (payment_method);
+
+  create index if not exists sale_payments_receipt_photo_path_idx
+    on public.sale_payments (receipt_photo_path)
+    where receipt_photo_path is not null;
 
 create table if not exists public.shift_closeouts (
   id uuid primary key default gen_random_uuid(),
@@ -1488,12 +1503,28 @@ begin
             sale.status,
             sale.created_at,
             sale.updated_at,
+            coalesce(payment_rows.sale_payments, '[]'::jsonb) as sale_payments,
             case
               when employee.id is null then null
               else jsonb_build_object('name', employee.name)
             end as employees,
             jsonb_build_object('name', booth.name) as booths
           from public.sales as sale
+          left join lateral (
+            select jsonb_agg(
+              jsonb_build_object(
+                'id', payment.id,
+                'sale_id', payment.sale_id,
+                'payment_method', payment.payment_method,
+                'amount', payment.amount,
+                'receipt_photo_path', payment.receipt_photo_path,
+                'created_at', payment.created_at
+              )
+              order by payment.created_at, payment.id
+            ) as sale_payments
+            from public.sale_payments as payment
+            where payment.sale_id = sale.id
+          ) as payment_rows on true
           left join public.employees as employee
             on employee.id = sale.employee_id
           left join public.booths as booth
@@ -2815,20 +2846,6 @@ begin
 
   v_reason := nullif(btrim(coalesce(p_payload ->> 'reason', '')), '');
 
-  delete from public.sale_payments
-  where sale_id = p_sale_id;
-
-  insert into public.sale_payments (
-    sale_id,
-    payment_method,
-    amount
-  )
-  values (
-    p_sale_id,
-    v_payment_method,
-    v_total_amount::numeric(10,2)
-  );
-
   if p_action_type = 'edit_sale' then
     if p_payload -> 'items' is null
       or jsonb_typeof(p_payload -> 'items') <> 'array'
@@ -3014,6 +3031,22 @@ begin
         promo_approval_id = null,
         updated_at = v_now
     where id = p_sale_id;
+
+    delete from public.sale_payments
+    where sale_id = p_sale_id;
+
+    insert into public.sale_payments (
+      sale_id,
+      payment_method,
+      amount,
+      receipt_photo_path
+    )
+    values (
+      p_sale_id,
+      v_payment_method,
+      v_total_amount::numeric(10,2),
+      v_receipt_photo_path
+    );
 
     delete from public.sale_promos
     where sale_id = p_sale_id;
@@ -3771,8 +3804,10 @@ begin
     p_payments,
     jsonb_build_array(
       jsonb_build_object(
+        'id', p_sale_id::text,
         'payment_method', p_payment_method,
-        'amount', p_total_amount::numeric(10,2)
+        'amount', p_total_amount::numeric(10,2),
+        'receipt_photo_path', p_receipt_photo_path
       )
     )
   );
@@ -3786,7 +3821,12 @@ begin
   if exists (
     select 1
     from jsonb_to_recordset(v_payments)
-      as payment(payment_method text, amount numeric)
+      as payment(
+        id text,
+        payment_method text,
+        amount numeric,
+        receipt_photo_path text
+      )
     where payment.payment_method is null
       or payment.payment_method not in ('cash', 'gcash', 'maya', 'maribank', 'unionbank', 'other')
       or payment.amount is null
@@ -3798,34 +3838,77 @@ begin
   select coalesce(sum(payment.amount), 0)::numeric(10,2)
   into v_payment_total
   from jsonb_to_recordset(v_payments)
-    as payment(payment_method text, amount numeric);
+    as payment(
+      id text,
+      payment_method text,
+      amount numeric,
+      receipt_photo_path text
+    );
 
-  if v_payment_total <> p_total_amount::numeric(10,2) then
+  if abs(v_payment_total - p_total_amount::numeric(10,2)) >= 0.01 then
     raise exception using message = 'SALE_PAYMENT_TOTAL_MISMATCH';
   end if;
 
   select exists (
     select 1
     from jsonb_to_recordset(v_payments)
-      as payment(payment_method text, amount numeric)
+      as payment(
+        id text,
+        payment_method text,
+        amount numeric,
+        receipt_photo_path text
+      )
     where payment.payment_method <> 'cash'
   )
   into v_has_non_cash_payment;
 
-  if v_has_non_cash_payment and p_receipt_photo_path is null then
-    raise exception using message = 'RECEIPT_PHOTO_REQUIRED';
-  end if;
-  if p_payment_method <> 'cash' and p_receipt_photo_path is null then
+  if exists (
+    select 1
+    from jsonb_to_recordset(v_payments)
+      as payment(
+        id text,
+        payment_method text,
+        amount numeric,
+        receipt_photo_path text
+      )
+    where payment.payment_method <> 'cash'
+      and nullif(payment.receipt_photo_path, '') is null
+  ) then
     raise exception using message = 'RECEIPT_PHOTO_REQUIRED';
   end if;
 
-  if p_receipt_photo_path is not null
-    and not exists (
-      select 1
-      from storage.objects
-      where bucket_id = 'receipts'
-        and name = p_receipt_photo_path
-    ) then
+  if exists (
+    select 1
+    from jsonb_to_recordset(v_payments)
+      as payment(
+        id text,
+        payment_method text,
+        amount numeric,
+        receipt_photo_path text
+      )
+    where nullif(payment.receipt_photo_path, '') is not null
+      and payment.receipt_photo_path not like (v_employee_id::text || '/%')
+  ) then
+    raise exception using message = 'INVALID_RECEIPT_PHOTO_PATH';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_to_recordset(v_payments)
+      as payment(
+        id text,
+        payment_method text,
+        amount numeric,
+        receipt_photo_path text
+      )
+    where nullif(payment.receipt_photo_path, '') is not null
+      and not exists (
+        select 1
+        from storage.objects
+        where bucket_id = 'receipts'
+          and name = payment.receipt_photo_path
+      )
+  ) then
     raise exception using message = 'RECEIPT_PHOTO_NOT_FOUND';
   end if;
 
@@ -4090,16 +4173,25 @@ begin
   );
 
   insert into public.sale_payments (
+    id,
     sale_id,
     payment_method,
-    amount
+    amount,
+    receipt_photo_path
   )
   select
+    coalesce(nullif(payment.id, '')::uuid, gen_random_uuid()),
     p_sale_id,
     payment.payment_method,
-    payment.amount::numeric(10,2)
+    payment.amount::numeric(10,2),
+    nullif(payment.receipt_photo_path, '')
   from jsonb_to_recordset(v_payments)
-    as payment(payment_method text, amount numeric);
+    as payment(
+      id text,
+      payment_method text,
+      amount numeric,
+      receipt_photo_path text
+    );
 
   if p_promo_id is not null then
     insert into public.sale_promos (
@@ -4589,6 +4681,18 @@ using (
     where sales.receipt_photo_path = storage.objects.name
       and sales.status = 'completed'
       and public.current_employee_is_assigned(sales.schedule_id)
+  )
+  or (
+    bucket_id = 'receipts'
+    and exists (
+      select 1
+      from public.sale_payments as payment
+      join public.sales as sale
+        on sale.id = payment.sale_id
+      where payment.receipt_photo_path = storage.objects.name
+        and sale.status = 'completed'
+        and public.current_employee_is_assigned(sale.schedule_id)
+    )
   )
 );
 

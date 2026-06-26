@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createClientId } from "@/lib/utils"
+
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   Ellipsis,
@@ -94,7 +96,7 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
           input.email.trim().toLowerCase()
       )
       const optimisticId =
-        matchedEmployee?.id ?? `optimistic-employee-${crypto.randomUUID()}`
+        matchedEmployee?.id ?? `optimistic-employee-${createClientId()}`
 
       optimisticEmployeeIdRef.current = matchedEmployee ? null : optimisticId
 
@@ -379,7 +381,8 @@ export function AdminEmployeesClient({ employees }: AdminEmployeesClientProps) {
           const isAdmin = employee.role === "admin"
           const isActive = employee.is_active !== false
           const pendingApproval = isEmployeePendingApproval(employee)
-          const canResendInvite = !pendingApproval && isActive && !employee.user_id
+          const canResendInvite =
+            !pendingApproval && isActive && !employee.user_id
 
           return (
             <div className="flex justify-end">

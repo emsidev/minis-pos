@@ -27,6 +27,12 @@ type FinalizePosSaleInput = {
   scheduleId: string
   paymentMethod: PaymentMethod
   receiptPhotoPath: string | null
+  payments: {
+    id?: string
+    paymentMethod: PaymentMethod
+    amount: number
+    receiptPhotoPath?: string | null
+  }[]
   createdAt: string
   items: CheckoutItemInput[]
   promoId?: string | null
@@ -329,6 +335,12 @@ function mapPosActionError(error: unknown) {
       return "The approved promo no longer matches this cart."
     case "PROMO_APPROVAL_USED":
       return "This promo approval was already used."
+    case "SALE_PAYMENTS_REQUIRED":
+      return "Add at least one payment before charging this sale."
+    case "INVALID_SALE_PAYMENTS":
+      return "Every payment needs a valid method, amount, and required receipt."
+    case "SALE_PAYMENT_TOTAL_MISMATCH":
+      return "Payment amounts must match the sale total."
     default:
       return message
   }
@@ -341,6 +353,45 @@ export async function finalizePosSale(
 
   try {
     const prepared = await prepareCheckout(input)
+    const payments = input.payments ?? []
+
+    if (payments.length === 0) {
+      throw new Error("SALE_PAYMENTS_REQUIRED")
+    }
+
+    if (
+      payments.some(
+        (payment) =>
+          !Number.isFinite(payment.amount) || Number(payment.amount) <= 0
+      )
+    ) {
+      throw new Error("INVALID_SALE_PAYMENTS")
+    }
+
+    const paymentTotal = Number(
+      payments.reduce((sum, payment) => sum + payment.amount, 0).toFixed(2)
+    )
+
+    if (Math.abs(paymentTotal - prepared.pricing.total) >= 0.01) {
+      throw new Error("SALE_PAYMENT_TOTAL_MISMATCH")
+    }
+
+    if (
+      payments.some(
+        (payment) =>
+          payment.paymentMethod !== "cash" &&
+          (!payment.receiptPhotoPath ||
+            payment.receiptPhotoPath.trim().length === 0)
+      )
+    ) {
+      throw new Error("INVALID_SALE_PAYMENTS")
+    }
+
+    const summaryPaymentMethod: PaymentMethod =
+      payments.length === 1 ? payments[0].paymentMethod : "other"
+    const summaryReceiptPhotoPath =
+      payments.find((payment) => payment.paymentMethod !== "cash")
+        ?.receiptPhotoPath ?? null
 
     if (prepared.promo?.requiresAdminApproval && employee.role !== "admin") {
       if (!input.promoApprovalId || !prepared.promoSnapshot) {
@@ -361,8 +412,8 @@ export async function finalizePosSale(
       p_booth_id: input.boothId,
       p_schedule_id: input.scheduleId,
       p_total_amount: prepared.pricing.total,
-      p_payment_method: input.paymentMethod,
-      p_receipt_photo_path: input.receiptPhotoPath,
+      p_payment_method: summaryPaymentMethod,
+      p_receipt_photo_path: summaryReceiptPhotoPath,
       p_created_at: input.createdAt,
       p_items: prepared.pricing.pricedItems.map((item) => ({
         product_id: item.productId,
@@ -378,6 +429,15 @@ export async function finalizePosSale(
       p_promo_discount_total: prepared.pricing.discountTotal,
       p_promo_approval_id: input.promoApprovalId ?? null,
       p_promo_snapshot: prepared.promoSnapshot,
+      p_payments: payments.map((payment) => ({
+        id: payment.id,
+        payment_method: payment.paymentMethod,
+        amount: Number(payment.amount.toFixed(2)),
+        receipt_photo_path:
+          payment.paymentMethod === "cash"
+            ? null
+            : (payment.receiptPhotoPath ?? null),
+      })),
     } as unknown as FinalizePosSaleRpcArgs
     const { error } = await supabase.rpc("finalize_pos_sale", rpcArgs)
 

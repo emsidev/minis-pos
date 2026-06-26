@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server"
 import type { Database } from "@/lib/database.types"
+import type { PaymentMethod } from "@/lib/domain-types"
 import type { ShiftApprovalRecord } from "@/lib/shiftApprovals"
 import {
   getBusinessDate,
@@ -141,6 +142,14 @@ export type SaleWithJoins = Omit<
   booths: { name: string } | null
   receipt_photo_local?: string | null
   sync_state?: SaleReceiptSyncState | null
+  sale_payments?: {
+    id: string
+    sale_id: string
+    payment_method: PaymentMethod
+    amount: number | string
+    receipt_photo_path: string | null
+    created_at: string
+  }[]
 }
 
 export type SaleItemWithProduct =
