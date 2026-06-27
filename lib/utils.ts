@@ -227,9 +227,7 @@ export function isCurrentBusinessShift(
   const currentDate = getBusinessDate(now)
   const currentTime = getBusinessTime(now)
 
-  return (
-    date === currentDate && startTime <= currentTime && endTime > currentTime
-  )
+  return date === currentDate && endTime > currentTime
 }
 
 export function hasBusinessShiftPassed(
