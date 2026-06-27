@@ -1,5 +1,6 @@
 "use server"
 
+import { randomUUID } from "node:crypto"
 import { revalidatePath } from "next/cache"
 
 import { requireEmployeeRole } from "@/lib/auth.server"
@@ -9,6 +10,7 @@ import { createServerSupabaseClient } from "@/lib/supabase-server"
 
 const RECEIPT_URL_LIFETIME_SECONDS = 60 * 5
 const RECEIPT_BUCKET = "receipts"
+const RECEIPT_PHOTO_PATH_DATA_URL_PARAM = "receipt-photo-path"
 
 const receiptExtensionByMimeType: Record<string, string> = {
   "image/heic": "heic",
@@ -23,6 +25,13 @@ export type ReceiptUrlResult = {
   ok: boolean
   error?: string
   signedUrl?: string
+}
+
+export type ReceiptUploadTargetResult = {
+  ok: boolean
+  error?: string
+  receiptPhotoPath?: string
+  uploadToken?: string
 }
 
 export type ReceiptUploadResult = {
@@ -81,6 +90,13 @@ function buildReceiptPhotoPath(
   return `${employeeId}/sales/${saleId}/payments/${normalizedKey}.${extension}`
 }
 
+function isReceiptPhotoPathOwnedByEmployee(
+  receiptPhotoPath: string,
+  employeeId: string
+) {
+  return receiptPhotoPath.startsWith(`${employeeId}/`)
+}
+
 async function uploadParsedReceiptPhoto(
   receiptPhotoPath: string,
   parsedReceipt: NonNullable<ReturnType<typeof parseReceiptDataUrl>>
@@ -95,6 +111,100 @@ async function uploadParsedReceiptPhoto(
     })
 }
 
+export async function createReceiptPhotoUploadTarget(
+  mimeType: string
+): Promise<ReceiptUploadTargetResult> {
+  try {
+    const { employee } = await requireEmployeeRole(["employee", "admin"])
+    const normalizedMimeType = mimeType.trim().toLowerCase()
+    const extension = receiptExtensionByMimeType[normalizedMimeType]
+
+    if (!extension) {
+      return {
+        ok: false,
+        error: "Receipt photo upload failed: unsupported image type.",
+      }
+    }
+
+    const receiptPhotoPath = `${employee.id}/pending/${randomUUID()}.${extension}`
+    const supabase = createAdminSupabaseClient()
+    const { data, error } = await supabase.storage
+      .from(RECEIPT_BUCKET)
+      .createSignedUploadUrl(receiptPhotoPath)
+
+    if (error) {
+      return {
+        ok: false,
+        error: `Receipt photo upload failed: ${error.message}`,
+      }
+    }
+
+    if (!data?.token) {
+      return {
+        ok: false,
+        error: "Receipt photo upload failed: missing upload token.",
+      }
+    }
+
+    return {
+      ok: true,
+      receiptPhotoPath,
+      uploadToken: data.token,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? `Receipt photo upload failed: ${error.message}`
+          : "Receipt photo upload failed: unknown error.",
+    }
+  }
+}
+
+export function parseUploadedReceiptPhotoReference(value: string) {
+  const separatorIndex = value.indexOf(",")
+
+  if (separatorIndex === -1) {
+    return null
+  }
+
+  const metadata = value.slice(0, separatorIndex)
+
+  if (
+    !/^data:image\/[a-z0-9.+-]+(?:;[^;,]+)*;base64$/i.test(metadata)
+  ) {
+    return null
+  }
+
+  const marker = metadata
+    .split(";")
+    .slice(1, -1)
+    .find((parameter) =>
+      parameter.startsWith(`${RECEIPT_PHOTO_PATH_DATA_URL_PARAM}=`)
+    )
+
+  if (!marker) {
+    return null
+  }
+
+  const encodedPath = marker.slice(
+    RECEIPT_PHOTO_PATH_DATA_URL_PARAM.length + 1
+  )
+
+  try {
+    const receiptPhotoPath = decodeURIComponent(encodedPath).trim()
+
+    if (!receiptPhotoPath || receiptPhotoPath.startsWith("/")) {
+      return null
+    }
+
+    return receiptPhotoPath
+  } catch {
+    return null
+  }
+}
+
 export async function getReceiptSignedUrl(
   receiptPath: string
 ): Promise<ReceiptUrlResult> {
@@ -106,7 +216,7 @@ export async function getReceiptSignedUrl(
 
   const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase.storage
-    .from("receipts")
+    .from(RECEIPT_BUCKET)
     .createSignedUrl(receiptPath, RECEIPT_URL_LIFETIME_SECONDS)
 
   if (error) {
@@ -136,6 +246,22 @@ export async function uploadReceiptPhotoForSale(
         ok: false,
         error: "Receipt photo upload failed: missing receipt photo.",
       }
+    }
+
+    const uploadedReceiptPhotoPath =
+      parseUploadedReceiptPhotoReference(receiptPhotoDataUrl)
+
+    if (uploadedReceiptPhotoPath) {
+      if (
+        !isReceiptPhotoPathOwnedByEmployee(uploadedReceiptPhotoPath, employee.id)
+      ) {
+        return {
+          ok: false,
+          error: "Receipt photo upload failed: path does not belong to you.",
+        }
+      }
+
+      return { ok: true, receiptPhotoPath: uploadedReceiptPhotoPath }
     }
 
     const parsedReceipt = parseReceiptDataUrl(receiptPhotoDataUrl)
@@ -210,12 +336,29 @@ export async function replaceReceiptPhotoForSale(
       }
     }
 
-    const parsedReceipt = parseReceiptDataUrl(receiptPhotoDataUrl)
+    const uploadedReceiptPhotoPath =
+      parseUploadedReceiptPhotoReference(receiptPhotoDataUrl)
+    const parsedReceipt = uploadedReceiptPhotoPath
+      ? null
+      : parseReceiptDataUrl(receiptPhotoDataUrl)
 
-    if (!parsedReceipt || parsedReceipt.buffer.byteLength === 0) {
+    if (
+      !uploadedReceiptPhotoPath &&
+      (!parsedReceipt || parsedReceipt.buffer.byteLength === 0)
+    ) {
       return {
         ok: false,
         error: "Receipt photo update failed: invalid receipt photo data.",
+      }
+    }
+
+    if (
+      uploadedReceiptPhotoPath &&
+      !isReceiptPhotoPathOwnedByEmployee(uploadedReceiptPhotoPath, employee.id)
+    ) {
+      return {
+        ok: false,
+        error: "Receipt photo update failed: path does not belong to you.",
       }
     }
 
@@ -279,21 +422,25 @@ export async function replaceReceiptPhotoForSale(
       }
     }
 
-    const nextReceiptPhotoPath = buildReceiptPhotoPath(
-      saleRecord.employee_id,
-      saleRecord.id,
-      parsedReceipt.extension
-    )
+    const nextReceiptPhotoPath = uploadedReceiptPhotoPath
+      ? uploadedReceiptPhotoPath
+      : buildReceiptPhotoPath(
+          saleRecord.employee_id,
+          saleRecord.id,
+          parsedReceipt!.extension
+        )
 
-    const { error: uploadError } = await uploadParsedReceiptPhoto(
-      nextReceiptPhotoPath,
-      parsedReceipt
-    )
+    if (parsedReceipt) {
+      const { error: uploadError } = await uploadParsedReceiptPhoto(
+        nextReceiptPhotoPath,
+        parsedReceipt
+      )
 
-    if (uploadError) {
-      return {
-        ok: false,
-        error: `Receipt photo update failed: ${uploadError.message}`,
+      if (uploadError) {
+        return {
+          ok: false,
+          error: `Receipt photo update failed: ${uploadError.message}`,
+        }
       }
     }
 
