@@ -162,7 +162,7 @@ export async function createReceiptPhotoUploadTarget(
   }
 }
 
-export function parseUploadedReceiptPhotoReference(value: string) {
+function parseUploadedReceiptPhotoReference(value: string) {
   const separatorIndex = value.indexOf(",")
 
   if (separatorIndex === -1) {
