@@ -113,7 +113,12 @@ function dataUrlToBlob(dataUrl: string) {
     bytes[index] = binary.charCodeAt(index)
   }
 
-  return new Blob([bytes], { type: mimeType })
+  const arrayBuffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer
+
+  return new Blob([arrayBuffer], { type: mimeType })
 }
 
 function buildScaleCandidates(image: HTMLImageElement) {
